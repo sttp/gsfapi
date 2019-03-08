@@ -42,7 +42,7 @@ namespace sttp
     /// <summary>
     /// Represents an unsynchronized client subscription to the <see cref="DataPublisher" />.
     /// </summary>
-    public class ClientSubscription : FacileActionAdapterBase
+    public class SubscriberAdapter : FacileActionAdapterBase
     {
         #region [ Members ]
 
@@ -61,7 +61,7 @@ namespace sttp
         /// This event is expected to only be raised when an input adapter has been designed to process
         /// a finite amount of data, e.g., reading a historical range of data during temporal processing.
         /// </remarks>
-        public event EventHandler<EventArgs<ClientSubscription, EventArgs>> ProcessingComplete;
+        public event EventHandler<EventArgs<SubscriberAdapter, EventArgs>> ProcessingComplete;
 
         // Fields
         private readonly SignalIndexCache m_signalIndexCache;
@@ -102,13 +102,13 @@ namespace sttp
         #region [ Constructors ]
 
         /// <summary>
-        /// Creates a new <see cref="ClientSubscription"/>.
+        /// Creates a new <see cref="SubscriberAdapter"/>.
         /// </summary>
         /// <param name="parent">Reference to parent.</param>
         /// <param name="clientID"><see cref="Guid"/> based client connection ID.</param>
         /// <param name="subscriberID"><see cref="Guid"/> based subscriber ID.</param>
         /// <param name="compressionModes"><see cref="CompressionModes"/> requested by client.</param>
-        public ClientSubscription(DataPublisher parent, Guid clientID, Guid subscriberID, CompressionModes compressionModes)
+        public SubscriberAdapter(DataPublisher parent, Guid clientID, Guid subscriberID, CompressionModes compressionModes)
         {
             m_parent = parent;
             m_clientID = clientID;
@@ -146,27 +146,27 @@ namespace sttp
         }
 
         /// <summary>
-        /// Gets the <see cref="Guid"/> client TCP connection identifier of this <see cref="ClientSubscription"/>.
+        /// Gets the <see cref="Guid"/> client TCP connection identifier of this <see cref="SubscriberAdapter"/>.
         /// </summary>
         public Guid ClientID => m_clientID;
 
         /// <summary>
-        /// Gets the <see cref="Guid"/> based subscriber ID of this <see cref="ClientSubscription"/>.
+        /// Gets the <see cref="Guid"/> based subscriber ID of this <see cref="SubscriberAdapter"/>.
         /// </summary>
         public Guid SubscriberID => m_subscriberID;
 
         /// <summary>
-        /// Gets the current signal index cache of this <see cref="ClientSubscription"/>.
+        /// Gets the current signal index cache of this <see cref="SubscriberAdapter"/>.
         /// </summary>
         public SignalIndexCache SignalIndexCache => m_signalIndexCache;
 
         /// <summary>
-        /// Gets the input filter requested by the subscriber when establishing this <see cref="ClientSubscription"/>.
+        /// Gets the input filter requested by the subscriber when establishing this <see cref="SubscriberAdapter"/>.
         /// </summary>
         public string RequestedInputFilter => m_requestedInputFilter;
 
         /// <summary>
-        /// Gets or sets flag that determines if payload compression should be enabled in data packets of this <see cref="ClientSubscription"/>.
+        /// Gets or sets flag that determines if payload compression should be enabled in data packets of this <see cref="SubscriberAdapter"/>.
         /// </summary>
         public bool UsePayloadCompression
         {
@@ -184,7 +184,7 @@ namespace sttp
         }
 
         /// <summary>
-        /// Gets or sets flag that determines if the compact measurement format should be used in data packets of this <see cref="ClientSubscription"/>.
+        /// Gets or sets flag that determines if the compact measurement format should be used in data packets of this <see cref="SubscriberAdapter"/>.
         /// </summary>
         public bool UseCompactMeasurementFormat
         {
@@ -243,7 +243,7 @@ namespace sttp
         }
 
         /// <summary>
-        /// Gets or sets primary keys of input measurements the <see cref="ClientSubscription"/> expects, if any.
+        /// Gets or sets primary keys of input measurements the <see cref="SubscriberAdapter"/> expects, if any.
         /// </summary>
         /// <remarks>
         /// We override method so assignment can be synchronized such that dynamic updates won't interfere
@@ -284,14 +284,14 @@ namespace sttp
         public override bool SupportsTemporalProcessing => false;
 
         /// <summary>
-        /// Gets a formatted message describing the status of this <see cref="ClientSubscription"/>.
+        /// Gets a formatted message describing the status of this <see cref="SubscriberAdapter"/>.
         /// </summary>
         public override string Status
         {
             get
             {
                 StringBuilder status = new StringBuilder();
-                ClientConnection connection;
+                SubscriberConnection connection;
 
                 if (m_parent.ClientConnections.TryGetValue(m_clientID, out connection))
                 {
@@ -327,7 +327,7 @@ namespace sttp
         #region [ Methods ]
 
         /// <summary>
-        /// Releases the unmanaged resources used by the <see cref="ClientSubscription"/> object and optionally releases the managed resources.
+        /// Releases the unmanaged resources used by the <see cref="SubscriberAdapter"/> object and optionally releases the managed resources.
         /// </summary>
         /// <param name="disposing">true to release both managed and unmanaged resources; false to release only unmanaged resources.</param>
         protected override void Dispose(bool disposing)
@@ -360,7 +360,7 @@ namespace sttp
         }
 
         /// <summary>
-        /// Initializes <see cref="ClientSubscription"/>.
+        /// Initializes <see cref="SubscriberAdapter"/>.
         /// </summary>
         public override void Initialize()
         {
@@ -430,7 +430,7 @@ namespace sttp
         }
 
         /// <summary>
-        /// Starts the <see cref="ClientSubscription"/> or restarts it if it is already running.
+        /// Starts the <see cref="SubscriberAdapter"/> or restarts it if it is already running.
         /// </summary>
         public override void Start()
         {
@@ -447,7 +447,7 @@ namespace sttp
         }
 
         /// <summary>
-        /// Stops the <see cref="ClientSubscription"/>.
+        /// Stops the <see cref="SubscriberAdapter"/>.
         /// </summary>	
         public override void Stop()
         {
@@ -461,7 +461,7 @@ namespace sttp
         }
 
         /// <summary>
-        /// Gets a short one-line status of this <see cref="ClientSubscription"/>.
+        /// Gets a short one-line status of this <see cref="SubscriberAdapter"/>.
         /// </summary>
         /// <param name="maxLength">Maximum number of available characters for display.</param>
         /// <returns>A short one-line summary of the current status of this <see cref="AdapterBase"/>.</returns>
@@ -912,7 +912,7 @@ namespace sttp
         private void OnProcessingComplete()
         {
             if ((object)ProcessingComplete != null)
-                ProcessingComplete(this, new EventArgs<ClientSubscription, EventArgs>(this, EventArgs.Empty));
+                ProcessingComplete(this, new EventArgs<SubscriberAdapter, EventArgs>(this, EventArgs.Empty));
         }
 
         private void BaseTimeRotationTimer_Elapsed(object sender, EventArgs<DateTime> e)

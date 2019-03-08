@@ -780,7 +780,7 @@ namespace sttp
         //private bool m_useZeroMQChannel;
         private CertificatePolicyChecker m_certificateChecker;
         private Dictionary<X509Certificate, DataRow> m_subscriberIdentities;
-        private ConcurrentDictionary<Guid, ClientConnection> m_clientConnections;
+        private ConcurrentDictionary<Guid, SubscriberConnection> m_clientConnections;
         private readonly ConcurrentDictionary<Guid, IServer> m_clientPublicationChannels;
         private readonly Dictionary<Guid, Dictionary<int, string>> m_clientNotifications;
         private readonly object m_clientNotificationsLock;
@@ -835,7 +835,7 @@ namespace sttp
             base.Name = "Data Publisher Collection";
             base.DataMember = "[internal]";
 
-            m_clientConnections = new ConcurrentDictionary<Guid, ClientConnection>();
+            m_clientConnections = new ConcurrentDictionary<Guid, SubscriberConnection>();
             m_clientPublicationChannels = new ConcurrentDictionary<Guid, IServer>();
             m_clientNotifications = new Dictionary<Guid, Dictionary<int, string>>();
             m_clientNotificationsLock = new object();
@@ -1250,7 +1250,7 @@ namespace sttp
         /// <summary>
         /// Gets dictionary of connected clients.
         /// </summary>
-        protected internal ConcurrentDictionary<Guid, ClientConnection> ClientConnections => m_clientConnections;
+        protected internal ConcurrentDictionary<Guid, SubscriberConnection> ClientConnections => m_clientConnections;
 
         /// <summary>
         /// Gets or sets reference to <see cref="TcpServer"/> command channel, attaching and/or detaching to events as needed.
@@ -1722,7 +1722,7 @@ namespace sttp
         {
             StringBuilder clientEnumeration = new StringBuilder();
             Guid[] clientIDs = (Guid[])m_commandChannel.ClientIDs.Clone();
-            ClientConnection connection;
+            SubscriberConnection connection;
             bool hasActiveTemporalSession;
 
             if (filterToTemporalSessions)
@@ -1750,7 +1750,7 @@ namespace sttp
             return clientEnumeration.ToString();
         }
 
-        private string GetOperationalModes(ClientConnection connection)
+        private string GetOperationalModes(SubscriberConnection connection)
         {
             StringBuilder description = new StringBuilder();
             OperationalModes operationalModes = connection.OperationalModes;
@@ -1769,7 +1769,7 @@ namespace sttp
                 else
                     description.Append("          FullSizePayloadData[");
 
-                if (connection.Subscription is ClientSubscription)
+                if (connection.Subscription is SubscriberAdapter)
                     description.Append($"{connection.Subscription.TimestampSize}-byte Timestamps]\r\n");
                 else
                     description.Append("8-byte Frame-level Timestamps]\r\n");
@@ -1815,7 +1815,7 @@ namespace sttp
 
             if (success)
             {
-                ClientConnection connection;
+                SubscriberConnection connection;
 
                 if (m_clientConnections.TryGetValue(clientID, out connection))
                     connection.RotateCipherKeys();
@@ -1846,7 +1846,7 @@ namespace sttp
 
             if (success)
             {
-                ClientConnection connection;
+                SubscriberConnection connection;
 
                 if (m_clientConnections.TryGetValue(clientID, out connection))
                     return connection.SubscriberInfo;
@@ -2013,7 +2013,7 @@ namespace sttp
             Guid signalID;
 
             byte[] serializedSignalIndexCache;
-            ClientConnection connection;
+            SubscriberConnection connection;
 
             Func<Guid, bool> hasRightsFunc = id => true;
 
@@ -2079,7 +2079,7 @@ namespace sttp
         /// </summary>
         protected void UpdateRights()
         {
-            foreach (ClientConnection connection in m_clientConnections.Values)
+            foreach (SubscriberConnection connection in m_clientConnections.Values)
                 UpdateRights(connection);
 
             m_routingTables.CalculateRoutingTables(null);
@@ -2122,7 +2122,7 @@ namespace sttp
                 ThreadPool.QueueUserWorkItem(state =>
                 {
                     // Make a copy of client connection enumeration with ToArray() in case connections are added or dropped during notification
-                    foreach (ClientConnection connection in m_clientConnections.Values)
+                    foreach (SubscriberConnection connection in m_clientConnections.Values)
                         SendClientResponse(connection.ClientID, ServerResponse.ConfigurationChanged, ServerCommand.Subscribe);
                 });
             }
@@ -2182,11 +2182,11 @@ namespace sttp
 
         private void SendAllNotifications()
         {
-            foreach (ClientConnection connection in m_clientConnections.Values)
+            foreach (SubscriberConnection connection in m_clientConnections.Values)
                 SendNotifications(connection);
         }
 
-        private void SendNotifications(ClientConnection connection)
+        private void SendNotifications(SubscriberConnection connection)
         {
             Dictionary<int, string> notifications;
             byte[] hash;
@@ -2217,7 +2217,7 @@ namespace sttp
         /// <returns>Text encoding associated with a particular client.</returns>
         protected internal Encoding GetClientEncoding(Guid clientID)
         {
-            ClientConnection connection;
+            SubscriberConnection connection;
 
             if (m_clientConnections.TryGetValue(clientID, out connection))
             {
@@ -2240,7 +2240,7 @@ namespace sttp
         {
             bool result = SendClientResponse(clientID, ServerResponse.DataStartTime, ServerCommand.Subscribe, BigEndian.GetBytes((long)startTime));
 
-            ClientConnection connection;
+            SubscriberConnection connection;
 
             if (m_clientConnections.TryGetValue(clientID, out connection))
                 OnStatusMessage(MessageLevel.Info, $"Start time sent to {connection.ConnectionID}.");
@@ -2332,7 +2332,7 @@ namespace sttp
         }
 
         // Attempts to get the subscriber for the given client based on that client's X.509 certificate.
-        private void TryFindClientDetails(ClientConnection connection)
+        private void TryFindClientDetails(SubscriberConnection connection)
         {
             // TODO: Also validate ZeroMQServer with CURVE security enabled
             TlsServer commandChannel = m_commandChannel as TlsServer;
@@ -2448,14 +2448,14 @@ namespace sttp
         }
 
         // Update rights for the given subscription.
-        private void UpdateRights(ClientConnection connection)
+        private void UpdateRights(SubscriberConnection connection)
         {
             if ((object)connection == null)
                 return;
 
             try
             {
-                ClientSubscription subscription = connection.Subscription;
+                SubscriberAdapter subscription = connection.Subscription;
                 MeasurementKey[] requestedInputs;
                 HashSet<MeasurementKey> authorizedSignals;
                 Func<Guid, bool> hasRightsFunc = id => true;
@@ -2506,7 +2506,7 @@ namespace sttp
         // Send binary response packet to client
         private bool SendClientResponse(Guid clientID, byte responseCode, byte commandCode, byte[] data)
         {
-            ClientConnection connection;
+            SubscriberConnection connection;
             bool success = false;
 
             // Attempt to lookup associated client connection
@@ -2668,7 +2668,7 @@ namespace sttp
             try
             {
                 Guid clientID = (Guid)state;
-                ClientConnection connection;
+                SubscriberConnection connection;
                 IServer publicationChannel;
 
                 RemoveClientSubscription(clientID);
@@ -2692,7 +2692,7 @@ namespace sttp
         {
             lock (this)
             {
-                ClientSubscription clientSubscription;
+                SubscriberAdapter clientSubscription;
 
                 if (TryGetClientSubscription(clientID, out clientSubscription))
                 {
@@ -2720,14 +2720,14 @@ namespace sttp
         }
 
         // Attempt to find client subscription
-        private bool TryGetClientSubscription(Guid clientID, out ClientSubscription subscription)
+        private bool TryGetClientSubscription(Guid clientID, out SubscriberAdapter subscription)
         {
             IActionAdapter adapter;
 
             // Lookup adapter by its client ID
             if (TryGetAdapter(clientID, GetClientSubscription, out adapter))
             {
-                subscription = (ClientSubscription)adapter;
+                subscription = (SubscriberAdapter)adapter;
                 return true;
             }
 
@@ -2737,7 +2737,7 @@ namespace sttp
 
         private bool GetClientSubscription(IActionAdapter item, Guid value)
         {
-            ClientSubscription subscription = item as ClientSubscription;
+            SubscriberAdapter subscription = item as SubscriberAdapter;
 
             if ((object)subscription != null)
                 return subscription.ClientID == value;
@@ -2746,12 +2746,12 @@ namespace sttp
         }
 
         // Gets specified property from client connection based on subscriber ID
-        private TResult GetConnectionProperty<TResult>(Guid subscriberID, Func<ClientConnection, TResult> predicate)
+        private TResult GetConnectionProperty<TResult>(Guid subscriberID, Func<SubscriberConnection, TResult> predicate)
         {
             TResult result = default(TResult);
 
             // Lookup client connection by subscriber ID
-            ClientConnection connection = m_clientConnections.Values.FirstOrDefault(cc => cc.SubscriberID == subscriberID);
+            SubscriberConnection connection = m_clientConnections.Values.FirstOrDefault(cc => cc.SubscriberID == subscriberID);
 
             // Extract desired property from client connection using given predicate function
             if ((object)connection != null)
@@ -2779,9 +2779,9 @@ namespace sttp
         /// <summary>
         /// Raises the <see cref="ClientConnected"/> event.
         /// </summary>
-        /// <param name="subscriberID">Subscriber <see cref="Guid"/> (normally <see cref="ClientConnection.SubscriberID"/>).</param>
-        /// <param name="connectionID">Connection identification (normally <see cref="ClientConnection.ConnectionID"/>).</param>
-        /// <param name="subscriberInfo">Subscriber information (normally <see cref="ClientConnection.SubscriberInfo"/>).</param>
+        /// <param name="subscriberID">Subscriber <see cref="Guid"/> (normally <see cref="SubscriberConnection.SubscriberID"/>).</param>
+        /// <param name="connectionID">Connection identification (normally <see cref="SubscriberConnection.ConnectionID"/>).</param>
+        /// <param name="subscriberInfo">Subscriber information (normally <see cref="SubscriberConnection.SubscriberInfo"/>).</param>
         protected virtual void OnClientConnected(Guid subscriberID, string connectionID, string subscriberInfo)
         {
             try
@@ -2816,7 +2816,7 @@ namespace sttp
         {
             if ((object)m_clientConnections != null)
             {
-                foreach (ClientConnection connection in m_clientConnections.Values)
+                foreach (SubscriberConnection connection in m_clientConnections.Values)
                 {
                     if ((object)connection != null && connection.Authenticated)
                         connection.RotateCipherKeys();
@@ -2977,10 +2977,10 @@ namespace sttp
         //}
 
         // Handles subscribe request
-        private void HandleSubscribeRequest(ClientConnection connection, byte[] buffer, int startIndex, int length)
+        private void HandleSubscribeRequest(SubscriberConnection connection, byte[] buffer, int startIndex, int length)
         {
             Guid clientID = connection.ClientID;
-            ClientSubscription subscription;
+            SubscriberAdapter subscription;
             string message, setting;
 
             // Handle subscribe
@@ -3027,7 +3027,7 @@ namespace sttp
                             if ((object)subscription == null)
                             {
                                 // Client subscription not established yet, so we create a new one
-                                subscription = new ClientSubscription(this, clientID, connection.SubscriberID, compressionModes);
+                                subscription = new SubscriberAdapter(this, clientID, connection.SubscriberID, compressionModes);
                                 addSubscription = true;
                             }
                             //else
@@ -3245,7 +3245,7 @@ namespace sttp
         }
 
         // Handles unsubscribe request
-        private void HandleUnsubscribeRequest(ClientConnection connection)
+        private void HandleUnsubscribeRequest(SubscriberConnection connection)
         {
             Guid clientID = connection.ClientID;
 
@@ -3271,7 +3271,7 @@ namespace sttp
         /// <param name="connection">Client connection requesting meta-data.</param>
         /// <param name="filterExpressions">Any meta-data filter expressions requested by client.</param>
         /// <returns>Meta-data to be returned to client.</returns>
-        protected virtual DataSet AquireMetadata(ClientConnection connection, Dictionary<string, Tuple<string, string, int>> filterExpressions)
+        protected virtual DataSet AquireMetadata(SubscriberConnection connection, Dictionary<string, Tuple<string, string, int>> filterExpressions)
         {
             using (AdoDataConnection adoDatabase = new AdoDataConnection("systemSettings"))
             {
@@ -3436,7 +3436,7 @@ namespace sttp
         }
 
         // Handles meta-data refresh request
-        private void HandleMetadataRefresh(ClientConnection connection, byte[] buffer, int startIndex, int length)
+        private void HandleMetadataRefresh(SubscriberConnection connection, byte[] buffer, int startIndex, int length)
         {
             // Ensure that the subscriber is allowed to request meta-data
             if (!m_allowMetadataRefresh)
@@ -3507,7 +3507,7 @@ namespace sttp
         }
 
         // Handles request to update processing interval on client session
-        private void HandleUpdateProcessingInterval(ClientConnection connection, byte[] buffer, int startIndex, int length)
+        private void HandleUpdateProcessingInterval(SubscriberConnection connection, byte[] buffer, int startIndex, int length)
         {
             Guid clientID = connection.ClientID;
             string message;
@@ -3518,7 +3518,7 @@ namespace sttp
                 // Next 4 bytes are an integer representing the new processing interval
                 int processingInterval = BigEndian.ToInt32(buffer, startIndex);
 
-                ClientSubscription subscription = connection.Subscription;
+                SubscriberAdapter subscription = connection.Subscription;
 
                 if ((object)subscription != null)
                 {
@@ -3542,7 +3542,7 @@ namespace sttp
         }
 
         // Handle request to define operational modes for client connection
-        private void HandleDefineOperationalModes(ClientConnection connection, byte[] buffer, int startIndex, int length)
+        private void HandleDefineOperationalModes(SubscriberConnection connection, byte[] buffer, int startIndex, int length)
         {
             uint operationalModes;
 
@@ -3558,7 +3558,7 @@ namespace sttp
         }
 
         // Handle confirmation of receipt of notification 
-        private void HandleConfirmNotification(ClientConnection connection, byte[] buffer, int startIndex, int length)
+        private void HandleConfirmNotification(SubscriberConnection connection, byte[] buffer, int startIndex, int length)
         {
             int hash = BigEndian.ToInt32(buffer, startIndex);
             Dictionary<int, string> notifications;
@@ -3593,7 +3593,7 @@ namespace sttp
             }
         }
 
-        private void HandleConfirmBufferBlock(ClientConnection connection, byte[] buffer, int startIndex, int length)
+        private void HandleConfirmBufferBlock(SubscriberConnection connection, byte[] buffer, int startIndex, int length)
         {
             uint sequenceNumber;
 
@@ -3604,7 +3604,7 @@ namespace sttp
             }
         }
 
-        private void HandlePublishCommandMeasurements(ClientConnection connection, byte[] buffer, int startIndex, int length)
+        private void HandlePublishCommandMeasurements(SubscriberConnection connection, byte[] buffer, int startIndex, int length)
         {
             try
             {
@@ -3649,7 +3649,7 @@ namespace sttp
         /// <param name="buffer">The buffer containing the entire message from the subscriber.</param>
         /// <param name="startIndex">The index indicating where to start reading from the buffer to skip past the message header.</param>
         /// <param name="length">The total number of bytes in the message, including the header.</param>
-        protected virtual void HandleUserCommand(ClientConnection connection, ServerCommand command, byte[] buffer, int startIndex, int length)
+        protected virtual void HandleUserCommand(SubscriberConnection connection, ServerCommand command, byte[] buffer, int startIndex, int length)
         {
             OnStatusMessage(MessageLevel.Info, $"Received command code for user-defined command \"{command}\".");
         }
@@ -3657,7 +3657,7 @@ namespace sttp
         private byte[] SerializeSignalIndexCache(Guid clientID, SignalIndexCache signalIndexCache)
         {
             byte[] serializedSignalIndexCache = null;
-            ClientConnection connection;
+            SubscriberConnection connection;
 
             if (m_clientConnections.TryGetValue(clientID, out connection))
             {
@@ -3712,7 +3712,7 @@ namespace sttp
         private byte[] SerializeMetadata(Guid clientID, DataSet metadata)
         {
             byte[] serializedMetadata = null;
-            ClientConnection connection;
+            SubscriberConnection connection;
 
             if (m_clientConnections.TryGetValue(clientID, out connection))
             {
@@ -3808,12 +3808,12 @@ namespace sttp
         }
 
         // Bubble up processing complete notifications from subscriptions
-        private void subscription_ProcessingComplete(object sender, EventArgs<ClientSubscription, EventArgs> e)
+        private void subscription_ProcessingComplete(object sender, EventArgs<SubscriberAdapter, EventArgs> e)
         {
             // Expose notification via data publisher event subscribers
             ProcessingComplete?.Invoke(sender, e.Argument2);
 
-            ClientSubscription subscription = e.Argument1;
+            SubscriberAdapter subscription = e.Argument1;
             string senderType = (object)sender == null ? "N/A" : sender.GetType().Name;
 
             // Send direct notification to associated client
@@ -3836,7 +3836,7 @@ namespace sttp
 
                 if (length > 0 && (object)buffer != null)
                 {
-                    ClientConnection connection;
+                    SubscriberConnection connection;
                     ServerCommand command;
                     string message;
                     byte commandByte = buffer[index];
@@ -3957,7 +3957,7 @@ namespace sttp
         private void m_commandChannel_ClientConnected(object sender, EventArgs<Guid> e)
         {
             Guid clientID = e.Argument;
-            ClientConnection connection = new ClientConnection(this, clientID, m_commandChannel);
+            SubscriberConnection connection = new SubscriberConnection(this, clientID, m_commandChannel);
 
             connection.ClientNotFoundExceptionOccurred = false;
 

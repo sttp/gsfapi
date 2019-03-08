@@ -41,7 +41,7 @@ namespace sttp
     /// <summary>
     /// Represents a <see cref="DataSubscriber"/> client connection to the <see cref="DataPublisher"/>.
     /// </summary>
-    public class ClientConnection : IProvideStatus, IDisposable
+    public class SubscriberConnection : IProvideStatus, IDisposable
     {
         #region [ Members ]
 
@@ -61,7 +61,7 @@ namespace sttp
         private string m_subscriberName;
         //private string m_sharedSecret;
         private string m_subscriberInfo;
-        private ClientSubscription m_subscription;
+        private SubscriberAdapter m_subscription;
         private volatile bool m_authenticated;
         private volatile byte[][][] m_keyIVs;
         private volatile int m_cipherIndex;
@@ -85,12 +85,12 @@ namespace sttp
         #region [ Constructors ]
 
         /// <summary>
-        /// Creates a new <see cref="ClientConnection"/> instance.
+        /// Creates a new <see cref="SubscriberConnection"/> instance.
         /// </summary>
         /// <param name="parent">Parent data publisher.</param>
         /// <param name="clientID">Client ID of associated connection.</param>
         /// <param name="commandChannel"><see cref="TcpServer"/> command channel used to lookup connection information.</param>
-        public ClientConnection(DataPublisher parent, Guid clientID, IServer commandChannel)
+        public SubscriberConnection(DataPublisher parent, Guid clientID, IServer commandChannel)
         {
             m_parent = parent;
             m_clientID = clientID;
@@ -180,9 +180,9 @@ namespace sttp
         }
 
         /// <summary>
-        /// Releases the unmanaged resources before the <see cref="ClientConnection"/> object is reclaimed by <see cref="GC"/>.
+        /// Releases the unmanaged resources before the <see cref="SubscriberConnection"/> object is reclaimed by <see cref="GC"/>.
         /// </summary>
-        ~ClientConnection()
+        ~SubscriberConnection()
         {
             Dispose(false);
         }
@@ -192,12 +192,12 @@ namespace sttp
         #region [ Properties ]
 
         /// <summary>
-        /// Gets client ID of this <see cref="ClientConnection"/>.
+        /// Gets client ID of this <see cref="SubscriberConnection"/>.
         /// </summary>
         public Guid ClientID => m_clientID;
 
         /// <summary>
-        /// Gets or sets reference to <see cref="UdpServer"/> data channel, attaching to or detaching from events as needed, associated with this <see cref="ClientConnection"/>.
+        /// Gets or sets reference to <see cref="UdpServer"/> data channel, attaching to or detaching from events as needed, associated with this <see cref="SubscriberConnection"/>.
         /// </summary>
         public UdpServer DataChannel
         {
@@ -312,7 +312,7 @@ namespace sttp
         }
 
         /// <summary>
-        /// Gets or sets the <see cref="Guid"/> based subscriber ID of this <see cref="ClientConnection"/>.
+        /// Gets or sets the <see cref="Guid"/> based subscriber ID of this <see cref="SubscriberConnection"/>.
         /// </summary>
         public Guid SubscriberID
         {
@@ -327,7 +327,7 @@ namespace sttp
         }
 
         /// <summary>
-        /// Gets or sets the subscriber acronym of this <see cref="ClientConnection"/>.
+        /// Gets or sets the subscriber acronym of this <see cref="SubscriberConnection"/>.
         /// </summary>
         public string SubscriberAcronym
         {
@@ -342,7 +342,7 @@ namespace sttp
         }
 
         /// <summary>
-        /// Gets or sets the subscriber name of this <see cref="ClientConnection"/>.
+        /// Gets or sets the subscriber name of this <see cref="SubscriberConnection"/>.
         /// </summary>
         public string SubscriberName
         {
@@ -357,7 +357,7 @@ namespace sttp
         }
 
         /// <summary>
-        /// Gets or sets subscriber info for this <see cref="ClientConnection"/>.
+        /// Gets or sets subscriber info for this <see cref="SubscriberConnection"/>.
         /// </summary>
         public string SubscriberInfo
         {
@@ -389,12 +389,12 @@ namespace sttp
         }
 
         /// <summary>
-        /// Gets the connection identification of this <see cref="ClientConnection"/>.
+        /// Gets the connection identification of this <see cref="SubscriberConnection"/>.
         /// </summary>
         public string ConnectionID => m_connectionID;
 
         /// <summary>
-        /// Gets or sets authenticated state of this <see cref="ClientConnection"/>.
+        /// Gets or sets authenticated state of this <see cref="SubscriberConnection"/>.
         /// </summary>
         public bool Authenticated
         {
@@ -459,9 +459,9 @@ namespace sttp
         public IPAddress IPAddress => m_ipAddress;
 
         /// <summary>
-        /// Gets or sets subscription associated with this <see cref="ClientConnection"/>.
+        /// Gets or sets subscription associated with this <see cref="SubscriberConnection"/>.
         /// </summary>
-        public ClientSubscription Subscription
+        public SubscriberAdapter Subscription
         {
             get
             {
@@ -477,7 +477,7 @@ namespace sttp
         }
 
         /// <summary>
-        /// Gets the subscriber name of this <see cref="ClientConnection"/>.
+        /// Gets the subscriber name of this <see cref="SubscriberConnection"/>.
         /// </summary>
         public string Name => SubscriberName;
 
@@ -518,7 +518,7 @@ namespace sttp
         public Encoding Encoding => m_encoding ?? Encoding.Unicode;
 
         /// <summary>
-        /// Gets a formatted message describing the status of this <see cref="ClientConnection"/>.
+        /// Gets a formatted message describing the status of this <see cref="SubscriberConnection"/>.
         /// </summary>
         public string Status
         {
@@ -554,7 +554,7 @@ namespace sttp
         #region [ Methods ]
 
         /// <summary>
-        /// Releases all the resources used by the <see cref="ClientConnection"/> object.
+        /// Releases all the resources used by the <see cref="SubscriberConnection"/> object.
         /// </summary>
         public void Dispose()
         {
@@ -563,7 +563,7 @@ namespace sttp
         }
 
         /// <summary>
-        /// Releases the unmanaged resources used by the <see cref="ClientConnection"/> object and optionally releases the managed resources.
+        /// Releases the unmanaged resources used by the <see cref="SubscriberConnection"/> object and optionally releases the managed resources.
         /// </summary>
         /// <param name="disposing">true to release both managed and unmanaged resources; false to release only unmanaged resources.</param>
         protected virtual void Dispose(bool disposing)
@@ -646,7 +646,7 @@ namespace sttp
         }
 
         /// <summary>
-        /// Rotates or initializes the crypto keys for this <see cref="ClientConnection"/>.
+        /// Rotates or initializes the crypto keys for this <see cref="SubscriberConnection"/>.
         /// </summary>
         public bool RotateCipherKeys()
         {

@@ -65,7 +65,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="ClientConnection.cs" />
+    <Compile Include="SubscriberConnection.cs" />
     <Compile Include="Common.cs" />
     <Compile Include="CompactMeasurement.cs" />
     <Compile Include="DataPublisher.cs" />
@@ -78,7 +78,7 @@
     <Compile Include="tssc\TsscDecoder.cs" />
     <Compile Include="tssc\TsscEncoder.cs" />
     <Compile Include="tssc\TsscPointMetadata.cs" />
-    <Compile Include="ClientSubscription.cs" />
+    <Compile Include="SubscriberAdapter.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
