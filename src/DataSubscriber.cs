@@ -401,7 +401,7 @@ namespace sttp
         /// <summary>
         /// Defines default value for <see cref="DataSubscriber.OperationalModes"/>.
         /// </summary>
-        public const OperationalModes DefaultOperationalModes = OperationalModes.CompressMetadata | OperationalModes.CompressSignalIndexCache | OperationalModes.ReceiveInternalMetadata; // | OperationalModes.UseCommonSerializationFormat;
+        public const OperationalModes DefaultOperationalModes = (OperationalModes)((uint)OperationalModes.VersionMask & 1u) | OperationalModes.CompressMetadata | OperationalModes.CompressSignalIndexCache | OperationalModes.ReceiveInternalMetadata;
 
         /// <summary>
         /// Defines the default value for the <see cref="MetadataSynchronizationTimeout"/> property.

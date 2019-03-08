@@ -508,7 +508,7 @@ namespace sttp
         /// Mask to get version number of protocol.
         /// </summary>
         /// <remarks>
-        /// Version number is currently set to 0.
+        /// Version number is currently set to 1.
         /// </remarks>
         VersionMask = (uint)(Bits.Bit04 | Bits.Bit03 | Bits.Bit02 | Bits.Bit01 | Bits.Bit00),
         /// <summary>
@@ -3550,7 +3550,7 @@ namespace sttp
             {
                 operationalModes = BigEndian.ToUInt32(buffer, startIndex);
 
-                if ((operationalModes & (uint)OperationalModes.VersionMask) != 0u)
+                if ((operationalModes & (uint)OperationalModes.VersionMask) != 1u)
                     OnStatusMessage(MessageLevel.Warning, $"Protocol version not supported. Operational modes may not be set correctly for client {connection.ClientID}.", flags: MessageFlags.UsageIssue);
 
                 connection.OperationalModes = (OperationalModes)operationalModes;
