@@ -24,7 +24,6 @@
 //******************************************************************************************************
 
 using GSF;
-using GSF.TimeSeries;
 using System;
 
 namespace sttp
@@ -32,7 +31,7 @@ namespace sttp
     /// <summary>
     /// Configuration object for data subscriptions.
     /// </summary>
-    public abstract class SubscriptionInfo
+    public class SubscriptionInfo
     {
         #region [ Members ]
 
@@ -55,6 +54,10 @@ namespace sttp
         private string m_constraintParameters;
         private int m_processingInterval;
 
+        private bool m_throttled;
+        private double m_publishInterval;
+        private bool m_includeTime;
+
         private string m_extraConnectionStringParameters;
 
         #endregion
@@ -64,13 +67,16 @@ namespace sttp
         /// <summary>
         /// Creates a new instance of the <see cref="SubscriptionInfo"/> class.
         /// </summary>
-        protected SubscriptionInfo()
+        protected SubscriptionInfo(bool throttled = false)
         {
             m_useCompactMeasurementFormat = true;
             m_dataChannelLocalPort = 9500;
             m_lagTime = 10.0;
             m_leadTime = 5.0;
             m_processingInterval = -1;
+            m_throttled = throttled;
+            m_publishInterval = -1;
+            m_includeTime = true;
         }
 
         #endregion
@@ -384,257 +390,6 @@ namespace sttp
         }
 
         /// <summary>
-        /// Gets or sets the additional connection string parameters to
-        /// be applied to the connection string sent to the publisher
-        /// during subscription.
-        /// </summary>
-        public virtual string ExtraConnectionStringParameters
-        {
-            get
-            {
-                return m_extraConnectionStringParameters;
-            }
-            set
-            {
-                m_extraConnectionStringParameters = value;
-            }
-        }
-
-        #endregion
-
-        #region [ Methods ]
-
-        /// <summary>
-        /// Creates a shallow copy of this
-        /// <see cref="SubscriptionInfo"/> object.
-        /// </summary>
-        /// <returns>The copy of this object.</returns>
-        public virtual SubscriptionInfo Copy()
-        {
-            return (SubscriptionInfo)MemberwiseClone();
-        }
-
-        #endregion
-    }
-
-    /// <summary>
-    /// Configuration object for synchronized data subscriptions.
-    /// </summary>
-    public sealed class SynchronizedSubscriptionInfo : SubscriptionInfo
-    {
-        #region [ Members ]
-
-        // Fields
-        private bool m_remotelySynchronized;
-
-        private int m_framesPerSecond;
-        private DownsamplingMethod m_downsamplingMethod;
-        private bool m_allowPreemptivePublishing;
-
-        private bool m_allowSortsByArrival;
-        private bool m_ignoreBadTimestamps;
-        private long m_timeResolution;
-
-        #endregion
-
-        #region [ Constructors ]
-
-        /// <summary>
-        /// Creates a new instance of the <see cref="SynchronizedSubscriptionInfo"/> class.
-        /// </summary>
-        /// <param name="remotelySynchronized">Flag that determines whether the subscription defined by this object is remotely synchronized or locally synchronized.</param>
-        /// <param name="framesPerSecond">Frame rate of the subscription in frames per second.</param>
-        public SynchronizedSubscriptionInfo(bool remotelySynchronized, int framesPerSecond)
-        {
-            m_remotelySynchronized = remotelySynchronized;
-
-            m_framesPerSecond = framesPerSecond;
-            m_downsamplingMethod = DownsamplingMethod.LastReceived;
-            m_allowPreemptivePublishing = true;
-
-            m_allowSortsByArrival = true;
-            m_timeResolution = Ticks.PerMillisecond;
-        }
-
-        #endregion
-
-        #region [ Properties ]
-
-        /// <summary>
-        /// Gets or sets the flag that determines whether this subscription
-        /// is remotely synchronized or locally synchronized.
-        /// </summary>
-        public bool RemotelySynchronized
-        {
-            get
-            {
-                return m_remotelySynchronized;
-            }
-            set
-            {
-                m_remotelySynchronized = value;
-            }
-        }
-
-        /// <summary>
-        /// Gets or sets the frame rate of the subscription in frames per second.
-        /// </summary>
-        public int FramesPerSecond
-        {
-            get
-            {
-                return m_framesPerSecond;
-            }
-            set
-            {
-                m_framesPerSecond = value;
-            }
-        }
-
-        /// <summary>
-        /// Gets or sets the down-sampling method used when the frame rate of
-        /// the subscription is lower than the frame rate of the measurement's
-        /// source.
-        /// </summary>
-        public DownsamplingMethod DownsamplingMethod
-        {
-            get
-            {
-                return m_downsamplingMethod;
-            }
-            set
-            {
-                m_downsamplingMethod = value;
-            }
-        }
-
-        /// <summary>
-        /// Gets or sets the flag that determines whether frames should be published
-        /// as soon as the data is available. If false, frames will be published
-        /// when their timestamp expires <c>(realTime > timestamp + lagTime)</c>.
-        /// </summary>
-        public bool AllowPreemptivePublishing
-        {
-            get
-            {
-                return m_allowPreemptivePublishing;
-            }
-            set
-            {
-                m_allowPreemptivePublishing = value;
-            }
-        }
-
-        /// <summary>
-        /// Gets or sets the flag that determines whether to allow measurement
-        /// sorting based on the measurement's time of arrival, if its timestamp
-        /// is unreasonable.
-        /// </summary>
-        public bool AllowSortsByArrival
-        {
-            get
-            {
-                return m_allowSortsByArrival;
-            }
-            set
-            {
-                m_allowSortsByArrival = value;
-            }
-        }
-
-        /// <summary>
-        /// Gets or sets the flag that determines whether to
-        /// ignore bad timestamps when sorting measurements.
-        /// </summary>
-        public bool IgnoreBadTimestamps
-        {
-            get
-            {
-                return m_ignoreBadTimestamps;
-            }
-            set
-            {
-                m_ignoreBadTimestamps = value;
-            }
-        }
-
-        /// <summary>
-        /// Gets or sets the maximum time resolution, in ticks, to use when sorting measurements by timestamps into their proper destination frame.
-        /// </summary>
-        /// <remarks>
-        /// <list type="table">
-        ///     <listheader>
-        ///         <term>Desired maximum resolution</term>
-        ///         <description>Value to assign</description>
-        ///     </listheader>
-        ///     <item>
-        ///         <term>Seconds</term>
-        ///         <description><see cref="Ticks"/>.<see cref="Ticks.PerSecond"/></description>
-        ///     </item>
-        ///     <item>
-        ///         <term>Milliseconds</term>
-        ///         <description><see cref="Ticks"/>.<see cref="Ticks.PerMillisecond"/></description>
-        ///     </item>
-        ///     <item>
-        ///         <term>Microseconds</term>
-        ///         <description><see cref="Ticks"/>.<see cref="Ticks.PerMicrosecond"/></description>
-        ///     </item>
-        ///     <item>
-        ///         <term>100-Nanoseconds</term>
-        ///         <description>0</description>
-        ///     </item>
-        /// </list>
-        /// Assigning values less than zero will be set to zero since minimum possible concentrator resolution is one tick (100-nanoseconds). Assigning
-        /// values values greater than <see cref="Ticks"/>.<see cref="Ticks.PerSecond"/> will be set to <see cref="Ticks"/>.<see cref="Ticks.PerSecond"/>
-        /// since maximum possible concentrator resolution is one second (i.e., 1 frame per second).
-        /// </remarks>
-        public long TimeResolution
-        {
-            get
-            {
-                return m_timeResolution;
-            }
-            set
-            {
-                m_timeResolution = value;
-            }
-        }
-
-        #endregion
-    }
-
-    /// <summary>
-    /// Configuration object for unsynchronized data subscriptions.
-    /// </summary>
-    public sealed class UnsynchronizedSubscriptionInfo : SubscriptionInfo
-    {
-        #region [ Members ]
-
-        // Fields
-        private bool m_throttled;
-        private double m_publishInterval;
-        private bool m_includeTime;
-
-        #endregion
-
-        #region [ Constructors ]
-
-        /// <summary>
-        /// Creates a new instance of the <see cref="UnsynchronizedSubscriptionInfo"/> class.
-        /// </summary>
-        /// <param name="throttled">The flag that determines whether to request that the subscription be throttled.</param>
-        public UnsynchronizedSubscriptionInfo(bool throttled)
-        {
-            m_throttled = throttled;
-            m_publishInterval = -1;
-            m_includeTime = true;
-        }
-
-        #endregion
-
-        #region [ Properties ]
-
-        /// <summary>
         /// Gets or sets the flag that determines whether
         /// to request that the subscription be throttled.
         /// </summary>
@@ -681,6 +436,37 @@ namespace sttp
             {
                 m_includeTime = value;
             }
+        }
+
+        /// <summary>
+        /// Gets or sets the additional connection string parameters to
+        /// be applied to the connection string sent to the publisher
+        /// during subscription.
+        /// </summary>
+        public virtual string ExtraConnectionStringParameters
+        {
+            get
+            {
+                return m_extraConnectionStringParameters;
+            }
+            set
+            {
+                m_extraConnectionStringParameters = value;
+            }
+        }
+
+        #endregion
+
+        #region [ Methods ]
+
+        /// <summary>
+        /// Creates a shallow copy of this
+        /// <see cref="SubscriptionInfo"/> object.
+        /// </summary>
+        /// <returns>The copy of this object.</returns>
+        public virtual SubscriptionInfo Copy()
+        {
+            return (SubscriptionInfo)MemberwiseClone();
         }
 
         #endregion
