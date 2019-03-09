@@ -462,13 +462,10 @@ namespace sttp
         private Guid m_nodeID;
         private int m_gatewayProtocolID;
         private SecurityMode m_securityMode;
-        private bool m_synchronizedSubscription;
         private bool m_useMillisecondResolution;
         private bool m_requestNaNValueFilter;
         private bool m_autoConnect;
         private string m_metadataFilters;
-        //private string m_sharedSecret;
-        //private string m_authenticationID;
         private string m_localCertificate;
         private string m_remoteCertificate;
         private SslPolicyErrors m_validPolicyErrors;
@@ -2107,11 +2104,10 @@ namespace sttp
         /// <summary>
         /// Subscribes (or re-subscribes) to a data publisher for a set of data points.
         /// </summary>
-        /// <param name="remotelySynchronized">Boolean value that determines if subscription should be remotely synchronized - note that data publisher may not allow remote synchronization.</param>
         /// <param name="compactFormat">Boolean value that determines if the compact measurement format should be used. Set to <c>false</c> for full fidelity measurement serialization; otherwise set to <c>true</c> for bandwidth conservation.</param>
         /// <param name="connectionString">Connection string that defines required and optional parameters for the subscription.</param>
         /// <returns><c>true</c> if subscribe transmission was successful; otherwise <c>false</c>.</returns>
-        public virtual bool Subscribe(bool remotelySynchronized, bool compactFormat, string connectionString)
+        public virtual bool Subscribe(bool compactFormat, string connectionString)
         {
             bool success = false;
 
@@ -2159,9 +2155,6 @@ namespace sttp
                         DataPacketFlags flags = DataPacketFlags.NoFlags;
                         byte[] bytes;
 
-                        if (remotelySynchronized)
-                            flags |= DataPacketFlags.Synchronized;
-
                         if (compactFormat)
                             flags |= DataPacketFlags.Compact;
 
@@ -2176,9 +2169,6 @@ namespace sttp
 
                         // Encode connection string into buffer
                         buffer.Write(bytes, 0, bytes.Length);
-
-                        // Cache subscribed synchronization state
-                        m_synchronizedSubscription = remotelySynchronized;
 
                         // Send subscribe server command with associated command buffer
                         success = SendServerCommand(ServerCommand.Subscribe, buffer.ToArray());
@@ -2520,7 +2510,7 @@ namespace sttp
         public override string GetShortStatus(int maxLength)
         {
             if ((object)m_commandChannel != null && m_commandChannel.CurrentState == ClientState.Connected)
-                return $"Subscriber is connected and receiving {(m_synchronizedSubscription ? "synchronized" : "unsynchronized")} data points".CenterText(maxLength);
+                return $"Subscriber is connected and receiving data points".CenterText(maxLength);
 
             return "Subscriber is not connected.".CenterText(maxLength);
         }
@@ -2660,7 +2650,6 @@ namespace sttp
                             flags = (DataPacketFlags)buffer[responseIndex];
                             responseIndex++;
 
-                            bool synchronizedMeasurements = (byte)(flags & DataPacketFlags.Synchronized) > 0;
                             bool compactMeasurementFormat = (byte)(flags & DataPacketFlags.Compact) > 0;
                             bool compressedPayload = (byte)(flags & DataPacketFlags.Compressed) > 0;
                             int cipherIndex = (flags & DataPacketFlags.CipherIndex) > 0 ? 1 : 0;
@@ -2675,13 +2664,6 @@ namespace sttp
                                 buffer = Common.SymmetricAlgorithm.Decrypt(buffer, responseIndex, responseLength - 1, keyIVs[cipherIndex][0], keyIVs[cipherIndex][1]);
                                 responseIndex = 0;
                                 responseLength = buffer.Length;
-                            }
-
-                            // Synchronized packets contain a frame level timestamp
-                            if (synchronizedMeasurements)
-                            {
-                                timestamp = BigEndian.ToInt64(buffer, responseIndex);
-                                responseIndex += 8;
                             }
 
                             // Deserialize number of measurements that follow
@@ -2706,29 +2688,6 @@ namespace sttp
                                 {
                                     OnProcessException(MessageLevel.Error, new InvalidOperationException("Decompression failure: Unexpected compression type in use - STTP currently only supports TSSC payload compression"));
                                 }
-                                //else
-                                //{
-                                //    if ((object)m_signalIndexCache == null && m_lastMissingCacheWarning + MissingCacheWarningInterval < now)
-                                //    {
-                                //        // Warning message for missing signal index cache
-                                //        if (m_lastMissingCacheWarning != 0L)
-                                //            OnStatusMessage(MessageLevel.Error, "Signal index cache has not arrived. No compact measurements can be parsed.");
-
-                                //        m_lastMissingCacheWarning = now;
-                                //    }
-                                //    else
-                                //    {
-                                //        try
-                                //        {
-                                //            // Decompress compact measurements from payload
-                                //            measurements.AddRange(buffer.DecompressPayload(m_signalIndexCache, responseIndex, responseLength - responseIndex + DataPublisher.ClientResponseHeaderSize, count, m_includeTime, flags));
-                                //        }
-                                //        catch (Exception ex)
-                                //        {
-                                //            OnProcessException(MessageLevel.Error, new InvalidOperationException($"Decompression failure: (Decoded {measurements.Count} of {count} measurements)" + ex.Message, ex));
-                                //        }
-                                //    }
-                                //}
                             }
                             else
                             {

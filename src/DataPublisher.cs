@@ -456,13 +456,6 @@ namespace sttp
     public enum DataPacketFlags : byte
     {
         /// <summary>
-        /// Determines if data packet is synchronized.
-        /// </summary>
-        /// <remarks>
-        /// Bit set = synchronized, bit clear = unsynchronized.
-        /// </remarks>
-        Synchronized = (byte)Bits.Bit00,
-        /// <summary>
         /// Determines if serialized measurement is compact.
         /// </summary>
         /// <remarks>
