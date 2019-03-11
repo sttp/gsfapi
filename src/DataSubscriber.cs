@@ -1999,7 +1999,7 @@ namespace sttp
             // Set millisecond resolution member variable for compact measurement parsing
             m_useMillisecondResolution = info.UseMillisecondResolution;
 
-            return Subscribe(false, info.UseCompactMeasurementFormat, connectionString.ToString());
+            return Subscribe(info.UseCompactMeasurementFormat, connectionString.ToString());
         }
 
         /// <summary>
