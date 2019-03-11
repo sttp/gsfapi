@@ -441,7 +441,6 @@ namespace sttp
         private readonly LongSynchronizedOperation m_registerStatisticsOperation;
         private IClient m_commandChannel;
         private UdpClient m_dataChannel;
-        //private bool m_useZeroMQChannel;
         private bool m_tsscResetRequested;
         private TsscDecoder m_tsscDecoder;
         private int m_tsscSequenceNumber;
@@ -497,9 +496,6 @@ namespace sttp
         private Ticks m_parsingExceptionWindow;
         private bool m_supportsRealTimeProcessing;
         private bool m_supportsTemporalProcessing;
-        //private Ticks m_lastMeasurementCheck;
-        //private Ticks m_minimumMissingMeasurementThreshold = 5;
-        //private double m_transmissionDelayTimeAdjustment = 5.0;
 
         private readonly List<BufferBlockMeasurement> m_bufferBlockCache;
         private uint m_expectedBufferBlockSequenceNumber;
@@ -595,36 +591,6 @@ namespace sttp
                 m_securityMode = value;
             }
         }
-
-        ///// <summary>
-        ///// Gets or sets flag that determines if <see cref="DataPublisher"/> requires subscribers to authenticate before making data requests.
-        ///// </summary>
-        //public bool RequireAuthentication
-        //{
-        //    get
-        //    {
-        //        return m_securityMode != SecurityMode.None;
-        //    }
-        //    set
-        //    {
-        //        m_securityMode = value ? SecurityMode.Gateway : SecurityMode.None;
-        //    }
-        //}
-
-        ///// <summary>
-        ///// Gets or sets flag that determines if ZeroMQ should be used for command channel communications.
-        ///// </summary>
-        //public bool UseZeroMQChannel
-        //{
-        //    get
-        //    {
-        //        return m_useZeroMQChannel;
-        //    }
-        //    set
-        //    {
-        //        m_useZeroMQChannel = value;
-        //    }
-        //}
 
         /// <summary>
         /// Gets or sets logging path to be used to be runtime and outage logs of the subscriber which are required for
@@ -918,24 +884,6 @@ namespace sttp
                     m_operationalModes &= ~OperationalModes.ReceiveExternalMetadata;
             }
         }
-
-        ///// <summary>
-        ///// Gets or sets the operational mode flag to use the common serialization format.
-        ///// </summary>
-        //public bool UseCommonSerializationFormat
-        //{
-        //    get
-        //    {
-        //        return m_operationalModes.HasFlag(OperationalModes.UseCommonSerializationFormat);
-        //    }
-        //    set
-        //    {
-        //        if (value)
-        //            m_operationalModes |= OperationalModes.UseCommonSerializationFormat;
-        //        else
-        //            m_operationalModes &= ~OperationalModes.UseCommonSerializationFormat;
-        //    }
-        //}
 
         /// <summary>
         /// Gets or sets the <see cref="OperationalEncoding"/> used by the subscriber and publisher.
@@ -1498,10 +1446,6 @@ namespace sttp
             double interval;
             int bufferSize;
 
-            //// Setup connection to data publishing server with or without authentication required
-            //if (settings.TryGetValue("requireAuthentication", out setting))
-            //    RequireAuthentication = setting.ParseBoolean();
-
             // See if user has opted for different operational modes
             if (settings.TryGetValue("operationalModes", out setting) && Enum.TryParse(setting, true, out operationalModes))
                 OperationalModes = operationalModes;
@@ -1520,23 +1464,6 @@ namespace sttp
             // Check if the subscriber supports real-time and historical processing
             m_supportsRealTimeProcessing = !settings.TryGetValue("supportsRealTimeProcessing", out setting) || setting.ParseBoolean();
             m_supportsTemporalProcessing = settings.TryGetValue("supportsTemporalProcessing", out setting) && setting.ParseBoolean();
-
-            //if (settings.TryGetValue("useZeroMQChannel", out setting))
-            //    m_useZeroMQChannel = setting.ParseBoolean();
-
-            //// TODO: Remove this exception when CURVE is enabled in GSF ZeroMQ library
-            //if (m_useZeroMQChannel && m_securityMode == SecurityMode.TLS)
-            //    throw new ArgumentException("CURVE security settings are not yet available for GSF ZeroMQ client channel.");
-
-            //// Settings specific to Gateway security
-            //if (m_securityMode == SecurityMode.Gateway)
-            //{
-            //    if (!settings.TryGetValue("sharedSecret", out m_sharedSecret) || string.IsNullOrWhiteSpace(m_sharedSecret))
-            //        throw new ArgumentException("The \"sharedSecret\" setting must be defined when using Gateway security mode.");
-
-            //    if (!settings.TryGetValue("authenticationID", out m_authenticationID) || string.IsNullOrWhiteSpace(m_authenticationID))
-            //        throw new ArgumentException("The \"authenticationID\" setting must be defined when using Gateway security mode.");
-            //}
 
             // Settings specific to Transport Layer Security
             if (m_securityMode == SecurityMode.TLS)
@@ -1645,25 +1572,6 @@ namespace sttp
 
             if (m_securityMode == SecurityMode.TLS)
             {
-                //if (m_useZeroMQChannel)
-                //{
-                //    // Create a new ZeroMQ Dealer with CURVE security enabled
-                //    ZeroMQClient commandChannel = new ZeroMQClient();
-
-                //    // Initialize default settings
-                //    commandChannel.PersistSettings = false;
-                //    commandChannel.MaxConnectionAttempts = 1;
-                //    commandChannel.ReceiveBufferSize = bufferSize;
-                //    commandChannel.SendBufferSize = bufferSize;
-
-                //    // TODO: Parse certificate and pass keys to ZeroMQClient for CURVE security
-
-                //    // Assign command channel client reference and attach to needed events
-                //    CommandChannel = commandChannel;
-                //}
-                //else
-                //{
-
                 // Create a new TLS client and certificate checker
                 TlsClient commandChannel = new TlsClient();
                 SimpleCertificateChecker certificateChecker = new SimpleCertificateChecker();
@@ -1686,28 +1594,9 @@ namespace sttp
 
                 // Assign command channel client reference and attach to needed events
                 CommandChannel = commandChannel;
-
-                //}
             }
             else
             {
-                //if (m_useZeroMQChannel)
-                //{
-                //    // Create a new ZeroMQ Dealer
-                //    ZeroMQClient commandChannel = new ZeroMQClient();
-
-                //    // Initialize default settings
-                //    commandChannel.PersistSettings = false;
-                //    commandChannel.MaxConnectionAttempts = 1;
-                //    commandChannel.ReceiveBufferSize = bufferSize;
-                //    commandChannel.SendBufferSize = bufferSize;
-
-                //    // Assign command channel client reference and attach to needed events
-                //    CommandChannel = commandChannel;
-                //}
-                //else
-                //{
-
                 // Create a new TCP client
                 TcpClient commandChannel = new TcpClient();
 
@@ -1721,8 +1610,6 @@ namespace sttp
 
                 // Assign command channel client reference and attach to needed events
                 CommandChannel = commandChannel;
-
-                //}
             }
 
             // Get proper connection string - either from specified command channel or from base connection string
@@ -2452,14 +2339,7 @@ namespace sttp
                 OnConnected();
 
             if (PersistConnectionForMetadata && CommandChannelConnected)
-            {
-                //// Attempt authentication if required, remaining steps will happen on successful authentication
-                //if (m_securityMode == SecurityMode.Gateway)
-                //    Authenticate(m_sharedSecret, m_authenticationID);
-                //else
-
                 SubscribeToOutputMeasurements(true);
-            }
 
             if (m_useLocalClockAsRealTime && (object)m_subscribedDevicesTimer == null)
             {
@@ -2571,11 +2451,6 @@ namespace sttp
                         case ServerResponse.Succeeded:
                             switch (commandCode)
                             {
-                                //case ServerCommand.Authenticate:
-                                //    OnStatusMessage(MessageLevel.Info, $"Success code received in response to server command \"{commandCode}\": {InterpretResponseMessage(buffer, responseIndex, responseLength)}");
-                                //    m_authenticated = true;
-                                //    OnConnectionAuthenticated();
-                                //    break;
                                 case ServerCommand.Subscribe:
                                     OnStatusMessage(MessageLevel.Info, $"Success code received in response to server command \"{commandCode}\": {InterpretResponseMessage(buffer, responseIndex, responseLength)}");
                                     m_subscribed = true;
@@ -2941,10 +2816,6 @@ namespace sttp
 
                             // Extract remaining response
                             byte[] bytes = buffer.BlockCopy(responseIndex, responseLength - 1);
-
-                            //// Decrypt response payload if subscription is authenticated
-                            //if (m_authenticated)
-                            //    bytes = bytes.Decrypt(m_sharedSecret, CipherStrength.Aes256);
 
                             // Deserialize new cipher keys
                             keyIVs = new byte[2][][];
@@ -3834,11 +3705,8 @@ namespace sttp
         private SignalIndexCache DeserializeSignalIndexCache(byte[] buffer)
         {
             CompressionModes compressionModes = (CompressionModes)(m_operationalModes & OperationalModes.CompressionModeMask);
-            //bool useCommonSerializationFormat = (m_operationalModes & OperationalModes.UseCommonSerializationFormat) > 0;
             bool compressSignalIndexCache = (m_operationalModes & OperationalModes.CompressSignalIndexCache) > 0;
-
             SignalIndexCache deserializedCache;
-
             GZipStream inflater = null;
 
             if (compressSignalIndexCache && compressionModes.HasFlag(CompressionModes.GZip))
@@ -3858,18 +3726,9 @@ namespace sttp
                 }
             }
 
-            //if (useCommonSerializationFormat)
-            //{
-
             deserializedCache = new SignalIndexCache();
             deserializedCache.Encoding = m_encoding;
             deserializedCache.ParseBinaryImage(buffer, 0, buffer.Length);
-
-            //}
-            //else
-            //{
-            //    deserializedCache = Serialization.Deserialize<SignalIndexCache>(buffer, GSF.SerializationFormat.Binary);
-            //}
 
             return deserializedCache;
         }
@@ -3877,10 +3736,8 @@ namespace sttp
         private DataSet DeserializeMetadata(byte[] buffer)
         {
             CompressionModes compressionModes = (CompressionModes)(m_operationalModes & OperationalModes.CompressionModeMask);
-            //bool useCommonSerializationFormat = (m_operationalModes & OperationalModes.UseCommonSerializationFormat) > 0;
             bool compressMetadata = (m_operationalModes & OperationalModes.CompressMetadata) > 0;
             Ticks startTime = DateTime.UtcNow.Ticks;
-
             DataSet deserializedMetadata;
             GZipStream inflater = null;
 
@@ -3902,9 +3759,6 @@ namespace sttp
                 }
             }
 
-            //if (useCommonSerializationFormat)
-            //{
-
             // Copy decompressed data into encoded buffer
             using (MemoryStream encodedData = new MemoryStream(buffer))
             using (XmlTextReader xmlReader = new XmlTextReader(encodedData))
@@ -3913,12 +3767,6 @@ namespace sttp
                 deserializedMetadata = new DataSet();
                 deserializedMetadata.ReadXml(xmlReader, XmlReadMode.ReadSchema);
             }
-
-            //}
-            //else
-            //{
-            //    deserializedMetadata = Serialization.Deserialize<DataSet>(buffer, GSF.SerializationFormat.Binary);
-            //}
 
             long rowCount = deserializedMetadata.Tables.Cast<DataTable>().Select(dataTable => (long)dataTable.Rows.Count).Sum();
 
@@ -3966,9 +3814,6 @@ namespace sttp
                 case OperationalEncoding.UTF8:
                     encoding = Encoding.UTF8;
                     break;
-                //case OperationalEncoding.ANSI:
-                //    encoding = Encoding.Default;
-                //    break;
                 default:
                     throw new InvalidOperationException($"Unsupported encoding detected: {operationalEncoding}");
             }
@@ -4638,14 +4483,7 @@ namespace sttp
             OnStatusMessage(MessageLevel.Info, "Data subscriber command channel connection to publisher was established.");
 
             if (m_autoConnect && Enabled)
-            {
-                //// Attempt authentication if required, remaining steps will happen on successful authentication
-                //if (m_securityMode == SecurityMode.Gateway)
-                //    Authenticate(m_sharedSecret, m_authenticationID);
-                //else
-
                 StartSubscription();
-            }
 
             //if (m_dataGapRecoveryEnabled && (object)m_dataGapRecoverer != null)
             //    m_dataGapRecoverer.Enabled = true;

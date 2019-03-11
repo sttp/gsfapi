@@ -714,11 +714,6 @@ namespace sttp
         public const bool DefaultAllowPayloadCompression = true;
 
         /// <summary>
-        /// Default value for <see cref="AllowSynchronizedSubscription"/>.
-        /// </summary>
-        public const bool DefaultAllowSynchronizedSubscription = false;
-
-        /// <summary>
         /// Default value for <see cref="AllowMetadataRefresh"/>.
         /// </summary>
         public const bool DefaultAllowMetadataRefresh = true;
@@ -770,7 +765,6 @@ namespace sttp
 
         // Fields
         private IServer m_commandChannel;
-        //private bool m_useZeroMQChannel;
         private CertificatePolicyChecker m_certificateChecker;
         private Dictionary<X509Certificate, DataRow> m_subscriberIdentities;
         private ConcurrentDictionary<Guid, SubscriberConnection> m_clientConnections;
@@ -786,7 +780,6 @@ namespace sttp
         private bool m_encryptPayload;
         private bool m_sharedDatabase;
         private bool m_allowPayloadCompression;
-        private bool m_allowSynchronizedSubscription;
         private bool m_allowMetadataRefresh;
         private bool m_allowNaNValueFilter;
         private bool m_forceNaNValueFilter;
@@ -836,7 +829,6 @@ namespace sttp
             m_encryptPayload = DefaultEncryptPayload;
             m_sharedDatabase = DefaultSharedDatabase;
             m_allowPayloadCompression = DefaultAllowPayloadCompression;
-            m_allowSynchronizedSubscription = DefaultAllowSynchronizedSubscription;
             m_allowMetadataRefresh = DefaultAllowMetadataRefresh;
             m_allowNaNValueFilter = DefaultAllowNaNValueFilter;
             m_forceNaNValueFilter = DefaultForceNaNValueFilter;
@@ -903,24 +895,6 @@ namespace sttp
             }
         }
 
-        ///// <summary>
-        ///// Gets or sets flag that determines if ZeroMQ should be used for command channel communications.
-        ///// </summary>
-        //[ConnectionStringParameter,
-        //Description("Define the flag that determines if command channel should use ZeroMQ."),
-        //DefaultValue(false)]
-        //public bool UseZeroMQChannel
-        //{
-        //    get
-        //    {
-        //        return m_useZeroMQChannel;
-        //    }
-        //    set
-        //    {
-        //        m_useZeroMQChannel = value;
-        //    }
-        //}
-
         /// <summary>
         /// Gets or sets flag that determines whether data sent over the data channel should be encrypted.
         /// </summary>
@@ -980,27 +954,6 @@ namespace sttp
             set
             {
                 m_allowPayloadCompression = value;
-            }
-        }
-
-        /// <summary>
-        /// Gets or sets flag that indicates if this publisher will allow synchronized subscriptions when requested by subscribers.
-        /// </summary>
-        [ConnectionStringParameter,
-        Description("Define the flag that indicates if this publisher will allow synchronized subscriptions when requested by subscribers."),
-        DefaultValue(DefaultAllowSynchronizedSubscription)]
-        public bool AllowSynchronizedSubscription
-        {
-            get
-            {
-                return m_allowSynchronizedSubscription;
-            }
-            set
-            {
-                if (value)
-                    throw new NotSupportedException("STTP DataPublisher does not currently support synchronized subscriptions");
-
-                m_allowSynchronizedSubscription = value;
             }
         }
 
@@ -1428,11 +1381,6 @@ namespace sttp
             Dictionary<string, string> settings = Settings;
             string setting;
             double period;
-            //int strength;
-
-            //// Setup data publishing server with or without required authentication 
-            //if (settings.TryGetValue("requireAuthentication", out setting))
-            //    RequireAuthentication = setting.ParseBoolean();
 
             // Check flag that will determine if subscriber payloads should be encrypted by default
             if (settings.TryGetValue("encryptPayload", out setting))
@@ -1447,17 +1395,9 @@ namespace sttp
             if (settings.TryGetValue("metadataTables", out setting) && !string.IsNullOrWhiteSpace(setting))
                 m_metadataTables = setting;
 
-            //// See if a user defined compression strength has been provided
-            //if (settings.TryGetValue("compressionStrength", out setting) && int.TryParse(setting, out strength))
-            //    CompressionStrength = strength;
-
             // Check flag to see if payload compression is allowed
             if (settings.TryGetValue("allowPayloadCompression", out setting))
                 m_allowPayloadCompression = setting.ParseBoolean();
-
-            // Check flag to see if synchronized subscriptions are allowed
-            if (settings.TryGetValue("allowSynchronizedSubscription", out setting))
-                AllowSynchronizedSubscription = setting.ParseBoolean();
 
             // Check flag to see if metadata refresh commands are allowed
             if (settings.TryGetValue("allowMetadataRefresh", out setting))
@@ -1487,17 +1427,6 @@ namespace sttp
             if (settings.TryGetValue("securityMode", out setting))
                 m_securityMode = (SecurityMode)Enum.Parse(typeof(SecurityMode), setting);
 
-            //if (settings.TryGetValue("useZeroMQChannel", out setting))
-            //    m_useZeroMQChannel = setting.ParseBoolean();
-
-            //// TODO: Remove this exception when CURVE is enabled in GSF ZeroMQ library
-            //if (m_useZeroMQChannel && m_securityMode == SecurityMode.TLS)
-            //    throw new ArgumentException("CURVE security settings are not yet available for GSF ZeroMQ server channel.");
-
-            //// Determine the type of metadata to force upon clients who do not specify
-            //if (settings.TryGetValue("forceReceiveMetadataFlags", out setting) && Enum.TryParse(setting, true, out m_forceReceiveMetadataFlags))
-            //    m_forceReceiveMetadataFlags &= OperationalModes.ReceiveInternalMetadata | OperationalModes.ReceiveExternalMetadata;
-
             if (settings.TryGetValue("cacheMeasurementKeys", out m_cacheMeasurementKeys))
             {
                 // Create adapter for caching measurements that have a slower refresh interval
@@ -1526,24 +1455,6 @@ namespace sttp
 
             if (m_securityMode == SecurityMode.TLS)
             {
-                //if (m_useZeroMQChannel)
-                //{
-                //    // Create a new ZeroMQ Router with CURVE security enabled
-                //    ZeroMQServer commandChannel = new ZeroMQServer();
-
-                //    // Initialize default settings
-                //    commandChannel.SettingsCategory = Name.Replace("!", "").ToLower();
-                //    commandChannel.ConfigurationString = "server=tcp://*:6165";
-                //    commandChannel.PersistSettings = true;
-
-                //    // TODO: Parse certificate and pass keys to ZeroMQServer for CURVE security
-
-                //    // Assign command channel client reference and attach to needed events
-                //    CommandChannel = commandChannel;
-                //}
-                //else
-                //{
-
                 // Create a new TLS server
                 TlsServer commandChannel = new TlsServer();
 
@@ -1563,27 +1474,9 @@ namespace sttp
 
                 // Assign command channel client reference and attach to needed events
                 CommandChannel = commandChannel;
-
-                //}
             }
             else
             {
-                //if (m_useZeroMQChannel)
-                //{
-                //    // Create a new ZeroMQ Router
-                //    ZeroMQServer commandChannel = new ZeroMQServer();
-
-                //    // Initialize default settings
-                //    commandChannel.SettingsCategory = Name.Replace("!", "").ToLower();
-                //    commandChannel.ConfigurationString = "server=tcp://*:6165";
-                //    commandChannel.PersistSettings = true;
-
-                //    // Assign command channel client reference and attach to needed events
-                //    CommandChannel = commandChannel;
-                //}
-                //else
-                //{
-
                 // Create a new TCP server
                 TcpServer commandChannel = new TcpServer();
 
@@ -1596,8 +1489,6 @@ namespace sttp
 
                 // Assign command channel client reference and attach to needed events
                 CommandChannel = commandChannel;
-
-                //}
             }
 
             // Initialize TCP server - this will load persisted settings
@@ -1751,9 +1642,9 @@ namespace sttp
             bool tsscEnabled = (compressionModes & CompressionModes.TSSC) > 0;
             bool gzipEnabled = (compressionModes & CompressionModes.GZip) > 0;
 
-            if ((operationalModes & OperationalModes.CompressPayloadData) > 0)
+            if ((operationalModes & OperationalModes.CompressPayloadData) > 0 && tsscEnabled)
             {
-                description.Append($"          CompressPayloadData[{(tsscEnabled ? "TSSC" : "Pattern")}]\r\n");
+                description.Append($"          CompressPayloadData[TSSC]\r\n");
             }
             else
             {
@@ -1773,9 +1664,6 @@ namespace sttp
 
             if ((operationalModes & OperationalModes.CompressMetadata) > 0 && gzipEnabled)
                 description.Append("          CompressMetadata\r\n");
-
-            //if ((operationalModes & OperationalModes.UseCommonSerializationFormat) > 0)
-            //    description.Append("          UseCommonSerializationFormat\r\n");
 
             if ((operationalModes & OperationalModes.ReceiveExternalMetadata) > 0)
                 description.Append("          ReceiveExternalMetadata\r\n");
@@ -1905,7 +1793,6 @@ namespace sttp
         [AdapterCommand("Gets the local certificate currently in use by the data publisher.", "Administrator", "Editor")]
         public virtual byte[] GetLocalCertificate()
         {
-            // TODO: Also validate ZeroMQServer with CURVE security enabled
             TlsServer commandChannel;
 
             commandChannel = m_commandChannel as TlsServer;
@@ -1925,7 +1812,6 @@ namespace sttp
         [AdapterCommand("Imports a certificate to the trusted certificates path.", "Administrator", "Editor")]
         public virtual string ImportCertificate(string fileName, byte[] certificateData)
         {
-            // TODO: Also validate ZeroMQServer with CURVE security enabled
             TlsServer commandChannel;
             string trustedCertificatesPath;
             string filePath;
@@ -2327,7 +2213,6 @@ namespace sttp
         // Attempts to get the subscriber for the given client based on that client's X.509 certificate.
         private void TryFindClientDetails(SubscriberConnection connection)
         {
-            // TODO: Also validate ZeroMQServer with CURVE security enabled
             TlsServer commandChannel = m_commandChannel as TlsServer;
             TransportProvider<TlsServer.TlsSocket> client;
             X509Certificate remoteCertificate;
@@ -2467,10 +2352,6 @@ namespace sttp
                     requestedInputs = AdapterBase.ParseInputMeasurementKeys(DataSource, false, subscription.RequestedInputFilter);
                     authorizedSignals = new HashSet<MeasurementKey>();
                     subscriberID = subscription.SubscriberID;
-
-                    //hasRightsFunc = RequireAuthentication
-                    //    ? new SubscriberRightsLookup(DataSource, subscriberID).HasRightsFunc
-                    //    : id => true;
 
                     foreach (MeasurementKey input in requestedInputs)
                     {
@@ -2849,126 +2730,6 @@ namespace sttp
 
         #region [ Server Command Request Handlers ]
 
-        // Handles authentication request
-        //private void HandleAuthenticationRequest(ClientConnection connection, byte[] buffer, int startIndex, int length)
-        //{
-        //    Guid clientID = connection.ClientID;
-        //    string message;
-
-        //    // Handle authentication request
-        //    try
-        //    {
-        //        DataRow subscriber = null;
-
-        //        // Check security mode to determine whether authentication is supported
-        //        if (m_securityMode == SecurityMode.TLS)
-        //        {
-        //            message = "Received authentication request from client while running in TLS mode.";
-        //            SendClientResponse(connection.ClientID, ServerResponse.Failed, ServerCommand.Authenticate, message);
-        //            OnProcessException(MessageLevel.Warning, new InvalidOperationException(message));
-        //            return;
-        //        }
-
-        //        // Reset existing authentication state
-        //        connection.Authenticated = false;
-
-        //        // Subscriber connection is first referenced by its IP
-        //        foreach (DataRow row in DataSource.Tables["Subscribers"].Select("Enabled <> 0"))
-        //        {
-        //            // See if any of these IP addresses match the connection source of the subscriber
-        //            if (Enumerable.Contains(ParseAddressList(row["ValidIPAddresses"].ToNonNullString()), connection.IPAddress))
-        //                subscriber = row;
-
-        //            if ((object)subscriber != null)
-        //                break;
-        //        }
-
-        //        if ((object)subscriber == null)
-        //        {
-        //            message = $"No subscriber is registered for {connection.ConnectionID}, cannot authenticate connection - {ServerCommand.Authenticate} request denied.";
-        //            SendClientResponse(clientID, ServerResponse.Failed, ServerCommand.Authenticate, message);
-        //            OnStatusMessage(MessageLevel.Warning, $"Client {connection.ConnectionID} {ServerCommand.Authenticate} command request denied - subscriber is disabled or not registered.", flags: MessageFlags.SecurityMessage);
-        //        }
-        //        else
-        //        {
-        //            // Found the subscriber record with a matching IP address, extract authentication information
-        //            string sharedSecret = subscriber["SharedSecret"].ToNonNullString().Trim();
-        //            string authenticationID = subscriber["AuthKey"].ToNonNullString().Trim();
-
-        //            // Update subscriber data in associated connection object
-        //            connection.SubscriberID = Guid.Parse(subscriber["ID"].ToNonNullString(Guid.Empty.ToString()).Trim());
-        //            connection.SubscriberAcronym = subscriber["Acronym"].ToNonNullString().Trim();
-        //            connection.SubscriberName = subscriber["Name"].ToNonNullString().Trim();
-        //            connection.SharedSecret = sharedSecret;
-
-        //            if (length >= 5)
-        //            {
-        //                // First 4 bytes beyond command byte represent an integer representing the length of the authentication string that follows
-        //                int byteLength = BigEndian.ToInt32(buffer, startIndex);
-        //                startIndex += 4;
-
-        //                // Byte length should be reasonable
-        //                if (byteLength >= 16 && byteLength <= 256)
-        //                {
-        //                    if (length >= 5 + byteLength)
-        //                    {
-        //                        // Decrypt encoded portion of buffer
-        //                        byte[] bytes = buffer.Decrypt(startIndex, byteLength, sharedSecret, CipherStrength.Aes256);
-        //                        //startIndex += byteLength;
-
-        //                        // Validate the authentication ID - if it matches, connection is authenticated
-        //                        connection.Authenticated = string.Compare(authenticationID, GetClientEncoding(clientID).GetString(bytes, CipherSaltLength, bytes.Length - CipherSaltLength), StringComparison.Ordinal) == 0;
-
-        //                        if (connection.Authenticated)
-        //                        {
-        //                            // Send success response
-        //                            message = $"Registered subscriber \"{connection.SubscriberName}\" {connection.ConnectionID} was successfully authenticated.";
-        //                            SendClientResponse(clientID, ServerResponse.Succeeded, ServerCommand.Authenticate, message);
-        //                            OnStatusMessage(MessageLevel.Info, message, flags: MessageFlags.SecurityMessage);
-
-        //                            lock (m_clientNotificationsLock)
-        //                            {
-        //                                // Send any queued notifications to authenticated client
-        //                                SendNotifications(connection);
-        //                            }
-        //                        }
-        //                        else
-        //                        {
-        //                            message = $"Subscriber authentication failed - {ServerCommand.Authenticate} request denied.";
-        //                            SendClientResponse(clientID, ServerResponse.Failed, ServerCommand.Authenticate, message);
-        //                            OnStatusMessage(MessageLevel.Warning, $"Client {connection.ConnectionID} {ServerCommand.Authenticate} command request denied - subscriber authentication failed.", flags: MessageFlags.SecurityMessage);
-        //                        }
-        //                    }
-        //                    else
-        //                    {
-        //                        message = "Not enough buffer was provided to parse client request.";
-        //                        SendClientResponse(clientID, ServerResponse.Failed, ServerCommand.Authenticate, message);
-        //                        OnProcessException(MessageLevel.Warning, new InvalidOperationException(message), flags: MessageFlags.SecurityMessage);
-        //                    }
-        //                }
-        //                else
-        //                {
-        //                    message = $"Received request packet with an unexpected size from {connection.ConnectionID} - {ServerCommand.Authenticate} request denied.";
-        //                    SendClientResponse(clientID, ServerResponse.Failed, ServerCommand.Authenticate, message);
-        //                    OnStatusMessage(MessageLevel.Warning, $"Registered subscriber \"{connection.SubscriberName}\" {connection.ConnectionID} {ServerCommand.Authenticate} command request was denied due to oddly sized {byteLength} byte authentication packet.", flags: MessageFlags.SecurityMessage);
-        //                }
-        //            }
-        //            else
-        //            {
-        //                message = "Not enough buffer was provided to parse client request.";
-        //                SendClientResponse(clientID, ServerResponse.Failed, ServerCommand.Authenticate, message);
-        //                OnProcessException(MessageLevel.Warning, new InvalidOperationException(message), flags: MessageFlags.SecurityMessage);
-        //            }
-        //        }
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        message = $"Failed to process authentication request due to exception: {ex.Message}";
-        //        SendClientResponse(clientID, ServerResponse.Failed, ServerCommand.Authenticate, message);
-        //        OnProcessException(MessageLevel.Warning, new InvalidOperationException(message, ex), flags: MessageFlags.SecurityMessage);
-        //    }
-        //}
-
         // Handles subscribe request
         private void HandleSubscribeRequest(SubscriberConnection connection, byte[] buffer, int startIndex, int length)
         {
@@ -2986,129 +2747,79 @@ namespace sttp
                     DataPacketFlags flags = (DataPacketFlags)buffer[startIndex];
                     startIndex++;
 
-                    bool useSynchronizedSubscription = (byte)(flags & DataPacketFlags.Synchronized) > 0;
+                    bool usePayloadCompression = m_allowPayloadCompression && ((connection.OperationalModes & OperationalModes.CompressPayloadData) > 0);
+                    CompressionModes compressionModes = (CompressionModes)(connection.OperationalModes & OperationalModes.CompressionModeMask);
+                    bool useCompactMeasurementFormat = (byte)(flags & DataPacketFlags.Compact) > 0;
+                    bool addSubscription = false;
 
-                    if (useSynchronizedSubscription && !m_allowSynchronizedSubscription)
+                    // Next 4 bytes are an integer representing the length of the connection string that follows
+                    int byteLength = BigEndian.ToInt32(buffer, startIndex);
+                    startIndex += 4;
+
+                    if (byteLength > 0 && length >= 6 + byteLength)
                     {
-                        // Remotely synchronized subscriptions are currently disallowed by data publisher
-                        message = "Client request for remotely synchronized data subscription was denied. Data publisher is currently configured to disallow synchronized subscriptions.";
-                        SendClientResponse(clientID, ServerResponse.Failed, ServerCommand.Subscribe, message);
-                        OnProcessException(MessageLevel.Info, new InvalidOperationException(message), flags: MessageFlags.UsageIssue);
-                    }
-                    else
-                    {
-                        bool usePayloadCompression = m_allowPayloadCompression && ((connection.OperationalModes & OperationalModes.CompressPayloadData) > 0);
-                        CompressionModes compressionModes = (CompressionModes)(connection.OperationalModes & OperationalModes.CompressionModeMask);
-                        bool useCompactMeasurementFormat = (byte)(flags & DataPacketFlags.Compact) > 0;
-                        bool addSubscription = false;
+                        string connectionString = GetClientEncoding(clientID).GetString(buffer, startIndex, byteLength);
+                        //startIndex += byteLength;
 
-                        // Next 4 bytes are an integer representing the length of the connection string that follows
-                        int byteLength = BigEndian.ToInt32(buffer, startIndex);
-                        startIndex += 4;
+                        // Get client subscription
+                        if ((object)connection.Subscription == null)
+                            TryGetClientSubscription(clientID, out subscription);
+                        else
+                            subscription = connection.Subscription;
 
-                        if (byteLength > 0 && length >= 6 + byteLength)
+                        if ((object)subscription == null)
                         {
-                            string connectionString = GetClientEncoding(clientID).GetString(buffer, startIndex, byteLength);
-                            //startIndex += byteLength;
+                            // Client subscription not established yet, so we create a new one
+                            subscription = new SubscriberAdapter(this, clientID, connection.SubscriberID, compressionModes);
+                            addSubscription = true;
+                        }
 
-                            // Get client subscription
-                            if ((object)connection.Subscription == null)
-                                TryGetClientSubscription(clientID, out subscription);
-                            else
-                                subscription = connection.Subscription;
+                        // Update client subscription properties
+                        subscription.ConnectionString = connectionString;
+                        subscription.DataSource = DataSource;
 
-                            if ((object)subscription == null)
+                        // Pass subscriber assembly information to connection, if defined
+                        if (subscription.Settings.TryGetValue("assemblyInfo", out setting))
+                            connection.SubscriberInfo = setting;
+
+                        // Set up UDP data channel if client has requested this
+                        connection.DataChannel = null;
+
+                        if (subscription.Settings.TryGetValue("dataChannel", out setting))
+                        {
+                            Socket clientSocket = connection.GetCommandChannelSocket();
+                            Dictionary<string, string> settings = setting.ParseKeyValuePairs();
+                            IPEndPoint localEndPoint = null;
+                            string networkInterface = "::0";
+
+                            // Make sure return interface matches incoming client connection
+                            if ((object)clientSocket != null)
+                                localEndPoint = clientSocket.LocalEndPoint as IPEndPoint;
+
+                            if ((object)localEndPoint != null)
                             {
-                                // Client subscription not established yet, so we create a new one
-                                subscription = new SubscriberAdapter(this, clientID, connection.SubscriberID, compressionModes);
-                                addSubscription = true;
+                                networkInterface = localEndPoint.Address.ToString();
+
+                                // Remove dual-stack prefix
+                                if (networkInterface.StartsWith("::ffff:", true, CultureInfo.InvariantCulture))
+                                    networkInterface = networkInterface.Substring(7);
                             }
-                            //else
-                            //{
-                            //    // Check to see if consumer is requesting to change synchronization method
-                            //    if (useSynchronizedSubscription)
-                            //    {
-                            //        if (subscription is ClientSubscription)
-                            //        {
-                            //            // Subscription is for unsynchronized measurements and consumer is requesting synchronized
-                            //            subscription.Stop();
 
-                            //            lock (this)
-                            //            {
-                            //                Remove(subscription);
-                            //            }
-
-                            //            // Create a new synchronized subscription
-                            //            subscription = new SynchronizedClientSubscription(this, clientID, connection.SubscriberID, compressionModes);
-                            //            addSubscription = true;
-                            //        }
-                            //    }
-                            //    else
-                            //    {
-                            //        if (subscription is SynchronizedClientSubscription)
-                            //        {
-                            //            // Subscription is for synchronized measurements and consumer is requesting unsynchronized
-                            //            subscription.Stop();
-
-                            //            lock (this)
-                            //            {
-                            //                Remove(subscription);
-                            //            }
-
-                            //            // Create a new unsynchronized subscription
-                            //            subscription = new ClientSubscription(this, clientID, connection.SubscriberID, compressionModes);
-                            //            addSubscription = true;
-                            //        }
-                            //    }
-                            //}
-
-                            // Update client subscription properties
-                            subscription.ConnectionString = connectionString;
-                            subscription.DataSource = DataSource;
-
-                            // Pass subscriber assembly information to connection, if defined
-                            if (subscription.Settings.TryGetValue("assemblyInfo", out setting))
-                                connection.SubscriberInfo = setting;
-
-                            // Set up UDP data channel if client has requested this
-                            connection.DataChannel = null;
-
-                            if (subscription.Settings.TryGetValue("dataChannel", out setting))
+                            if (settings.TryGetValue("port", out setting) || settings.TryGetValue("localport", out setting))
                             {
-                                Socket clientSocket = connection.GetCommandChannelSocket();
-                                Dictionary<string, string> settings = setting.ParseKeyValuePairs();
-                                IPEndPoint localEndPoint = null;
-                                string networkInterface = "::0";
-
-                                // Make sure return interface matches incoming client connection
-                                if ((object)clientSocket != null)
-                                    localEndPoint = clientSocket.LocalEndPoint as IPEndPoint;
-
-                                if ((object)localEndPoint != null)
+                                if ((compressionModes & CompressionModes.TSSC) > 0)
                                 {
-                                    networkInterface = localEndPoint.Address.ToString();
+                                    // TSSC is a stateful compression algorithm which will not reliably support UDP
+                                    OnStatusMessage(MessageLevel.Warning, "Cannot use TSSC compression mode with UDP - special compression mode disabled");
 
-                                    // Remove dual-stack prefix
-                                    if (networkInterface.StartsWith("::ffff:", true, CultureInfo.InvariantCulture))
-                                        networkInterface = networkInterface.Substring(7);
+                                    // Disable TSSC compression processing
+                                    compressionModes &= ~CompressionModes.TSSC;
+                                    connection.OperationalModes &= ~OperationalModes.CompressionModeMask;
+                                    connection.OperationalModes |= (OperationalModes)compressionModes;
                                 }
 
-                                if (settings.TryGetValue("port", out setting) || settings.TryGetValue("localport", out setting))
-                                {
-                                    if ((compressionModes & CompressionModes.TSSC) > 0)
-                                    {
-                                        // TSSC is a stateful compression algorithm which will not reliably support UDP
-                                        OnStatusMessage(MessageLevel.Warning, "Cannot use TSSC compression mode with UDP - special compression mode disabled");
-
-                                        // Disable TSSC compression processing
-                                        compressionModes &= ~CompressionModes.TSSC;
-                                        connection.OperationalModes &= ~OperationalModes.CompressionModeMask;
-                                        connection.OperationalModes |= (OperationalModes)compressionModes;
-                                    }
-
-                                    connection.DataChannel = new UdpServer($"Port=-1; Clients={connection.IPAddress}:{int.Parse(setting)}; interface={networkInterface}");
-                                    connection.DataChannel.Start();
-                                }
+                                connection.DataChannel = new UdpServer($"Port=-1; Clients={connection.IPAddress}:{int.Parse(setting)}; interface={networkInterface}");
+                                connection.DataChannel.Start();
                             }
 
                             // Remove any existing cached publication channel since connection is changing
@@ -3196,14 +2907,14 @@ namespace sttp
                             // Send success response
                             if (subscription.TemporalConstraintIsDefined())
                             {
-                                message = $"Client subscribed as {(useCompactMeasurementFormat ? "" : "non-")}compact {(useSynchronizedSubscription ? "" : "un")}synchronized with a temporal constraint.";
+                                message = $"Client subscribed as {(useCompactMeasurementFormat ? "" : "non-")}compact with a temporal constraint.";
                             }
                             else
                             {
                                 if ((object)subscription.InputMeasurementKeys != null)
-                                    message = $"Client subscribed as {(useCompactMeasurementFormat ? "" : "non-")}compact {(useSynchronizedSubscription ? "" : "un")}synchronized with {subscription.InputMeasurementKeys.Length} signals.";
+                                    message = $"Client subscribed as {(useCompactMeasurementFormat ? "" : "non-")}compact with {subscription.InputMeasurementKeys.Length} signals.";
                                 else
-                                    message = $"Client subscribed as {(useCompactMeasurementFormat ? "" : "non-")}compact {(useSynchronizedSubscription ? "" : "un")}synchronized, but no signals were specified. Make sure \"inputMeasurementKeys\" setting is properly defined.";
+                                    message = $"Client subscribed as {(useCompactMeasurementFormat ? "" : "non-")}compact, but no signals were specified. Make sure \"inputMeasurementKeys\" setting is properly defined.";
                             }
 
                             connection.IsSubscribed = true;
@@ -3281,13 +2992,6 @@ namespace sttp
                 // Determine whether we're sending internal and external meta-data
                 bool sendExternalMetadata = connection.OperationalModes.HasFlag(OperationalModes.ReceiveExternalMetadata);
                 bool sendInternalMetadata = connection.OperationalModes.HasFlag(OperationalModes.ReceiveInternalMetadata);
-
-                //if (!sendExternalMetadata && !sendInternalMetadata)
-                //{
-                //    // Force the client to receive metadata if they have specified that they don't want any
-                //    sendExternalMetadata = m_forceReceiveMetadataFlags.HasFlag(OperationalModes.ReceiveExternalMetadata);
-                //    sendInternalMetadata = m_forceReceiveMetadataFlags.HasFlag(OperationalModes.ReceiveInternalMetadata);
-                //}
 
                 // Copy key meta-data tables
                 foreach (string tableExpression in m_metadataTables.Split(';'))
@@ -3656,25 +3360,12 @@ namespace sttp
             {
                 OperationalModes operationalModes = connection.OperationalModes;
                 CompressionModes compressionModes = (CompressionModes)(operationalModes & OperationalModes.CompressionModeMask);
-                //bool useCommonSerializationFormat = (operationalModes & OperationalModes.UseCommonSerializationFormat) > 0;
                 bool compressSignalIndexCache = (operationalModes & OperationalModes.CompressSignalIndexCache) > 0;
-
                 GZipStream deflater = null;
 
-                //if (!useCommonSerializationFormat)
-                //{
-                //    // Use standard .NET BinaryFormatter
-                //    serializedSignalIndexCache = Serialization.Serialize(signalIndexCache, GSF.SerializationFormat.Binary);
-                //}
-                //else
-                //{
-
-                // Use ISupportBinaryImage implementation
                 signalIndexCache.Encoding = GetClientEncoding(clientID);
                 serializedSignalIndexCache = new byte[signalIndexCache.BinaryLength];
                 signalIndexCache.GenerateBinaryImage(serializedSignalIndexCache, 0);
-
-                //}
 
                 if (compressSignalIndexCache && compressionModes.HasFlag(CompressionModes.GZip))
                 {
@@ -3711,17 +3402,8 @@ namespace sttp
             {
                 OperationalModes operationalModes = connection.OperationalModes;
                 CompressionModes compressionModes = (CompressionModes)(operationalModes & OperationalModes.CompressionModeMask);
-                //bool useCommonSerializationFormat = (operationalModes & OperationalModes.UseCommonSerializationFormat) > 0;
                 bool compressMetadata = (operationalModes & OperationalModes.CompressMetadata) > 0;
-
                 GZipStream deflater = null;
-
-                //if (!useCommonSerializationFormat)
-                //{
-                //    serializedMetadata = Serialization.Serialize(metadata, GSF.SerializationFormat.Binary);
-                //}
-                //else
-                //{
 
                 // Encode XML into encoded data buffer
                 using (BlockAllocatedMemoryStream encodedData = new BlockAllocatedMemoryStream())
@@ -3733,8 +3415,6 @@ namespace sttp
                     // Return result of encoding
                     serializedMetadata = encodedData.ToArray();
                 }
-
-                //}
 
                 if (compressMetadata && compressionModes.HasFlag(CompressionModes.GZip))
                 {
@@ -3846,24 +3526,6 @@ namespace sttp
                     }
                     else if (validServerCommand)
                     {
-                        //if (command != ServerCommand.DefineOperationalModes)
-                        //{
-                        //    if (command == ServerCommand.Authenticate)
-                        //    {
-                        //        // Handle authenticate
-                        //        HandleAuthenticationRequest(connection, buffer, index, length);
-                        //        return;
-                        //    }
-
-                        //    if (RequireAuthentication && !connection.Authenticated)
-                        //    {
-                        //        message = $"Subscriber not authenticated - {command} request denied.";
-                        //        SendClientResponse(clientID, ServerResponse.Failed, command, message);
-                        //        OnStatusMessage(MessageLevel.Warning, $"Client {connection.ConnectionID} {command} command request denied - subscriber not authenticated.");
-                        //        return;
-                        //    }
-                        //}
-
                         switch (command)
                         {
                             case ServerCommand.Subscribe:
@@ -3954,7 +3616,6 @@ namespace sttp
 
             connection.ClientNotFoundExceptionOccurred = false;
 
-            // TODO: Also validate ZeroMQServer with CURVE security enabled
             if (m_securityMode == SecurityMode.TLS)
             {
                 TryFindClientDetails(connection);
