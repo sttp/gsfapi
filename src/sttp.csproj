@@ -34,25 +34,25 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="Antlr3.Runtime, Version=3.5.0.2, Culture=neutral, PublicKeyToken=eb42632606e9261f, processorArchitecture=MSIL">
-      <HintPath>packages\Antlr.3.5.0.2\lib\Antlr3.Runtime.dll</HintPath>
+      <HintPath>$(SolutionDir)\..\depends\GSF\Antlr3.Runtime.dll</HintPath>
     </Reference>
     <Reference Include="ExpressionEvaluator, Version=2.0.4.0, Culture=neutral, PublicKeyToken=90d9f15d622e2348, processorArchitecture=MSIL">
-      <HintPath>packages\ExpressionEvaluator.2.0.4.0\lib\net40\ExpressionEvaluator.dll</HintPath>
+      <HintPath>$(SolutionDir)\..\depends\GSF\ExpressionEvaluator.dll</HintPath>
     </Reference>
     <Reference Include="GSF.Communication, Version=2.3.135.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>packages\GSF.Communication.2.3.135-beta\lib\net46\GSF.Communication.dll</HintPath>
+      <HintPath>$(SolutionDir)\..\depends\GSF\GSF.Communication.dll</HintPath>
     </Reference>
     <Reference Include="GSF.Core, Version=2.3.135.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>packages\GSF.Core.2.3.135-beta\lib\net46\GSF.Core.dll</HintPath>
+      <HintPath>$(SolutionDir)\..\depends\GSF\GSF.Core.dll</HintPath>
     </Reference>
     <Reference Include="GSF.Security, Version=2.3.135.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>packages\GSF.Security.2.3.135-beta\lib\net46\GSF.Security.dll</HintPath>
+      <HintPath>$(SolutionDir)\..\depends\GSF\GSF.Security.dll</HintPath>
     </Reference>
     <Reference Include="GSF.ServiceProcess, Version=2.3.135.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>packages\GSF.ServiceProcess.2.3.135-beta\lib\net46\GSF.ServiceProcess.dll</HintPath>
+      <HintPath>$(SolutionDir)\..\depends\GSF\GSF.ServiceProcess.dll</HintPath>
     </Reference>
     <Reference Include="GSF.TimeSeries, Version=2.3.135.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>packages\GSF.TimeSeries.2.3.135-beta\lib\net46\GSF.TimeSeries.dll</HintPath>
+      <HintPath>$(SolutionDir)\..\depends\GSF\GSF.TimeSeries.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Configuration" />
