@@ -26,6 +26,7 @@
 using GSF;
 using GSF.Diagnostics;
 using GSF.IO;
+using GSF.Parsing;
 using GSF.Threading;
 using GSF.TimeSeries;
 using GSF.TimeSeries.Adapters;
@@ -745,9 +746,9 @@ namespace sttp
                 //// Attempt compression when requested - encoding of compressed buffer only happens if size would be smaller than normal serialization
                 //if (!usePayloadCompression || !measurements.Cast<CompactMeasurement>().CompressPayload(workingBuffer, m_compressionStrength, m_includeTime, ref flags))
                 //{
-                //    // Serialize measurements to data buffer
-                //    foreach (IBinaryMeasurement measurement in measurements)
-                //        measurement.CopyBinaryImageToStream(workingBuffer);
+                // Serialize measurements to data buffer
+                foreach (IBinaryMeasurement measurement in measurements)
+                    measurement.CopyBinaryImageToStream(workingBuffer);
                 //}
 
                 //// Update data packet flags if it has updated compression flags
