@@ -3498,13 +3498,21 @@ namespace sttp
 
         #region [ Command Channel Handlers ]
 
-        private void m_commandChannel_ReceiveClientDataComplete(object sender, EventArgs<Guid, byte[], int> e)
+        private int ServerCommandLength(byte[] buffer, int length)
+        {
+            const int HeaderSize = 5;
+            int commandLength = HeaderSize;
+
+            if (length >= HeaderSize)
+                commandLength += BigEndian.ToInt32(buffer, 1);
+
+            return commandLength;
+        }
+
+        private void HandleServerCommand(Guid clientID, byte[] buffer, int length)
         {
             try
             {
-                Guid clientID = e.Argument1;
-                byte[] buffer = e.Argument2;
-                int length = e.Argument3;
                 int index = 0;
 
                 if (length > 0 && (object)buffer != null)
@@ -3513,7 +3521,7 @@ namespace sttp
                     ServerCommand command;
                     string message;
                     byte commandByte = buffer[index];
-                    index++;
+                    index += 5;
 
                     // Attempt to parse solicited server command
                     bool validServerCommand = Enum.TryParse(commandByte.ToString(), out command);
@@ -3607,6 +3615,56 @@ namespace sttp
             {
                 OnProcessException(MessageLevel.Warning, new InvalidOperationException($"Encountered an exception while processing received client data: {ex.Message}", ex));
             }
+        }
+
+        private void m_commandChannel_ReceiveClientDataComplete(object sender, EventArgs<Guid, byte[], int> e)
+        {
+            Guid clientID = e.Argument1;
+            byte[] clientBuffer = e.Argument2;
+            int bytesReceived = e.Argument3;
+
+            if (!m_clientConnections.TryGetValue(clientID, out SubscriberConnection connection))
+                return;
+
+            byte[] buffer = connection.ClientDataBuffer;
+            int bufferLength = connection.ClientDataBufferLength;
+
+            using (MemoryStream clientData = new MemoryStream(clientBuffer, 0, bytesReceived))
+            {
+                int totalBytesRead = 0;
+                int commandLength = ServerCommandLength(buffer, bufferLength);
+
+                while (totalBytesRead < bytesReceived)
+                {
+                    if (buffer == null)
+                        buffer = new byte[commandLength];
+                    else if (buffer.Length < commandLength)
+                        Array.Resize(ref buffer, commandLength);
+
+                    int readLength = commandLength - bufferLength;
+                    int bytesRead = clientData.Read(buffer, bufferLength, readLength);
+                    totalBytesRead += bytesRead;
+                    bufferLength += bytesRead;
+
+                    // Additional data may have provided more
+                    // intelligence about the full command length
+                    if (bufferLength == commandLength)
+                        commandLength = ServerCommandLength(buffer, bufferLength);
+
+                    // If the command length hasn't changed,
+                    // it's time to process the command
+                    if (bufferLength == commandLength)
+                    {
+                        HandleServerCommand(clientID, buffer, bufferLength);
+                        bufferLength = 0;
+                        commandLength = ServerCommandLength(buffer, bufferLength);
+                    }
+                }
+            }
+
+
+            connection.ClientDataBuffer = buffer;
+            connection.ClientDataBufferLength = bufferLength;
         }
 
         private void m_commandChannel_ClientConnected(object sender, EventArgs<Guid> e)

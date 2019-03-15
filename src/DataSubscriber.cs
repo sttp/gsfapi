@@ -2292,8 +2292,13 @@ namespace sttp
                         // Write command code into command packet
                         commandPacket.WriteByte((byte)commandCode);
 
+                        // Write length of command buffer into command packet
+                        int dataLength = data?.Length ?? 0;
+                        byte[] lengthBytes = BigEndian.GetBytes(dataLength);
+                        commandPacket.Write(lengthBytes);
+
                         // Write command buffer into command packet
-                        if ((object)data != null && data.Length > 0)
+                        if (dataLength > 0)
                             commandPacket.Write(data, 0, data.Length);
 
                         // Send command packet to publisher
@@ -2336,6 +2341,9 @@ namespace sttp
             m_totalBytesReceived = 0L;
             m_monitoredBytesReceived = 0L;
             m_lastBytesReceived = 0;
+
+            m_commandChannelBuffer = null;
+            m_commandChannelBufferLength = 0;
 
             if (!PersistConnectionForMetadata)
                 m_commandChannel.ConnectAsync();
