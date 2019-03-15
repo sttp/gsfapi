@@ -118,7 +118,7 @@
   <Target Name="BeforeDeployBuild">
     <ItemGroup>
       <!--List of source code files to archive.-->
-      <SourcesToArchive Include="$(LocalFolder)\src\**\*.*" Exclude="$(LocalFolder)\src\**\obj\**\*.*" Exclude="$(LocalFolder)\src\**\bin\**\*.*"/>
+      <SourcesToArchive Include="$(LocalFolder)\src\**\*.*" Exclude="$(LocalFolder)\src\**\obj\**\*.*;$(LocalFolder)\src\**\bin\**\*.*"/>
     
       <!--List of binaries to archive.-->
       <BinariesToArchive Remove="@(BinariesToArchive)"/>
