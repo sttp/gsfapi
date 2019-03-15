@@ -297,7 +297,7 @@ namespace sttp.tssc
             }
             else if (bitsChanged <= Bits20)
             {
-                m_lastPoint.WriteCode(TsscCodeWords.ValueXOR20);
+                m_lastPoint.WriteCode(TsscCodeWords.PointIDXOR20);
                 WriteBits((byte)bitsChanged & 15, 4);
 
                 m_data[m_position] = (byte)(bitsChanged >> 4);
@@ -306,26 +306,16 @@ namespace sttp.tssc
             }
             else if (bitsChanged <= Bits24)
             {
-                m_lastPoint.WriteCode(TsscCodeWords.ValueXOR24);
+                m_lastPoint.WriteCode(TsscCodeWords.PointIDXOR24);
 
                 m_data[m_position] = (byte)bitsChanged;
                 m_data[m_position + 1] = (byte)(bitsChanged >> 8);
                 m_data[m_position + 2] = (byte)(bitsChanged >> 16);
                 m_position = m_position + 3;
             }
-            else if (bitsChanged <= Bits28)
-            {
-                m_lastPoint.WriteCode(TsscCodeWords.ValueXOR28);
-                WriteBits((byte)bitsChanged & 15, 4);
-
-                m_data[m_position] = (byte)(bitsChanged >> 4);
-                m_data[m_position + 1] = (byte)(bitsChanged >> 12);
-                m_data[m_position + 2] = (byte)(bitsChanged >> 20);
-                m_position = m_position + 3;
-            }
             else
             {
-                m_lastPoint.WriteCode(TsscCodeWords.ValueXOR32);
+                m_lastPoint.WriteCode(TsscCodeWords.PointIDXOR32);
 
                 m_data[m_position] = (byte)bitsChanged;
                 m_data[m_position + 1] = (byte)(bitsChanged >> 8);

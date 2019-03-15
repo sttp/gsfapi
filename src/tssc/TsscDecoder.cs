@@ -137,7 +137,7 @@ namespace sttp.tssc
                 return false;
             }
 
-            if (code <= TsscCodeWords.PointIDXOR16)
+            if (code <= TsscCodeWords.PointIDXOR32)
             {
                 DecodePointID(code, m_lastPoint);
                 code = m_lastPoint.ReadCode();
@@ -259,39 +259,35 @@ namespace sttp.tssc
         {
             switch (code)
             {
-                case TsscCodeWords.ValueXOR4:
+                case TsscCodeWords.PointIDXOR4:
                     lastPoint.PrevNextPointId1 = ReadBits4() ^ lastPoint.PrevNextPointId1;
                     break;
-                case TsscCodeWords.ValueXOR8:
+                case TsscCodeWords.PointIDXOR8:
                     lastPoint.PrevNextPointId1 = m_data[m_position] ^ lastPoint.PrevNextPointId1;
                     m_position = m_position + 1;
                     break;
-                case TsscCodeWords.ValueXOR12:
+                case TsscCodeWords.PointIDXOR12:
                     lastPoint.PrevNextPointId1 = ReadBits4() ^ (m_data[m_position] << 4) ^ lastPoint.PrevNextPointId1;
                     m_position = m_position + 1;
                     break;
-                case TsscCodeWords.ValueXOR16:
+                case TsscCodeWords.PointIDXOR16:
                     lastPoint.PrevNextPointId1 = m_data[m_position] ^ (m_data[m_position + 1] << 8) ^ lastPoint.PrevNextPointId1;
                     m_position = m_position + 2;
                     break;
-                case TsscCodeWords.ValueXOR20:
+                case TsscCodeWords.PointIDXOR20:
                     lastPoint.PrevNextPointId1 = ReadBits4() ^ (m_data[m_position] << 4) ^ (m_data[m_position + 1] << 12) ^ lastPoint.PrevNextPointId1;
                     m_position = m_position + 2;
                     break;
-                case TsscCodeWords.ValueXOR24:
+                case TsscCodeWords.PointIDXOR24:
                     lastPoint.PrevNextPointId1 = m_data[m_position] ^ (m_data[m_position + 1] << 8) ^ (m_data[m_position + 2] << 16) ^ lastPoint.PrevNextPointId1;
                     m_position = m_position + 3;
                     break;
-                case TsscCodeWords.ValueXOR28:
-                    lastPoint.PrevNextPointId1 = ReadBits4() ^ (m_data[m_position] << 4) ^ (m_data[m_position + 1] << 12) ^ (m_data[m_position + 2] << 20) ^ lastPoint.PrevNextPointId1;
-                    m_position = m_position + 3;
-                    break;
-                case TsscCodeWords.ValueXOR32:
+                case TsscCodeWords.PointIDXOR32:
                     lastPoint.PrevNextPointId1 = m_data[m_position] ^ (m_data[m_position + 1] << 8) ^ (m_data[m_position + 2] << 16) ^ (m_data[m_position + 3] << 24) ^ lastPoint.PrevNextPointId1;
                     m_position = m_position + 4;
                     break;
                 default:
-                    throw new Exception($"Invalid code received {code} at position {m_position} with last position { m_lastPosition}");
+                    throw new Exception($"Invalid code received {code} at position {m_position} with last position {m_lastPosition}");
             }
         }
 
