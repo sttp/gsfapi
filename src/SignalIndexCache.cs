@@ -400,7 +400,7 @@ namespace sttp
             {
                 // Signal index
                 signalIndex = BigEndian.ToInt32(buffer, offset);
-                offset += 2;
+                offset += 4;
 
                 // Signal ID
                 signalID = EndianOrder.BigEndian.ToGuid(buffer, offset);
@@ -414,7 +414,7 @@ namespace sttp
 
                 // ID
                 id = BigEndian.ToUInt64(buffer, offset);
-                offset += 4;
+                offset += 8;
 
                 m_reference[signalIndex] = MeasurementKey.LookUpOrCreate(signalID, source, id);
             }
