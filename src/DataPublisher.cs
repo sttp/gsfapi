@@ -612,7 +612,7 @@ namespace sttp
     /// <summary>
     /// Represents a data publishing server that allows multiple connections for data subscriptions.
     /// </summary>
-    [Description("DataPublisher: server component that allows gateway-style subscription connections.")]
+    [Description("STTP Publisher: server component that allows gateway-style subscription connections.")]
     [EditorBrowsable(EditorBrowsableState.Always)]
     public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     {
