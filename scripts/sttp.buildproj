@@ -81,7 +81,7 @@
     <PropertyGroup>
       <!--Must-override setting(s).-->
       <ProjectName>sttp.net</ProjectName>
-      <ProjectSolution>$(LocalFolder)\Source\sttp.sln</ProjectSolution>
+      <ProjectSolution>$(LocalFolder)\src\sttp.sln</ProjectSolution>
       
       <VersionMajorChange>None</VersionMajorChange>
       <VersionMinorChange>None</VersionMinorChange>
