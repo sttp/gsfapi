@@ -288,12 +288,50 @@ namespace sttp.tssc
                 m_data[m_position] = (byte)(bitsChanged >> 4);
                 m_position++;
             }
-            else
+            else if (bitsChanged <= Bits16)
             {
                 m_lastPoint.WriteCode(TsscCodeWords.PointIDXOR16);
                 m_data[m_position] = (byte)bitsChanged;
                 m_data[m_position + 1] = (byte)(bitsChanged >> 8);
                 m_position += 2;
+            }
+            else if (bitsChanged <= Bits20)
+            {
+                m_lastPoint.WriteCode(TsscCodeWords.ValueXOR20);
+                WriteBits((byte)bitsChanged & 15, 4);
+
+                m_data[m_position] = (byte)(bitsChanged >> 4);
+                m_data[m_position + 1] = (byte)(bitsChanged >> 12);
+                m_position = m_position + 2;
+            }
+            else if (bitsChanged <= Bits24)
+            {
+                m_lastPoint.WriteCode(TsscCodeWords.ValueXOR24);
+
+                m_data[m_position] = (byte)bitsChanged;
+                m_data[m_position + 1] = (byte)(bitsChanged >> 8);
+                m_data[m_position + 2] = (byte)(bitsChanged >> 16);
+                m_position = m_position + 3;
+            }
+            else if (bitsChanged <= Bits28)
+            {
+                m_lastPoint.WriteCode(TsscCodeWords.ValueXOR28);
+                WriteBits((byte)bitsChanged & 15, 4);
+
+                m_data[m_position] = (byte)(bitsChanged >> 4);
+                m_data[m_position + 1] = (byte)(bitsChanged >> 12);
+                m_data[m_position + 2] = (byte)(bitsChanged >> 20);
+                m_position = m_position + 3;
+            }
+            else
+            {
+                m_lastPoint.WriteCode(TsscCodeWords.ValueXOR32);
+
+                m_data[m_position] = (byte)bitsChanged;
+                m_data[m_position + 1] = (byte)(bitsChanged >> 8);
+                m_data[m_position + 2] = (byte)(bitsChanged >> 16);
+                m_data[m_position + 3] = (byte)(bitsChanged >> 24);
+                m_position = m_position + 4;
             }
 
             m_lastPoint.PrevNextPointId1 = id;
