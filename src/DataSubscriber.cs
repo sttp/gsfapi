@@ -1985,7 +1985,7 @@ namespace sttp
             if (throttled && (object)m_dataStreamMonitor != null && m_dataStreamMonitor.Interval / 1000.0D < lagTime)
                 m_dataStreamMonitor.Interval = (int)(2.0D * lagTime * 1000.0D);
 
-            return Subscribe(false, compactFormat, connectionString.ToString());
+            return Subscribe(compactFormat, connectionString.ToString());
         }
 
         /// <summary>
