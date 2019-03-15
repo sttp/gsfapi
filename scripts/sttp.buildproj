@@ -123,8 +123,8 @@
     
       <!--List of binaries to archive.-->
       <BinariesToArchive Remove="@(BinariesToArchive)"/>
-      <BinariesToArchive Include="$(LocalFolder)\src\bin\*.exe"/>
-      <BinariesToArchive Include="$(LocalFolder)\src\bin\*.dll"/>
+      <BinariesToArchive Include="$(BuildOutputFolder)\**\*.exe"/>
+      <BinariesToArchive Include="$(BuildOutputFolder)\**\*.dll"/>
       
       <!--Destinations of archive files (*.zip).-->
       <ArchiveDestinations Include="$(BuildDeployFolder)"/>
