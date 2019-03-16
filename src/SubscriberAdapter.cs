@@ -76,7 +76,7 @@ namespace sttp
         private TsscEncoder m_tsscEncoder;
         private readonly object m_tsscSyncLock;
         private byte[] m_tsscWorkingBuffer;
-        private int m_tsscSequenceNumber;
+        private ushort m_tsscSequenceNumber;
         private long m_lastPublishTime;
         private string m_requestedInputFilter;
         private double m_publishInterval;
