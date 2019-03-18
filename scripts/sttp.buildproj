@@ -83,6 +83,7 @@
       <ProjectName>sttp.net</ProjectName>
       <ProjectSolution>$(LocalFolder)\src\sttp.sln</ProjectSolution>
       <BuildOutputFolder>$(LocalFolder)\src\bin</BuildOutputFolder>
+      <VersionFile>$(LocalFolder)\scripts\sttp.version</VersionFile>
       
       <VersionMajorChange>None</VersionMajorChange>
       <VersionMinorChange>None</VersionMinorChange>
