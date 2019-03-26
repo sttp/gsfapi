@@ -447,7 +447,7 @@ namespace sttp
         private int m_dataChannelBufferLength;
         private bool m_tsscResetRequested;
         private TsscDecoder m_tsscDecoder;
-        private int m_tsscSequenceNumber;
+        private ushort m_tsscSequenceNumber;
         private SharedTimer m_dataStreamMonitor;
         private long m_commandChannelConnectionAttempts;
         private long m_dataChannelConnectionAttempts;
