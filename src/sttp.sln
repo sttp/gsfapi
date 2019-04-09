@@ -3,7 +3,17 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
 VisualStudioVersion = 15.0.28307.438
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "sttp", "sttp.csproj", "{A5C8FAE8-5F30-4F9B-8BC7-4F0F17B0BE52}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "sttp", "lib\sttp.csproj", "{A5C8FAE8-5F30-4F9B-8BC7-4F0F17B0BE52}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "lib", "lib", "{0E8A5E0A-E5C7-4C68-A504-D36AEF52380E}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "samples", "samples", "{AB836D09-8D9D-4DA6-96F9-89EFB673FC72}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "solution docs", "solution docs", "{9B2537AD-8A41-4FAD-8DD0-E10B6B279024}"
+	ProjectSection(SolutionItems) = preProject
+		..\LICENSE = ..\LICENSE
+		..\README.md = ..\README.md
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -18,6 +28,9 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{A5C8FAE8-5F30-4F9B-8BC7-4F0F17B0BE52} = {0E8A5E0A-E5C7-4C68-A504-D36AEF52380E}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {EEF6D3B2-391D-432C-9EE0-05631357D048}
