@@ -81,9 +81,6 @@
     <PropertyGroup>
       <!--Must-override setting(s).-->
       <ProjectName>sttp.net</ProjectName>
-      <ProjectSolution>$(LocalFolder)\src\sttp.sln</ProjectSolution>
-      <BuildOutputFolder>$(LocalFolder)\build\output\$(BuildFlavor)</BuildOutputFolder>
-      <VersionFile>$(LocalFolder)\build\scripts\sttp.version</VersionFile>
       
       <VersionMajorChange>None</VersionMajorChange>
       <VersionMinorChange>None</VersionMinorChange>
@@ -92,6 +89,13 @@
 
       <!-- Override default settings. -->
       <GitServer Condition="'$(GitServer)' == ''">git@github.com:sttp/sttp-dotnetapi.git</GitServer>
+      <LocalFolder Condition="'$(LocalFolder)' == ''">$([System.IO.Path]::GetFullPath('$(TEMP)\MSBuild\$(ProjectName)'))</LocalFolder>
+      <BuildFlavor Condition="'$(BuildFlavor)' == ''">Release</BuildFlavor>
+
+      <!-- Force-override settings -->
+      <ProjectSolution>$(LocalFolder)\src\sttp.sln</ProjectSolution>
+      <BuildOutputFolder>$(LocalFolder)\build\output\$(BuildFlavor)</BuildOutputFolder>
+      <VersionFile>$(LocalFolder)\build\scripts\sttp.version</VersionFile>
     </PropertyGroup>
   </Target>
 
