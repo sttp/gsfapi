@@ -298,7 +298,7 @@ namespace sttp
             offset += bigEndianBuffer.Length;
 
             // Subscriber ID
-            bigEndianBuffer = EndianOrder.BigEndian.GetBytes(m_subscriberID);
+            bigEndianBuffer = m_subscriberID.ToRfcBytes();
             Buffer.BlockCopy(bigEndianBuffer, 0, buffer, offset, bigEndianBuffer.Length);
             offset += bigEndianBuffer.Length;
 
@@ -315,7 +315,7 @@ namespace sttp
                 offset += bigEndianBuffer.Length;
 
                 // Signal ID
-                bigEndianBuffer = EndianOrder.BigEndian.GetBytes(kvp.Value.SignalID);
+                bigEndianBuffer = kvp.Value.SignalID.ToRfcBytes();
                 Buffer.BlockCopy(bigEndianBuffer, 0, buffer, offset, bigEndianBuffer.Length);
                 offset += bigEndianBuffer.Length;
 
@@ -341,7 +341,7 @@ namespace sttp
             foreach (Guid signalID in unauthorizedSignalIDs)
             {
                 // Unauthorized ID
-                bigEndianBuffer = EndianOrder.BigEndian.GetBytes(signalID);
+                bigEndianBuffer = signalID.ToRfcBytes();
                 Buffer.BlockCopy(bigEndianBuffer, 0, buffer, offset, bigEndianBuffer.Length);
                 offset += bigEndianBuffer.Length;
             }
