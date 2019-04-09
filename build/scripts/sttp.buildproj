@@ -82,7 +82,7 @@
       <!--Must-override setting(s).-->
       <ProjectName>sttp.net</ProjectName>
       <ProjectSolution>$(LocalFolder)\src\sttp.sln</ProjectSolution>
-      <BuildOutputFolder>$(LocalFolder)\src\bin</BuildOutputFolder>
+      <BuildOutputFolder>$(LocalFolder)\build\output\$(BuildFlavor)</BuildOutputFolder>
       <VersionFile>$(LocalFolder)\scripts\sttp.version</VersionFile>
       
       <VersionMajorChange>None</VersionMajorChange>
