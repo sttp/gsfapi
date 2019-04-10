@@ -569,7 +569,7 @@ namespace sttp
     }
 
     /// <summary>
-    /// Enumeration for character encodings supported by the Gateway Exchange Protocol.
+    /// Enumeration for character encodings supported by the Streaming Telemetry Transport Protocol.
     /// </summary>
     public enum OperationalEncoding : uint
     {
@@ -588,7 +588,7 @@ namespace sttp
     }
 
     /// <summary>
-    /// Enumeration for compression modes supported by the Gateway Exchange Protocol.
+    /// Enumeration for compression modes supported by the Streaming Telemetry Transport Protocol.
     /// </summary>
     [Flags]
     public enum CompressionModes : uint
