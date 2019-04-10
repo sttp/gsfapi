@@ -174,15 +174,6 @@ namespace sttp
         ConfirmBufferBlock = 0x08,
 
         /// <summary>
-        /// Provides measurements to the publisher over the command channel.
-        /// </summary>
-        /// <remarks>
-        /// Allows for unsolicited publication of measurement data to the server
-        /// so that consumers of data can also provide data to other consumers.
-        /// </remarks>
-        PublishCommandMeasurements = 0x09,
-
-        /// <summary>
         /// Code for handling user-defined commands.
         /// </summary>
         UserCommand00 = 0xD0,
@@ -3301,43 +3292,6 @@ namespace sttp
             }
         }
 
-        private void HandlePublishCommandMeasurements(SubscriberConnection connection, byte[] buffer, int startIndex, int length)
-        {
-            try
-            {
-                List<IMeasurement> measurements = new List<IMeasurement>();
-
-                int index = startIndex;
-                int payloadByteLength = BigEndian.ToInt32(buffer, index);
-                index += sizeof(int);
-
-                string dataString = connection.Encoding.GetString(buffer, index, payloadByteLength);
-                ConnectionStringParser<SettingAttribute> connectionStringParser = new ConnectionStringParser<SettingAttribute>();
-
-                foreach (string measurementString in dataString.Split(new[] { ";;" }, StringSplitOptions.RemoveEmptyEntries))
-                {
-                    CommandMeasurement measurement = new CommandMeasurement();
-                    connectionStringParser.ParseConnectionString(measurementString, measurement);
-
-                    measurements.Add(new Measurement()
-                    {
-                        Metadata = MeasurementKey.LookUpBySignalID(measurement.SignalID).Metadata,
-                        Timestamp = measurement.Timestamp,
-                        Value = measurement.Value,
-                        StateFlags = measurement.StateFlags
-                    });
-                }
-
-                OnNewMeasurements(measurements);
-            }
-            catch (Exception ex)
-            {
-                string errorMessage = $"Data packet command failed due to exception: {ex.Message}";
-                OnProcessException(MessageLevel.Error, new Exception(errorMessage, ex));
-                SendClientResponse(connection.ClientID, ServerResponse.Failed, ServerCommand.PublishCommandMeasurements, errorMessage);
-            }
-        }
-
         /// <summary>
         /// Handles custom commands defined by the user of the publisher API.
         /// </summary>
@@ -3574,11 +3528,6 @@ namespace sttp
                             case ServerCommand.ConfirmBufferBlock:
                                 // Handle confirmation of receipt of a buffer block
                                 HandleConfirmBufferBlock(connection, buffer, index, length);
-                                break;
-
-                            case ServerCommand.PublishCommandMeasurements:
-                                // Handle publication of command measurements
-                                HandlePublishCommandMeasurements(connection, buffer, index, length);
                                 break;
 
                             case ServerCommand.UserCommand00:
