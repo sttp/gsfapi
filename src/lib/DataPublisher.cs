@@ -1644,10 +1644,7 @@ namespace sttp
                 else
                     description.Append("          FullSizePayloadData[");
 
-                if (connection.Subscription is SubscriberAdapter)
-                    description.Append($"{connection.Subscription.TimestampSize}-byte Timestamps]\r\n");
-                else
-                    description.Append("8-byte Frame-level Timestamps]\r\n");
+                description.Append($"{connection.Subscription.TimestampSize}-byte Timestamps]\r\n");
             }
 
             if ((operationalModes & OperationalModes.CompressSignalIndexCache) > 0 && gzipEnabled)
@@ -2914,7 +2911,7 @@ namespace sttp
                         }
                         else
                         {
-                            if (byteLength > 0)
+                            if (byteLength > 0) //-V3022
                                 message = "Not enough buffer was provided to parse client data subscription.";
                             else
                                 message = "Cannot initialize client data subscription without a connection string.";
