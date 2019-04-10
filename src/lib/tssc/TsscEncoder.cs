@@ -135,7 +135,7 @@ namespace sttp.tssc
             if (point == null)
             {
                 point = new TsscPointMetadata(WriteBits, null, null);
-                point.PrevNextPointId1 = (int)(id + 1);
+                point.PrevNextPointId1 = id + 1;
                 m_points[id] = point;
             }
 
