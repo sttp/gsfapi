@@ -389,7 +389,7 @@ namespace sttp
             m_reference.Clear();
 
             // Subscriber ID
-            m_subscriberID = EndianOrder.BigEndian.ToGuid(buffer, offset);
+            m_subscriberID = buffer.ToRfcGuid(offset);
             offset += 16;
 
             // Number of references
@@ -403,7 +403,7 @@ namespace sttp
                 offset += 4;
 
                 // Signal ID
-                signalID = EndianOrder.BigEndian.ToGuid(buffer, offset);
+                signalID = buffer.ToRfcGuid(offset);
                 offset += 16;
 
                 // Source
@@ -427,7 +427,7 @@ namespace sttp
             for (int i = 0; i < unauthorizedIDCount; i++)
             {
                 // Unauthorized ID
-                m_unauthorizedSignalIDs[i] = EndianOrder.BigEndian.ToGuid(buffer, offset);
+                m_unauthorizedSignalIDs[i] = buffer.ToRfcGuid(offset);
                 offset += 16;
             }
 
