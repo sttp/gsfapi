@@ -23,18 +23,17 @@
 //
 //******************************************************************************************************
 
+using GSF;
+using GSF.Communication;
+using GSF.Diagnostics;
+using GSF.IO;
+using GSF.Threading;
 using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
-using GSF;
-using GSF.Communication;
-using GSF.Diagnostics;
-using GSF.IO;
-using GSF.Security.Cryptography;
-using GSF.Threading;
 
 namespace sttp
 {
@@ -398,13 +397,12 @@ namespace sttp
                 else
                 {
                     Dictionary<string, string> settings = value.ParseKeyValuePairs();
-                    string source, version, buildDate;
 
-                    settings.TryGetValue("source", out source);
-                    settings.TryGetValue("version", out version);
-                    settings.TryGetValue("buildDate", out buildDate);
+                    settings.TryGetValue("source", out string source);
+                    settings.TryGetValue("version", out string version);
+                    settings.TryGetValue("updatedOn", out string updatedOn);
 
-                    m_subscriberInfo = $"{source.ToNonNullNorWhiteSpace("unknown source")} version {version.ToNonNullNorWhiteSpace("?.?.?.?")} built on {buildDate.ToNonNullNorWhiteSpace("undefined date")}";
+                    m_subscriberInfo = $"{source.ToNonNullNorWhiteSpace("unknown source")} version {version.ToNonNullNorWhiteSpace("?.?.?.?")} updated on {updatedOn.ToNonNullNorWhiteSpace("undefined date")}";
                 }
             }
         }

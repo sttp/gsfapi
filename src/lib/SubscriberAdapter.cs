@@ -368,22 +368,25 @@ namespace sttp
             MeasurementKey[] inputMeasurementKeys;
             string setting;
 
-            if (Settings.TryGetValue("inputMeasurementKeys", out setting))
+            if (Settings.TryGetValue("filterExpression", out setting))
             {
                 // IMPORTANT: The allowSelect argument of ParseInputMeasurementKeys must be null
                 //            in order to prevent SQL injection via the subscription filter expression
                 inputMeasurementKeys = ParseInputMeasurementKeys(DataSource, false, setting);
                 m_requestedInputFilter = setting;
-
-                // IMPORTANT: We need to remove the setting before calling base.Initialize()
-                //            or else we will still be subject to SQL injection
-                Settings.Remove("inputMeasurementKeys");
             }
             else
             {
                 inputMeasurementKeys = new MeasurementKey[0];
                 m_requestedInputFilter = null;
             }
+
+            // IMPORTANT: We need to remove the setting before calling base.Initialize()
+            //            or else we will still be subject to SQL injection
+            Settings.Remove("inputMeasurementKeys");
+
+            if (Settings.TryGetValue("throttled", out setting))
+                TrackLatestMeasurements = setting.ParseBoolean();
 
             base.Initialize();
 
