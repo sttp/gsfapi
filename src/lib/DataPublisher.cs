@@ -722,7 +722,7 @@ namespace sttp
         /// <summary>
         /// Default value for <see cref="UseBaseTimeOffsets"/>.
         /// </summary>
-        public const bool DefaultUseBaseTimeOffsets = false;
+        public const bool DefaultUseBaseTimeOffsets = true;
 
         /// <summary>
         /// Default value for <see cref="CipherKeyRotationPeriod"/>.

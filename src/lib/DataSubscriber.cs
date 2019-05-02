@@ -1509,6 +1509,8 @@ namespace sttp
             // Check if user wants to request that publisher use millisecond resolution to conserve bandwidth
             if (settings.TryGetValue("useMillisecondResolution", out setting))
                 m_useMillisecondResolution = setting.ParseBoolean();
+            else
+                m_useMillisecondResolution = true;
 
             // Check if user wants to request that publisher remove NaN from the data stream to conserve bandwidth
             if (settings.TryGetValue("requestNaNValueFilter", out setting))
