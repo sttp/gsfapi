@@ -67,7 +67,7 @@ namespace sttp
         /// <summary>
         /// Creates a new instance of the <see cref="SubscriptionInfo"/> class.
         /// </summary>
-        protected SubscriptionInfo(bool throttled = false)
+        public SubscriptionInfo(bool throttled = false)
         {
             m_useCompactMeasurementFormat = true;
             m_dataChannelLocalPort = 9500;

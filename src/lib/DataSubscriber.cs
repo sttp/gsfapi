@@ -1908,8 +1908,6 @@ namespace sttp
         /// <param name="stopTime">Defines a relative or exact stop time for the temporal constraint to use for historical playback.</param>
         /// <param name="constraintParameters">Defines any temporal parameters related to the constraint to use for historical playback.</param>
         /// <param name="processingInterval">Defines the desired processing interval milliseconds, i.e., historical play back speed, to use when temporal constraints are defined.</param>
-        /// <param name="waitHandleNames">Comma separated list of wait handle names used to establish external event wait handles needed for inter-adapter synchronization.</param>
-        /// <param name="waitHandleTimeout">Maximum wait time for external events, in milliseconds, before proceeding.</param>
         /// <returns><c>true</c> if subscribe transmission was successful; otherwise <c>false</c>.</returns>
         /// <remarks>
         /// <para>
@@ -1958,38 +1956,35 @@ namespace sttp
         /// </para>
         /// </remarks>
         [Obsolete("Preferred method uses SubscriptionInfo object to subscribe.", false)]
-        public virtual bool Subscribe(bool compactFormat, bool throttled, string filterExpression, string dataChannel = null, bool includeTime = true, double lagTime = 10.0D, double leadTime = 5.0D, bool useLocalClockAsRealTime = false, string startTime = null, string stopTime = null, string constraintParameters = null, int processingInterval = -1, string waitHandleNames = null, int waitHandleTimeout = 0)
+        public virtual bool Subscribe(bool compactFormat, bool throttled, string filterExpression, string dataChannel = null, bool includeTime = true, double lagTime = 10.0D, double leadTime = 5.0D, bool useLocalClockAsRealTime = false, string startTime = null, string stopTime = null, string constraintParameters = null, int processingInterval = -1)
         {
-            StringBuilder connectionString = new StringBuilder();
-            AssemblyInfo assemblyInfo = AssemblyInfo.ExecutingAssembly;
+            int port = 0;
 
-            connectionString.AppendFormat("trackLatestMeasurements={0}; ", throttled);
-            connectionString.AppendFormat("inputMeasurementKeys={{{0}}}; ", filterExpression.ToNonNullString());
-            connectionString.AppendFormat("dataChannel={{{0}}}; ", dataChannel.ToNonNullString());
-            connectionString.AppendFormat("includeTime={0}; ", includeTime);
-            connectionString.AppendFormat("lagTime={0}; ", lagTime);
-            connectionString.AppendFormat("leadTime={0}; ", leadTime);
-            connectionString.AppendFormat("useLocalClockAsRealTime={0}; ", useLocalClockAsRealTime);
-            connectionString.AppendFormat("startTimeConstraint={0}; ", startTime.ToNonNullString());
-            connectionString.AppendFormat("stopTimeConstraint={0}; ", stopTime.ToNonNullString());
-            connectionString.AppendFormat("timeConstraintParameters={0}; ", constraintParameters.ToNonNullString());
-            connectionString.AppendFormat("processingInterval={0}; ", processingInterval);
-            connectionString.AppendFormat("useMillisecondResolution={0}; ", m_useMillisecondResolution);
-            connectionString.AppendFormat("requestNaNValueFilter={0}; ", m_requestNaNValueFilter);
-            connectionString.AppendFormat("assemblyInfo={{source={0}; version={1}.{2}.{3}; buildDate={4}}}", assemblyInfo.Name, assemblyInfo.Version.Major, assemblyInfo.Version.Minor, assemblyInfo.Version.Build, assemblyInfo.BuildDate.ToString("yyyy-MM-dd HH:mm:ss"));
-
-            if (!string.IsNullOrWhiteSpace(waitHandleNames))
+            if (!string.IsNullOrWhiteSpace(dataChannel))
             {
-                connectionString.AppendFormat("; waitHandleNames={0}", waitHandleNames);
-                connectionString.AppendFormat("; waitHandleTimeout={0}", waitHandleTimeout);
+                Dictionary<string, string> settings = dataChannel.ParseKeyValuePairs();
+                
+                if (settings.TryGetValue("port", out string setting) || settings.TryGetValue("localPort", out setting))
+                    int.TryParse(setting, out port);
             }
 
-            // Make sure not to monitor for data loss any faster than down-sample time on throttled connections - additionally
-            // you will want to make sure data stream monitor is twice lag-time to allow time for initial points to arrive.
-            if (throttled && (object)m_dataStreamMonitor != null && m_dataStreamMonitor.Interval / 1000.0D < lagTime)
-                m_dataStreamMonitor.Interval = (int)(2.0D * lagTime * 1000.0D);
-
-            return Subscribe(compactFormat, connectionString.ToString());
+            return Subscribe(new SubscriptionInfo
+            {
+                UseCompactMeasurementFormat = compactFormat,
+                Throttled = throttled,
+                UdpDataChannel = port > 0,
+                DataChannelLocalPort = port,
+                FilterExpression = filterExpression,
+                IncludeTime = includeTime,
+                LagTime = lagTime,
+                LeadTime = leadTime,
+                UseLocalClockAsRealTime = useLocalClockAsRealTime,
+                StartTime = startTime,
+                StopTime = stopTime,
+                ConstraintParameters = constraintParameters,
+                ProcessingInterval = processingInterval,
+                UseMillisecondResolution = m_useMillisecondResolution // When used as adapter, use configured option
+            });
         }
 
         /// <summary>
