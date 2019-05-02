@@ -441,10 +441,6 @@ namespace sttp
         private readonly LongSynchronizedOperation m_registerStatisticsOperation;
         private IClient m_commandChannel;
         private UdpClient m_dataChannel;
-        private byte[] m_commandChannelBuffer;
-        private int m_commandChannelBufferLength;
-        private byte[] m_dataChannelBuffer;
-        private int m_dataChannelBufferLength;
         private bool m_tsscResetRequested;
         private TsscDecoder m_tsscDecoder;
         private ushort m_tsscSequenceNumber;
@@ -1586,7 +1582,8 @@ namespace sttp
                 certificateChecker.ValidChainFlags = m_validChainFlags;
 
                 // Initialize default settings
-                commandChannel.PayloadAware = false;
+                commandChannel.PayloadAware = true;
+                commandChannel.PayloadMarker = null;
                 commandChannel.PersistSettings = false;
                 commandChannel.MaxConnectionAttempts = 1;
                 commandChannel.CertificateFile = FilePath.GetAbsolutePath(m_localCertificate);
@@ -1606,6 +1603,7 @@ namespace sttp
 
                 // Initialize default settings
                 commandChannel.PayloadAware = false;
+                commandChannel.PayloadMarker = null;
                 commandChannel.PersistSettings = false;
                 commandChannel.MaxConnectionAttempts = 1;
                 commandChannel.ReceiveBufferSize = bufferSize;
@@ -2287,13 +2285,8 @@ namespace sttp
                         // Write command code into command packet
                         commandPacket.WriteByte((byte)commandCode);
 
-                        // Write length of command buffer into command packet
-                        int dataLength = data?.Length ?? 0;
-                        byte[] lengthBytes = BigEndian.GetBytes(dataLength);
-                        commandPacket.Write(lengthBytes);
-
                         // Write command buffer into command packet
-                        if (dataLength > 0)
+                        if ((object)data != null && data.Length > 0)
                             commandPacket.Write(data, 0, data.Length);
 
                         // Send command packet to publisher
@@ -2336,9 +2329,6 @@ namespace sttp
             m_totalBytesReceived = 0L;
             m_monitoredBytesReceived = 0L;
             m_lastBytesReceived = 0;
-
-            m_commandChannelBuffer = null;
-            m_commandChannelBufferLength = 0;
 
             if (!PersistConnectionForMetadata)
                 m_commandChannel.ConnectAsync();
@@ -2425,16 +2415,6 @@ namespace sttp
             {
                 OnProcessException(MessageLevel.Warning, ex);
             }
-        }
-
-        private int ServerResponseLength(byte[] buffer, int length)
-        {
-            int responseLength = DataPublisher.ClientResponseHeaderSize;
-
-            if (buffer != null && length >= DataPublisher.ClientResponseHeaderSize)
-                responseLength += BigEndian.ToInt32(buffer, 2);
-
-            return responseLength;
         }
 
         private void ProcessServerResponse(byte[] buffer, int length)
@@ -4481,40 +4461,6 @@ namespace sttp
             OnProcessException(MessageLevel.Warning, new InvalidOperationException("[DataGapRecoverer] " + e.Argument.Message, e.Argument.InnerException));
         }
 
-        private void ReceiveChannelData(ref byte[] buffer, ref int bufferLength, IClient channelClient, int bytesReceived)
-        {
-            int totalBytesRead = 0;
-            int responseLength = ServerResponseLength(buffer, bufferLength);
-            m_lastBytesReceived = bytesReceived;
-
-            while (totalBytesRead < bytesReceived)
-            {
-                if (buffer == null)
-                    buffer = new byte[responseLength];
-                else if (buffer.Length < responseLength)
-                    Array.Resize(ref buffer, responseLength);
-
-                int readLength = responseLength - bufferLength;
-                int bytesRead = channelClient.Read(buffer, bufferLength, readLength);
-                totalBytesRead += bytesRead;
-                bufferLength += bytesRead;
-
-                // Additional data may have provided more
-                // intelligence about the full response length
-                if (bufferLength == responseLength)
-                    responseLength = ServerResponseLength(buffer, bufferLength);
-
-                // If the response length hasn't changed,
-                // it's time to process the response
-                if (bufferLength == responseLength)
-                {
-                    ProcessServerResponse(buffer, bufferLength);
-                    bufferLength = 0;
-                    responseLength = ServerResponseLength(buffer, bufferLength);
-                }
-            }
-        }
-
         #region [ Command Channel Event Handlers ]
 
         private void m_commandChannel_ConnectionEstablished(object sender, EventArgs e)
@@ -4575,7 +4521,13 @@ namespace sttp
         {
             try
             {
-                ReceiveChannelData(ref m_commandChannelBuffer, ref m_commandChannelBufferLength, m_commandChannel, e.Argument);
+                int length = e.Argument;
+                byte[] buffer = new byte[length];
+
+                m_lastBytesReceived = length;
+
+                m_commandChannel.Read(buffer, 0, length);
+                ProcessServerResponse(buffer, length);
             }
             catch (Exception ex)
             {
@@ -4615,7 +4567,13 @@ namespace sttp
         {
             try
             {
-                ReceiveChannelData(ref m_dataChannelBuffer, ref m_dataChannelBufferLength, m_dataChannel, e.Argument);
+                int length = e.Argument;
+                byte[] buffer = new byte[length];
+
+                m_lastBytesReceived = length;
+
+                m_dataChannel.Read(buffer, 0, length);
+                ProcessServerResponse(buffer, length);
             }
             catch (Exception ex)
             {

@@ -52,16 +52,12 @@ namespace sttp
 
         // Fields
         private DataPublisher m_parent;
-        private byte[] m_clientDataBuffer;
-        private int m_clientDataBufferLength;
-
         private readonly Guid m_clientID;
         private Guid m_subscriberID;
         private readonly string m_connectionID;
         private readonly string m_hostName;
         private string m_subscriberAcronym;
         private string m_subscriberName;
-        //private string m_sharedSecret;
         private string m_subscriberInfo;
         private SubscriberAdapter m_subscription;
         private volatile bool m_authenticated;
@@ -249,24 +245,6 @@ namespace sttp
         /// Gets <see cref="IServer"/> publication channel - that is, data channel if defined otherwise command channel.
         /// </summary>
         public IServer PublishChannel => (object)m_dataChannel == null ? m_commandChannel : m_dataChannel;
-
-        /// <summary>
-        /// Gets or sets the buffer containing client data.
-        /// </summary>
-        public byte[] ClientDataBuffer
-        {
-            get => m_clientDataBuffer;
-            set => m_clientDataBuffer = value;
-        }
-
-        /// <summary>
-        /// Gets or sets the number of bytes used in the <see cref="ClientDataBuffer"/>.
-        /// </summary>
-        public int ClientDataBufferLength
-        {
-            get => m_clientDataBufferLength;
-            set => m_clientDataBufferLength = value;
-        }
 
         /// <summary>
         /// Gets connected state of the associated client socket.
