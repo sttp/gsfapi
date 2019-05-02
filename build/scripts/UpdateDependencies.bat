@@ -29,8 +29,8 @@ SET pwd=%CD%
 IF "%git%" == "" SET git=%PROGRAMFILES(X86)%\Git\cmd\git.exe
 IF "%replace%" == "" SET replace=\\GPAWEB\NightlyBuilds\Tools\ReplaceInFiles\ReplaceInFiles.exe
 
-SET defaulttarget=%LOCALAPPDATA%\Temp\sttp-dotnetapi
-IF "%remote%" == "" SET remote=git@github.com:sttp/sttp-dotnetapi.git
+SET defaulttarget=%LOCALAPPDATA%\Temp\sttp-gsfapi
+IF "%remote%" == "" SET remote=git@github.com:sttp/gsfapi.git
 IF "%gsf%" == "" SET gsf=\\GPAWEB\NightlyBuilds\GridSolutionsFramework\Beta
 IF "%target%" == "" SET target=%defaulttarget%
 

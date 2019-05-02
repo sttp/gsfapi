@@ -88,12 +88,12 @@
       <VersionRevisionChange>Reset</VersionRevisionChange>
 
       <!-- Override default settings. -->
-      <GitServer Condition="'$(GitServer)' == ''">git@github.com:sttp/sttp-dotnetapi.git</GitServer>
+      <GitServer Condition="'$(GitServer)' == ''">git@github.com:sttp/gsfapi.git</GitServer>
       <LocalFolder Condition="'$(LocalFolder)' == ''">$([System.IO.Path]::GetFullPath('$(TEMP)\MSBuild\$(ProjectName)'))</LocalFolder>
       <BuildFlavor Condition="'$(BuildFlavor)' == ''">Release</BuildFlavor>
 
       <!-- Force-override settings -->
-      <ProjectSolution>$(LocalFolder)\src\sttp.sln</ProjectSolution>
+      <ProjectSolution>$(LocalFolder)\src\sttp.gsf.sln</ProjectSolution>
       <BuildOutputFolder>$(LocalFolder)\build\output\$(BuildFlavor)</BuildOutputFolder>
       <VersionFile>$(LocalFolder)\build\scripts\sttp.version</VersionFile>
     </PropertyGroup>
