@@ -766,7 +766,7 @@ namespace sttp
         private SharedTimer m_cipherKeyRotationTimer;
         private RoutingTables m_routingTables;
         private string m_metadataTables;
-        private string m_cacheMeasurementKeys;
+        private string m_cachedMeasurementExpression;
         private SecurityMode m_securityMode;
         private bool m_encryptPayload;
         private bool m_sharedDatabase;
@@ -1055,15 +1055,15 @@ namespace sttp
         DefaultValue(""),
         Description("Defines the set of measurements to be cached and sent to subscribers immediately upon subscription."),
         CustomConfigurationEditor("GSF.TimeSeries.UI.WPF.dll", "GSF.TimeSeries.UI.Editors.MeasurementEditor")]
-        public string CacheMeasurementKeys
+        public string CachedMeasurementExpression
         {
             get
             {
-                return m_cacheMeasurementKeys;
+                return m_cachedMeasurementExpression;
             }
             set
             {
-                m_cacheMeasurementKeys = value;
+                m_cachedMeasurementExpression = value;
             }
         }
 
@@ -1418,10 +1418,10 @@ namespace sttp
             if (settings.TryGetValue("securityMode", out setting))
                 m_securityMode = (SecurityMode)Enum.Parse(typeof(SecurityMode), setting);
 
-            if (settings.TryGetValue("cacheMeasurementKeys", out m_cacheMeasurementKeys))
+            if (settings.TryGetValue("cachedMeasurementExpression", out m_cachedMeasurementExpression))
             {
                 // Create adapter for caching measurements that have a slower refresh interval
-                LatestMeasurementCache cache = new LatestMeasurementCache($"trackLatestMeasurements=true;lagTime=60;leadTime=60;inputMeasurementKeys={{{m_cacheMeasurementKeys}}}");
+                LatestMeasurementCache cache = new LatestMeasurementCache($"trackLatestMeasurements=true;lagTime=60;leadTime=60;inputMeasurementKeys={{{m_cachedMeasurementExpression}}}");
 
                 // Set up its data source first
                 cache.DataSource = DataSource;
@@ -1924,14 +1924,11 @@ namespace sttp
         {
             try
             {
-                string cacheMeasurementKeys;
-                IActionAdapter cache;
-
-                if (Settings.TryGetValue("cacheMeasurementKeys", out cacheMeasurementKeys))
+                if (Settings.TryGetValue("cachedMeasurementExpression", out string cachedMeasurementExpression))
                 {
-                    if (TryGetAdapterByName("LatestMeasurementCache", out cache))
+                    if (TryGetAdapterByName("LatestMeasurementCache", out IActionAdapter cache))
                     {
-                        cache.InputMeasurementKeys = AdapterBase.ParseInputMeasurementKeys(DataSource, true, cacheMeasurementKeys);
+                        cache.InputMeasurementKeys = AdapterBase.ParseInputMeasurementKeys(DataSource, true, cachedMeasurementExpression);
                         m_routingTables.CalculateRoutingTables(null);
                     }
                 }
