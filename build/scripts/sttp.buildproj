@@ -80,7 +80,7 @@
   <Target Name="BeforePrepareSettings">
     <PropertyGroup>
       <!--Must-override setting(s).-->
-      <ProjectName>sttp.net</ProjectName>
+      <ProjectName>sttp.gsfapi</ProjectName>
       
       <VersionMajorChange>None</VersionMajorChange>
       <VersionMinorChange>None</VersionMinorChange>
