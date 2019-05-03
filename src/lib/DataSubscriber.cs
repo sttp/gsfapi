@@ -26,6 +26,20 @@
 //
 //******************************************************************************************************
 
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.IO;
+using System.IO.Compression;
+using System.Linq;
+using System.Net.Security;
+using System.Net.Sockets;
+using System.Security.Cryptography.X509Certificates;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Xml;
 using GSF;
 using GSF.Collections;
 using GSF.Communication;
@@ -44,20 +58,6 @@ using GSF.TimeSeries.Statistics;
 using GSF.TimeSeries.Transport;
 using GSF.Units;
 using sttp.tssc;
-using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.IO;
-using System.IO.Compression;
-using System.Linq;
-using System.Net.Security;
-using System.Net.Sockets;
-using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Text.RegularExpressions;
-using System.Threading;
-using System.Xml;
 using TcpClient = GSF.Communication.TcpClient;
 using UdpClient = GSF.Communication.UdpClient;
 
@@ -1604,7 +1604,7 @@ namespace sttp
                 TcpClient commandChannel = new TcpClient();
 
                 // Initialize default settings
-                commandChannel.PayloadAware = false;
+                commandChannel.PayloadAware = true;
                 commandChannel.PayloadMarker = null;
                 commandChannel.PersistSettings = false;
                 commandChannel.MaxConnectionAttempts = 1;
@@ -1851,7 +1851,7 @@ namespace sttp
         public bool Subscribe(SubscriptionInfo info)
         {
             StringBuilder connectionString = new StringBuilder();
-            AssemblyInfo assemblyInfo = AssemblyInfo.ExecutingAssembly;
+            AssemblyInfo assemblyInfo = new AssemblyInfo(typeof(DataSubscriber).Assembly);
 
             connectionString.AppendFormat("throttled={0};", info.Throttled);
             connectionString.AppendFormat("publishInterval={0};", info.PublishInterval);
@@ -1862,7 +1862,7 @@ namespace sttp
             connectionString.AppendFormat("processingInterval={0};", info.ProcessingInterval);
             connectionString.AppendFormat("useMillisecondResolution={0};", info.UseMillisecondResolution);
             connectionString.AppendFormat("requestNaNValueFilter={0};", info.RequestNaNValueFilter);
-            connectionString.AppendFormat("assemblyInfo={{source=STTP Library for GSF Time-series Framework ({0}); version={1}.{2}.{3}; updatedOn={4:yyyy-MM-dd HH:mm:ss}}};", assemblyInfo.Name, assemblyInfo.Version.Major, assemblyInfo.Version.Minor, assemblyInfo.Version.Build, assemblyInfo.BuildDate);
+            connectionString.AppendFormat("assemblyInfo={{source=STTP Library for GSF Time-series Framework ({0}.dll); version={1}.{2}.{3}; updatedOn={4:yyyy-MM-dd HH:mm:ss}}};", assemblyInfo.Name, assemblyInfo.Version.Major, assemblyInfo.Version.Minor, assemblyInfo.Version.Build, assemblyInfo.BuildDate);
 
             if (!string.IsNullOrWhiteSpace(info.FilterExpression))
                 connectionString.AppendFormat("filterExpression={{{0}}};", info.FilterExpression);

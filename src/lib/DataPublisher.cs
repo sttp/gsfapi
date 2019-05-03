@@ -37,7 +37,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Configuration;
 using System.Data;
 using System.Globalization;
 using System.IO;
@@ -63,7 +62,6 @@ using GSF.Threading;
 using GSF.TimeSeries;
 using GSF.TimeSeries.Adapters;
 using GSF.TimeSeries.Statistics;
-using GSF.TimeSeries.Transport;
 using GSF.Units;
 
 namespace sttp
@@ -2761,6 +2759,17 @@ namespace sttp
                             addSubscription = true;
                         }
 
+                        // Update connection string settings for GSF adapter syntax:
+                        Dictionary<string, string> settings = connectionString.ParseKeyValuePairs();
+
+                        if (settings.TryGetValue("throttled", out setting))
+                            settings["trackLatestMeasurements"] = setting;
+
+                        if (settings.TryGetValue("filterExpression", out setting))
+                            settings["inputMeasurementKeys"] = setting;
+
+                        connectionString = settings.JoinKeyValuePairs();
+
                         // Update client subscription properties
                         subscription.ConnectionString = connectionString;
                         subscription.DataSource = DataSource;
@@ -2775,7 +2784,7 @@ namespace sttp
                         if (subscription.Settings.TryGetValue("dataChannel", out setting))
                         {
                             Socket clientSocket = connection.GetCommandChannelSocket();
-                            Dictionary<string, string> settings = setting.ParseKeyValuePairs();
+                            settings = setting.ParseKeyValuePairs();
                             IPEndPoint localEndPoint = null;
                             string networkInterface = "::0";
 
@@ -2808,116 +2817,116 @@ namespace sttp
                                 connection.DataChannel = new UdpServer($"Port=-1; Clients={connection.IPAddress}:{int.Parse(setting)}; interface={networkInterface}");
                                 connection.DataChannel.Start();
                             }
+                        }
 
-                            // Remove any existing cached publication channel since connection is changing
-                            IServer publicationChannel;
-                            m_clientPublicationChannels.TryRemove(clientID, out publicationChannel);
+                        // Remove any existing cached publication channel since connection is changing
+                        IServer publicationChannel;
+                        m_clientPublicationChannels.TryRemove(clientID, out publicationChannel);
 
-                            // Update payload compression state and strength
-                            subscription.UsePayloadCompression = usePayloadCompression;
+                        // Update payload compression state and strength
+                        subscription.UsePayloadCompression = usePayloadCompression;
 
-                            // Update measurement serialization format type
-                            subscription.UseCompactMeasurementFormat = useCompactMeasurementFormat;
+                        // Update measurement serialization format type
+                        subscription.UseCompactMeasurementFormat = useCompactMeasurementFormat;
 
-                            // Track subscription in connection information
-                            connection.Subscription = subscription;
+                        // Track subscription in connection information
+                        connection.Subscription = subscription;
 
-                            if (addSubscription)
+                        if (addSubscription)
+                        {
+                            // Adding client subscription to collection will not automatically
+                            // initialize it because this class overrides the AutoInitialize property
+                            lock (this)
                             {
-                                // Adding client subscription to collection will not automatically
-                                // initialize it because this class overrides the AutoInitialize property
-                                lock (this)
-                                {
-                                    Add(subscription);
-                                }
-
-                                // Attach to processing completed notification
-                                subscription.BufferBlockRetransmission += subscription_BufferBlockRetransmission;
-                                subscription.ProcessingComplete += subscription_ProcessingComplete;
+                                Add(subscription);
                             }
 
-                            // Make sure temporal support is initialized
-                            OnRequestTemporalSupport();
+                            // Attach to processing completed notification
+                            subscription.BufferBlockRetransmission += subscription_BufferBlockRetransmission;
+                            subscription.ProcessingComplete += subscription_ProcessingComplete;
+                        }
 
-                            // Manually initialize client subscription
-                            // Subscribed signals (i.e., input measurement keys) will be parsed from connection string during
-                            // initialization of adapter. This should also gracefully handle "resubscribing" which can add and
-                            // remove subscribed points since assignment and use of input measurement keys is synchronized
-                            // within the client subscription class
-                            subscription.Initialize();
-                            subscription.Initialized = true;
+                        // Make sure temporal support is initialized
+                        OnRequestTemporalSupport();
 
-                            // Update measurement reporting interval post-initialization
-                            subscription.MeasurementReportingInterval = MeasurementReportingInterval;
+                        // Manually initialize client subscription
+                        // Subscribed signals (i.e., input measurement keys) will be parsed from connection string during
+                        // initialization of adapter. This should also gracefully handle "resubscribing" which can add and
+                        // remove subscribed points since assignment and use of input measurement keys is synchronized
+                        // within the client subscription class
+                        subscription.Initialize();
+                        subscription.Initialized = true;
 
-                            // Send updated signal index cache to client with validated rights of the selected input measurement keys
-                            byte[] serializedSignalIndexCache = SerializeSignalIndexCache(clientID, subscription.SignalIndexCache);
-                            SendClientResponse(clientID, ServerResponse.UpdateSignalIndexCache, ServerCommand.Subscribe, serializedSignalIndexCache);
+                        // Update measurement reporting interval post-initialization
+                        subscription.MeasurementReportingInterval = MeasurementReportingInterval;
 
-                            // Send new or updated cipher keys
-                            if (connection.Authenticated && m_encryptPayload)
-                                connection.RotateCipherKeys();
+                        // Send updated signal index cache to client with validated rights of the selected input measurement keys
+                        byte[] serializedSignalIndexCache = SerializeSignalIndexCache(clientID, subscription.SignalIndexCache);
+                        SendClientResponse(clientID, ServerResponse.UpdateSignalIndexCache, ServerCommand.Subscribe, serializedSignalIndexCache);
 
-                            // The subscription adapter must be started before sending
-                            // cached measurements or else they will be ignored
-                            subscription.Start();
+                        // Send new or updated cipher keys
+                        if (connection.Authenticated && m_encryptPayload)
+                            connection.RotateCipherKeys();
 
-                            // If client has subscribed to any cached measurements, queue them up for the client
-                            if (TryGetAdapterByName("LatestMeasurementCache", out IActionAdapter cacheAdapter))
+                        // The subscription adapter must be started before sending
+                        // cached measurements or else they will be ignored
+                        subscription.Start();
+
+                        // If client has subscribed to any cached measurements, queue them up for the client
+                        if (TryGetAdapterByName("LatestMeasurementCache", out IActionAdapter cacheAdapter))
+                        {
+                            LatestMeasurementCache cache = cacheAdapter as LatestMeasurementCache;
+
+                            if ((object)cache != null)
                             {
-                                LatestMeasurementCache cache = cacheAdapter as LatestMeasurementCache;
-
-                                if ((object)cache != null)
-                                {
-                                    IEnumerable<IMeasurement> cachedMeasurements = cache.LatestMeasurements.Where(measurement => subscription.InputMeasurementKeys.Any(key => key.SignalID == measurement.ID));
-                                    subscription.QueueMeasurementsForProcessing(cachedMeasurements);
-                                }
+                                IEnumerable<IMeasurement> cachedMeasurements = cache.LatestMeasurements.Where(measurement => subscription.InputMeasurementKeys.Any(key => key.SignalID == measurement.ID));
+                                subscription.QueueMeasurementsForProcessing(cachedMeasurements);
                             }
+                        }
 
-                            // Spawn routing table recalculation after sending cached measurements--
-                            // there is a bit of a race condition that could cause the subscriber to
-                            // miss some data points that arrive during the routing table calculation,
-                            // but data will not be provided out of order (except maybe on resubscribe)
-                            OnInputMeasurementKeysUpdated();
-                            m_routingTables.CalculateRoutingTables(null);
+                        // Spawn routing table recalculation after sending cached measurements--
+                        // there is a bit of a race condition that could cause the subscriber to
+                        // miss some data points that arrive during the routing table calculation,
+                        // but data will not be provided out of order (except maybe on resubscribe)
+                        OnInputMeasurementKeysUpdated();
+                        m_routingTables.CalculateRoutingTables(null);
 
-                            // Notify any direct publisher consumers about the new client connection
-                            try
-                            {
-                                OnClientConnected(connection.SubscriberID, connection.ConnectionID, connection.SubscriberInfo);
-                            }
-                            catch (Exception ex)
-                            {
-                                OnProcessException(MessageLevel.Info, new InvalidOperationException($"ClientConnected event handler exception: {ex.Message}", ex));
-                            }
+                        // Notify any direct publisher consumers about the new client connection
+                        try
+                        {
+                            OnClientConnected(connection.SubscriberID, connection.ConnectionID, connection.SubscriberInfo);
+                        }
+                        catch (Exception ex)
+                        {
+                            OnProcessException(MessageLevel.Info, new InvalidOperationException($"ClientConnected event handler exception: {ex.Message}", ex));
+                        }
 
-                            // Send success response
-                            if (subscription.TemporalConstraintIsDefined())
-                            {
-                                message = $"Client subscribed as {(useCompactMeasurementFormat ? "" : "non-")}compact with a temporal constraint.";
-                            }
-                            else
-                            {
-                                if ((object)subscription.InputMeasurementKeys != null)
-                                    message = $"Client subscribed as {(useCompactMeasurementFormat ? "" : "non-")}compact with {subscription.InputMeasurementKeys.Length} signals.";
-                                else
-                                    message = $"Client subscribed as {(useCompactMeasurementFormat ? "" : "non-")}compact, but no signals were specified. Make sure \"inputMeasurementKeys\" setting is properly defined.";
-                            }
-
-                            connection.IsSubscribed = true;
-                            SendClientResponse(clientID, ServerResponse.Succeeded, ServerCommand.Subscribe, message);
-                            OnStatusMessage(MessageLevel.Info, message);
+                        // Send success response
+                        if (subscription.TemporalConstraintIsDefined())
+                        {
+                            message = $"Client subscribed as {(useCompactMeasurementFormat ? "" : "non-")}compact with a temporal constraint.";
                         }
                         else
                         {
-                            if (byteLength > 0) //-V3022
-                                message = "Not enough buffer was provided to parse client data subscription.";
+                            if ((object)subscription.InputMeasurementKeys != null)
+                                message = $"Client subscribed as {(useCompactMeasurementFormat ? "" : "non-")}compact with {subscription.InputMeasurementKeys.Length} signals.";
                             else
-                                message = "Cannot initialize client data subscription without a connection string.";
-
-                            SendClientResponse(clientID, ServerResponse.Failed, ServerCommand.Subscribe, message);
-                            OnProcessException(MessageLevel.Warning, new InvalidOperationException(message));
+                                message = $"Client subscribed as {(useCompactMeasurementFormat ? "" : "non-")}compact, but no signals were specified. Make sure \"inputMeasurementKeys\" setting is properly defined.";
                         }
+
+                        connection.IsSubscribed = true;
+                        SendClientResponse(clientID, ServerResponse.Succeeded, ServerCommand.Subscribe, message);
+                        OnStatusMessage(MessageLevel.Info, message);
+                    }
+                    else
+                    {
+                        if (byteLength > 0) //-V3022
+                            message = "Not enough buffer was provided to parse client data subscription.";
+                        else
+                            message = "Cannot initialize client data subscription without a connection string.";
+
+                        SendClientResponse(clientID, ServerResponse.Failed, ServerCommand.Subscribe, message);
+                        OnProcessException(MessageLevel.Warning, new InvalidOperationException(message));
                     }
                 }
                 else
