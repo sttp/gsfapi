@@ -1862,7 +1862,7 @@ namespace sttp
             connectionString.AppendFormat("processingInterval={0};", info.ProcessingInterval);
             connectionString.AppendFormat("useMillisecondResolution={0};", info.UseMillisecondResolution);
             connectionString.AppendFormat("requestNaNValueFilter={0};", info.RequestNaNValueFilter);
-            connectionString.AppendFormat("assemblyInfo={{source=STTP Library for GSF Time-series Framework ({0}.dll); version={1}.{2}.{3}; updatedOn={4:yyyy-MM-dd HH:mm:ss}}};", assemblyInfo.Name, assemblyInfo.Version.Major, assemblyInfo.Version.Minor, assemblyInfo.Version.Build, assemblyInfo.BuildDate);
+            connectionString.AppendFormat("assemblyInfo={{source=STTP GSF Library ({0}.dll); version={1}.{2}.{3}; updatedOn={4:yyyy-MM-dd HH:mm:ss}}};", assemblyInfo.Name, assemblyInfo.Version.Major, assemblyInfo.Version.Minor, assemblyInfo.Version.Build, assemblyInfo.BuildDate);
 
             if (!string.IsNullOrWhiteSpace(info.FilterExpression))
                 connectionString.AppendFormat("filterExpression={{{0}}};", info.FilterExpression);
