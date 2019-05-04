@@ -1457,6 +1457,7 @@ namespace sttp
                 commandChannel.ConfigurationString = "port=6165";
                 commandChannel.PayloadAware = true;
                 commandChannel.PayloadMarker = null;
+                commandChannel.PayloadEndianOrder = EndianOrder.BigEndian;
                 commandChannel.RequireClientCertificate = true;
                 commandChannel.CertificateChecker = m_certificateChecker;
                 commandChannel.PersistSettings = true;
@@ -1475,6 +1476,7 @@ namespace sttp
                 commandChannel.ConfigurationString = "port=6165";
                 commandChannel.PayloadAware = true;
                 commandChannel.PayloadMarker = null;
+                commandChannel.PayloadEndianOrder = EndianOrder.BigEndian;
                 commandChannel.PersistSettings = true;
                 commandChannel.NoDelay = true;
 

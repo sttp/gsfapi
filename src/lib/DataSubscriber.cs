@@ -1586,6 +1586,7 @@ namespace sttp
                 // Initialize default settings
                 commandChannel.PayloadAware = true;
                 commandChannel.PayloadMarker = null;
+                commandChannel.PayloadEndianOrder = EndianOrder.BigEndian;
                 commandChannel.PersistSettings = false;
                 commandChannel.MaxConnectionAttempts = 1;
                 commandChannel.CertificateFile = FilePath.GetAbsolutePath(m_localCertificate);
@@ -1606,6 +1607,7 @@ namespace sttp
                 // Initialize default settings
                 commandChannel.PayloadAware = true;
                 commandChannel.PayloadMarker = null;
+                commandChannel.PayloadEndianOrder = EndianOrder.BigEndian;
                 commandChannel.PersistSettings = false;
                 commandChannel.MaxConnectionAttempts = 1;
                 commandChannel.ReceiveBufferSize = bufferSize;
