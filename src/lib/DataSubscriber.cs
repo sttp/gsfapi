@@ -459,7 +459,7 @@ namespace sttp
         private long m_totalBytesReceived;
         private long m_lastMissingCacheWarning;
         private Guid m_nodeID;
-        private int m_gatewayProtocolID;
+        private int m_sttpProtocolID;
         private SecurityMode m_securityMode;
         private bool m_useMillisecondResolution;
         private bool m_requestNaNValueFilter;
@@ -3120,8 +3120,8 @@ namespace sttp
                             m_nodeID = Guid.Parse(command.ExecuteScalar($"SELECT NodeID FROM IaonInputAdapter WHERE ID = {(int)ID}", m_metadataSynchronizationTimeout).ToString());
 
                         // Determine the protocol record auto-inc ID value for the gateway transport protocol (GEP) - this value is also cached since it shouldn't change for the lifetime of this class
-                        if (m_gatewayProtocolID == 0)
-                            m_gatewayProtocolID = int.Parse(command.ExecuteScalar("SELECT ID FROM Protocol WHERE Acronym='GatewayTransport'", m_metadataSynchronizationTimeout).ToString());
+                        if (m_sttpProtocolID == 0)
+                            m_sttpProtocolID = int.Parse(command.ExecuteScalar("SELECT ID FROM Protocol WHERE Acronym='STTP'", m_metadataSynchronizationTimeout).ToString());
 
                         // Ascertain total number of actions required for all meta-data synchronization so some level feed back can be provided on progress
                         InitSyncProgress(metadata.Tables.Cast<DataTable>().Select(dataTable => (long)dataTable.Rows.Count).Sum() + 3);
@@ -3270,7 +3270,7 @@ namespace sttp
                                     if (Convert.ToInt32(command.ExecuteScalar(deviceExistsSql, m_metadataSynchronizationTimeout, database.Guid(uniqueID))) == 0)
                                     {
                                         // Insert new device record
-                                        command.ExecuteNonQuery(insertDeviceSql, m_metadataSynchronizationTimeout, database.Guid(m_nodeID), parentID, historianID, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"), m_gatewayProtocolID, row.ConvertField<int>("FramesPerSecond"),
+                                        command.ExecuteNonQuery(insertDeviceSql, m_metadataSynchronizationTimeout, database.Guid(m_nodeID), parentID, historianID, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"), m_sttpProtocolID, row.ConvertField<int>("FramesPerSecond"),
                                                                 m_internal ? (object)DBNull.Value : string.IsNullOrEmpty(row.Field<string>("ParentAcronym")) ? sourcePrefix + row.Field<string>("Acronym") : sourcePrefix + row.Field<string>("ParentAcronym"), accessID, longitude, latitude, contactList.JoinKeyValuePairs());
 
                                         // Guids are normally auto-generated during insert - after insertion update the Guid so that it matches the source data. Most of the database
@@ -3290,7 +3290,7 @@ namespace sttp
                                         originalSource = m_internal ? (object)DBNull.Value : string.IsNullOrEmpty(row.Field<string>("ParentAcronym")) ? sourcePrefix + row.Field<string>("Acronym") : sourcePrefix + row.Field<string>("ParentAcronym");
 
                                         // Update existing device record
-                                        command.ExecuteNonQuery(updateDeviceSql, m_metadataSynchronizationTimeout, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"), originalSource, m_gatewayProtocolID, row.ConvertField<int>("FramesPerSecond"), historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Guid(uniqueID));
+                                        command.ExecuteNonQuery(updateDeviceSql, m_metadataSynchronizationTimeout, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"), originalSource, m_sttpProtocolID, row.ConvertField<int>("FramesPerSecond"), historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Guid(uniqueID));
                                     }
                                 }
 
