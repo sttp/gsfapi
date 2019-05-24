@@ -3119,7 +3119,7 @@ namespace sttp
                         if (m_nodeID == Guid.Empty)
                             m_nodeID = Guid.Parse(command.ExecuteScalar($"SELECT NodeID FROM IaonInputAdapter WHERE ID = {(int)ID}", m_metadataSynchronizationTimeout).ToString());
 
-                        // Determine the protocol record auto-inc ID value for the gateway transport protocol (GEP) - this value is also cached since it shouldn't change for the lifetime of this class
+                        // Determine the protocol record auto-inc ID value for STTP - this value is also cached since it shouldn't change for the lifetime of this class
                         if (m_sttpProtocolID == 0)
                             m_sttpProtocolID = int.Parse(command.ExecuteScalar("SELECT ID FROM Protocol WHERE Acronym='STTP'", m_metadataSynchronizationTimeout).ToString());
 
@@ -3190,7 +3190,6 @@ namespace sttp
                             bool interconnectionNameFieldExists = deviceDetailColumns.Contains("InterconnectionName");
                             bool updatedOnFieldExists = deviceDetailColumns.Contains("UpdatedOn");
 
-                            // Older versions of GEP did not include the AccessID field, so this is treated as optional
                             int accessID = 0;
 
                             foreach (DataRow row in deviceRows)
