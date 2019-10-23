@@ -1438,16 +1438,9 @@ namespace sttp
             base.Initialize();
 
             Dictionary<string, string> settings = Settings;
-            string setting;
-
-            OperationalModes operationalModes;
-            CompressionModes compressionModes;
-            int metadataSynchronizationTimeout;
-            double interval;
-            int bufferSize;
 
             // See if user has opted for different operational modes
-            if (settings.TryGetValue("operationalModes", out setting) && Enum.TryParse(setting, true, out operationalModes))
+            if (settings.TryGetValue("operationalModes", out string setting) && Enum.TryParse(setting, true, out OperationalModes operationalModes))
                 OperationalModes = operationalModes;
 
             // Set the security mode if explicitly defined
@@ -1455,7 +1448,7 @@ namespace sttp
                 m_securityMode = SecurityMode.None;
 
             // Apply gateway compression mode to operational mode flags
-            if (settings.TryGetValue("compressionModes", out setting) && Enum.TryParse(setting, true, out compressionModes))
+            if (settings.TryGetValue("compressionModes", out setting) && Enum.TryParse(setting, true, out CompressionModes compressionModes))
                 CompressionModes = compressionModes;
 
             // Check if output measurements should be filtered to only those belonging to the subscriber
@@ -1499,7 +1492,7 @@ namespace sttp
                 ReceiveExternalMetadata = setting.ParseBoolean();
 
             // Check if user has defined a meta-data synchronization timeout
-            if (settings.TryGetValue("metadataSynchronizationTimeout", out setting) && int.TryParse(setting, out metadataSynchronizationTimeout))
+            if (settings.TryGetValue("metadataSynchronizationTimeout", out setting) && int.TryParse(setting, out int metadataSynchronizationTimeout))
                 m_metadataSynchronizationTimeout = metadataSynchronizationTimeout;
 
             // Check if user has defined a flag for using a transaction during meta-data synchronization
@@ -1546,11 +1539,11 @@ namespace sttp
                 m_useSourcePrefixNames = setting.ParseBoolean();
 
             // Define data loss interval
-            if (settings.TryGetValue("dataLossInterval", out setting) && double.TryParse(setting, out interval))
+            if (settings.TryGetValue("dataLossInterval", out setting) && double.TryParse(setting, out double interval))
                 DataLossInterval = interval;
 
             // Define buffer size
-            if (!settings.TryGetValue("bufferSize", out setting) || !int.TryParse(setting, out bufferSize))
+            if (!settings.TryGetValue("bufferSize", out setting) || !int.TryParse(setting, out int bufferSize))
                 bufferSize = ClientBase.DefaultReceiveBufferSize;
 
             if (settings.TryGetValue("useLocalClockAsRealTime", out setting))
@@ -1755,9 +1748,7 @@ namespace sttp
             // measurements that could now be applicable as desired output measurements.
             if (!initialCall)
             {
-                string setting;
-
-                if (Settings.TryGetValue("outputMeasurements", out setting))
+                if (Settings.TryGetValue("outputMeasurements", out string setting))
                     OutputMeasurements = ParseOutputMeasurements(DataSource, true, setting);
 
                 OutputSourceIDs = OutputSourceIDs;
@@ -2006,10 +1997,9 @@ namespace sttp
                     // Parse connection string to see if it contains a data channel definition
                     Dictionary<string, string> settings = connectionString.ParseKeyValuePairs();
                     UdpClient dataChannel = null;
-                    string setting;
 
                     // Track specified time inclusion for later deserialization
-                    if (settings.TryGetValue("includeTime", out setting))
+                    if (settings.TryGetValue("includeTime", out string setting))
                         m_includeTime = setting.ParseBoolean();
                     else
                         m_includeTime = true;
@@ -2391,7 +2381,7 @@ namespace sttp
         public override string GetShortStatus(int maxLength)
         {
             if ((object)m_commandChannel != null && m_commandChannel.CurrentState == ClientState.Connected)
-                return $"Subscriber is connected and receiving data points".CenterText(maxLength);
+                return "Subscriber is connected and receiving data points".CenterText(maxLength);
 
             return "Subscriber is not connected.".CenterText(maxLength);
         }
@@ -2726,7 +2716,6 @@ namespace sttp
                             uint sequenceNumber = BigEndian.ToUInt32(buffer, responseIndex);
                             int cacheIndex = (int)(sequenceNumber - m_expectedBufferBlockSequenceNumber);
                             BufferBlockMeasurement bufferBlockMeasurement;
-                            MeasurementKey measurementKey;
                             int signalIndex;
 
                             // Check if this buffer block has already been processed (e.g., mistaken retransmission due to timeout)
@@ -2738,7 +2727,7 @@ namespace sttp
                                 // Get measurement key from signal index cache
                                 signalIndex = BigEndian.ToUInt16(buffer, responseIndex + 4);
 
-                                if (!m_signalIndexCache.Reference.TryGetValue(signalIndex, out measurementKey))
+                                if (!m_signalIndexCache.Reference.TryGetValue(signalIndex, out MeasurementKey measurementKey))
                                     throw new InvalidOperationException("Failed to find associated signal identification for runtime ID " + signalIndex);
 
                                 // Skip the sequence number and signal index when creating the buffer block measurement
@@ -2939,12 +2928,8 @@ namespace sttp
 
             Measurement measurement;
             MeasurementKey key = null;
-            int id;
-            long time;
-            uint quality;
-            float value;
 
-            while (m_tsscDecoder.TryGetMeasurement(out id, out time, out quality, out value))
+            while (m_tsscDecoder.TryGetMeasurement(out int id, out long time, out uint quality, out float value))
             {
                 if (m_signalIndexCache?.Reference.TryGetValue(id, out key) ?? false)
                 {
@@ -3024,13 +3009,24 @@ namespace sttp
 
             if ((object)outputMeasurementKeys != null && outputMeasurementKeys.Length > 0)
             {
-                foreach (MeasurementKey measurementKey in outputMeasurementKeys)
-                {
-                    if (filterExpression.Length > 0)
-                        filterExpression.Append(';');
 
-                    // Subscribe by associated Guid...
-                    filterExpression.Append(measurementKey.SignalID);
+                if (Settings.TryGetValue("outputMeasurements", out string setting))
+                {
+                    // Subscribing with original filter expression
+                    filterExpression.Append(setting);
+                }
+                else
+                {
+                    OnStatusMessage(MessageLevel.Warning, "Cannot find \"outputMeasurements\" in connection string, executing subscription with Guid list");
+
+                    foreach (MeasurementKey measurementKey in outputMeasurementKeys)
+                    {
+                        if (filterExpression.Length > 0)
+                            filterExpression.Append(';');
+
+                        // Subscribe by associated Guid...
+                        filterExpression.Append(measurementKey.SignalID);
+                    }
                 }
 
                 // Start unsynchronized subscription
@@ -3362,13 +3358,12 @@ namespace sttp
 
                             // Define local signal type ID deletion exclusion set
                             List<int> excludedSignalTypeIDs = new List<int>();
-                            int signalTypeID;
 
                             // We are intentionally ignoring CALC and ALRM signals during measurement deletion since if you have subscribed to a device and subsequently created local
                             // calculations and alarms associated with this device, these signals are locally owned and not part of the publisher subscription stream. As a result any
                             // CALC or ALRM measurements that are created at source and then removed could be orphaned in subscriber. The best fix would be to have a simple flag that
                             // clearly designates that a measurement was created locally and is not part of the remote synchronization set.
-                            if (signalTypeIDs.TryGetValue("CALC", out signalTypeID))
+                            if (signalTypeIDs.TryGetValue("CALC", out int signalTypeID))
                                 excludedSignalTypeIDs.Add(signalTypeID);
 
                             if (signalTypeIDs.TryGetValue("ALRM", out signalTypeID))
@@ -3609,18 +3604,14 @@ namespace sttp
                             // Once all phasor records have been processed, handle updating of destination phasor IDs
                             foreach (KeyValuePair<int, int> item in sourceToDestinationIDMap)
                             {
-                                int sourcePhasorID, destinationPhasorID;
-
-                                if (metadataToDatabaseIDMap.TryGetValue(item.Key, out sourcePhasorID) && metadataToDatabaseIDMap.TryGetValue(item.Value, out destinationPhasorID))
+                                if (metadataToDatabaseIDMap.TryGetValue(item.Key, out int sourcePhasorID) && metadataToDatabaseIDMap.TryGetValue(item.Value, out int destinationPhasorID))
                                     command.ExecuteNonQuery(updateDestinationPhasorIDSql, m_metadataSynchronizationTimeout, destinationPhasorID, sourcePhasorID);
                             }
 
                             // Remove any phasor records associated with existing devices in this session but no longer exist in the meta-data
                             foreach (int id in deviceIDs.Values)
                             {
-                                List<int> sourceIndicies;
-
-                                if (definedSourceIndicies.TryGetValue(id, out sourceIndicies))
+                                if (definedSourceIndicies.TryGetValue(id, out List<int> sourceIndicies))
                                     command.ExecuteNonQuery(deletePhasorSql + $" AND SourceIndex NOT IN ({string.Join(",", sourceIndicies)})", m_metadataSynchronizationTimeout, id);
                                 else
                                     command.ExecuteNonQuery(deletePhasorSql, m_metadataSynchronizationTimeout, id);
@@ -3895,7 +3886,6 @@ namespace sttp
             ISet<string> definedDeviceNames;
 
             DataSet dataSource;
-            Guid signalID;
 
             try
             {
@@ -3958,7 +3948,7 @@ namespace sttp
 
                             foreach (DataRow measurementRow in measurementLookup.LookupByDeviceNameNoStat(deviceName))
                             {
-                                if (Guid.TryParse(measurementRow["SignalID"].ToNonNullString(), out signalID))
+                                if (Guid.TryParse(measurementRow["SignalID"].ToNonNullString(), out Guid signalID))
                                 {
                                     // In some rare cases duplicate signal ID's have been encountered (likely bad configuration),
                                     // as a result we use a GetOrAdd instead of an Add
