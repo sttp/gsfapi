@@ -247,13 +247,7 @@ namespace sttp
         /// <summary>
         /// Gets flag that determines if time is serialized into measurement binary image.
         /// </summary>
-        public bool IncludeTime
-        {
-            get
-            {
-                return m_includeTime;
-            }
-        }
+        public bool IncludeTime => m_includeTime;
 
         /// <summary>
         /// Gets the length of the <see cref="CompactMeasurement"/>.
@@ -306,24 +300,12 @@ namespace sttp
         /// <summary>
         /// Gets offset compressed millisecond-resolution 2-byte timestamp.
         /// </summary>
-        public ushort TimestampC2
-        {
-            get
-            {
-                return (ushort)(Timestamp - m_baseTimeOffsets[m_timeIndex]).ToMilliseconds();
-            }
-        }
+        public ushort TimestampC2 => (ushort)(Timestamp - m_baseTimeOffsets[m_timeIndex]).ToMilliseconds();
 
         /// <summary>
         /// Gets offset compressed tick-resolution 4-byte timestamp.
         /// </summary>
-        public uint TimestampC4
-        {
-            get
-            {
-                return (uint)((long)Timestamp - m_baseTimeOffsets[m_timeIndex]);
-            }
-        }
+        public uint TimestampC4 => (uint)((long)Timestamp - m_baseTimeOffsets[m_timeIndex]);
 
         /// <summary>
         /// Gets or sets byte level compact state flags with encoded time index and base time offset bits.
@@ -358,16 +340,12 @@ namespace sttp
         /// </summary>
         public int RuntimeID
         {
-            get
-            {
-                return m_signalIndexCache.GetSignalIndex(Key);
-            }
+            get => m_signalIndexCache.GetSignalIndex(Key);
             set
             {
                 // Attempt to restore signal identification
-                MeasurementKey key;
 
-                if (m_signalIndexCache.Reference.TryGetValue(value, out key))
+                if (m_signalIndexCache.Reference.TryGetValue(value, out MeasurementKey key))
                 {
                     Metadata = key.Metadata;
                 }

@@ -41,7 +41,7 @@ namespace sttp
         #region [ Members ]
 
         // Fields
-        private Func<Guid, bool> m_hasRightsFunc;
+        private readonly Func<Guid, bool> m_hasRightsFunc;
 
         #endregion
 
@@ -64,13 +64,7 @@ namespace sttp
         /// <summary>
         /// Gets the function that determines whether the subscriber has rights to a given signal.
         /// </summary>
-        public Func<Guid, bool> HasRightsFunc
-        {
-            get
-            {
-                return m_hasRightsFunc;
-            }
-        }
+        public Func<Guid, bool> HasRightsFunc => m_hasRightsFunc;
 
         #endregion
 

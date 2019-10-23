@@ -107,7 +107,7 @@ namespace sttp.tssc
         /// <returns>true if successful, false otherwise.</returns>
         public unsafe bool TryGetMeasurement(out int id, out long timestamp, out uint quality, out float value)
         {
-            TsscPointMetadata nextPoint = null;
+            TsscPointMetadata nextPoint;
 
             if (m_position == m_lastPosition && BitStreamIsEmpty)
             {
@@ -181,7 +181,8 @@ namespace sttp.tssc
 
             //Since value will almost always change, 
             //This is not put inside a function call.
-            uint valueRaw = 0;
+            uint valueRaw;
+
             if (code == TsscCodeWords.Value1)
             {
                 valueRaw = nextPoint.PrevValue1;

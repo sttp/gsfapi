@@ -199,10 +199,7 @@ namespace sttp
         /// </summary>
         public UdpServer DataChannel
         {
-            get
-            {
-                return m_dataChannel;
-            }
+            get => m_dataChannel;
             set
             {
                 m_connectionEstablished = (object)value != null;
@@ -277,14 +274,8 @@ namespace sttp
         /// </summary>
         public bool IsSubscribed
         {
-            get
-            {
-                return m_isSubscribed;
-            }
-            set
-            {
-                m_isSubscribed = value;
-            }
+            get => m_isSubscribed;
+            set => m_isSubscribed = value;
         }
 
         /// <summary>
@@ -299,14 +290,8 @@ namespace sttp
             // Users have encountered issues when a client disconnects where many thousands of exceptions get thrown, every 3ms.
             // This can cause the entire system to become unresponsive and causes all devices to reset (no data).
             // System only recovers when the client disconnect process finally executes as this can take some time to occur.
-            get
-            {
-                return m_clientNotFoundExceptionExceptionOccurred;
-            }
-            set
-            {
-                m_clientNotFoundExceptionExceptionOccurred = value;
-            }
+            get => m_clientNotFoundExceptionExceptionOccurred;
+            set => m_clientNotFoundExceptionExceptionOccurred = value;
         }
 
         /// <summary>
@@ -314,14 +299,8 @@ namespace sttp
         /// </summary>
         public Guid SubscriberID
         {
-            get
-            {
-                return m_subscriberID;
-            }
-            set
-            {
-                m_subscriberID = value;
-            }
+            get => m_subscriberID;
+            set => m_subscriberID = value;
         }
 
         /// <summary>
@@ -329,14 +308,8 @@ namespace sttp
         /// </summary>
         public string SubscriberAcronym
         {
-            get
-            {
-                return m_subscriberAcronym;
-            }
-            set
-            {
-                m_subscriberAcronym = value;
-            }
+            get => m_subscriberAcronym;
+            set => m_subscriberAcronym = value;
         }
 
         /// <summary>
@@ -344,14 +317,8 @@ namespace sttp
         /// </summary>
         public string SubscriberName
         {
-            get
-            {
-                return m_subscriberName;
-            }
-            set
-            {
-                m_subscriberName = value;
-            }
+            get => m_subscriberName;
+            set => m_subscriberName = value;
         }
 
         /// <summary>
@@ -395,14 +362,8 @@ namespace sttp
         /// </summary>
         public bool Authenticated
         {
-            get
-            {
-                return m_authenticated;
-            }
-            set
-            {
-                m_authenticated = value;
-            }
+            get => m_authenticated;
+            set => m_authenticated = value;
         }
 
         ///// <summary>
@@ -440,14 +401,8 @@ namespace sttp
         /// </summary>
         public List<IPAddress> ValidIPAddresses
         {
-            get
-            {
-                return m_validIPAddresses;
-            }
-            set
-            {
-                m_validIPAddresses = value;
-            }
+            get => m_validIPAddresses;
+            set => m_validIPAddresses = value;
         }
 
         /// <summary>
@@ -460,10 +415,7 @@ namespace sttp
         /// </summary>
         public SubscriberAdapter Subscription
         {
-            get
-            {
-                return m_subscription;
-            }
+            get => m_subscription;
             set
             {
                 m_subscription = value;
@@ -484,10 +436,7 @@ namespace sttp
         /// </summary>
         public OperationalModes OperationalModes
         {
-            get
-            {
-                return m_operationalModes;
-            }
+            get => m_operationalModes;
             set
             {
                 m_operationalModes = value;
@@ -731,13 +680,10 @@ namespace sttp
             TcpServer tcpCommandChannel = m_commandChannel as TcpServer;
             TlsServer tlsCommandChannel = m_commandChannel as TlsServer;
 
-            TransportProvider<Socket> tcpProvider;
-            TransportProvider<TlsServer.TlsSocket> tlsProvider;
-
-            if ((object)tcpCommandChannel != null && tcpCommandChannel.TryGetClient(m_clientID, out tcpProvider))
+            if ((object)tcpCommandChannel != null && tcpCommandChannel.TryGetClient(m_clientID, out TransportProvider<Socket> tcpProvider))
                 return tcpProvider.Provider;
 
-            if ((object)tlsCommandChannel != null && tlsCommandChannel.TryGetClient(m_clientID, out tlsProvider))
+            if ((object)tlsCommandChannel != null && tlsCommandChannel.TryGetClient(m_clientID, out TransportProvider<TlsServer.TlsSocket> tlsProvider))
                 return tlsProvider.Provider.Socket;
 
             return null;

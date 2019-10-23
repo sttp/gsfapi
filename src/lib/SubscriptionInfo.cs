@@ -89,14 +89,8 @@ namespace sttp
         /// </summary>
         public virtual string FilterExpression
         {
-            get
-            {
-                return m_filterExpression;
-            }
-            set
-            {
-                m_filterExpression = value;
-            }
+            get => m_filterExpression;
+            set => m_filterExpression = value;
         }
 
         /// <summary>
@@ -106,14 +100,8 @@ namespace sttp
         /// </summary>
         public virtual bool UseCompactMeasurementFormat
         {
-            get
-            {
-                return m_useCompactMeasurementFormat;
-            }
-            set
-            {
-                m_useCompactMeasurementFormat = value;
-            }
+            get => m_useCompactMeasurementFormat;
+            set => m_useCompactMeasurementFormat = value;
         }
 
         /// <summary>
@@ -122,14 +110,8 @@ namespace sttp
         /// </summary>
         public virtual bool UdpDataChannel
         {
-            get
-            {
-                return m_udpDataChannel;
-            }
-            set
-            {
-                m_udpDataChannel = value;
-            }
+            get => m_udpDataChannel;
+            set => m_udpDataChannel = value;
         }
 
         /// <summary>
@@ -139,14 +121,8 @@ namespace sttp
         /// </summary>
         public virtual int DataChannelLocalPort
         {
-            get
-            {
-                return m_dataChannelLocalPort;
-            }
-            set
-            {
-                m_dataChannelLocalPort = value;
-            }
+            get => m_dataChannelLocalPort;
+            set => m_dataChannelLocalPort = value;
         }
 
         /// <summary>
@@ -155,14 +131,8 @@ namespace sttp
         /// </summary>
         public virtual double LagTime
         {
-            get
-            {
-                return m_lagTime;
-            }
-            set
-            {
-                m_lagTime = value;
-            }
+            get => m_lagTime;
+            set => m_lagTime = value;
         }
 
         /// <summary>
@@ -171,14 +141,8 @@ namespace sttp
         /// </summary>
         public virtual double LeadTime
         {
-            get
-            {
-                return m_leadTime;
-            }
-            set
-            {
-                m_leadTime = value;
-            }
+            get => m_leadTime;
+            set => m_leadTime = value;
         }
 
         /// <summary>
@@ -188,14 +152,8 @@ namespace sttp
         /// </summary>
         public virtual bool UseLocalClockAsRealTime
         {
-            get
-            {
-                return m_useLocalClockAsRealTime;
-            }
-            set
-            {
-                m_useLocalClockAsRealTime = value;
-            }
+            get => m_useLocalClockAsRealTime;
+            set => m_useLocalClockAsRealTime = value;
         }
 
         /// <summary>
@@ -208,14 +166,8 @@ namespace sttp
         /// </remarks>
         public virtual bool UseMillisecondResolution
         {
-            get
-            {
-                return m_useMillisecondResolution;
-            }
-            set
-            {
-                m_useMillisecondResolution = value;
-            }
+            get => m_useMillisecondResolution;
+            set => m_useMillisecondResolution = value;
         }
 
         /// <summary>
@@ -224,14 +176,8 @@ namespace sttp
         /// </summary>
         public virtual bool RequestNaNValueFilter
         {
-            get
-            {
-                return m_requestNaNValueFilter;
-            }
-            set
-            {
-                m_requestNaNValueFilter = value;
-            }
+            get => m_requestNaNValueFilter;
+            set => m_requestNaNValueFilter = value;
         }
 
         /// <summary>
@@ -282,14 +228,8 @@ namespace sttp
         /// </remarks>
         public virtual string StartTime
         {
-            get
-            {
-                return m_startTime;
-            }
-            set
-            {
-                m_startTime = value;
-            }
+            get => m_startTime;
+            set => m_startTime = value;
         }
 
         /// <summary>
@@ -340,14 +280,8 @@ namespace sttp
         /// </remarks>
         public virtual string StopTime
         {
-            get
-            {
-                return m_stopTime;
-            }
-            set
-            {
-                m_stopTime = value;
-            }
+            get => m_stopTime;
+            set => m_stopTime = value;
         }
 
         /// <summary>
@@ -356,14 +290,8 @@ namespace sttp
         /// </summary>
         public virtual string ConstraintParameters
         {
-            get
-            {
-                return m_constraintParameters;
-            }
-            set
-            {
-                m_constraintParameters = value;
-            }
+            get => m_constraintParameters;
+            set => m_constraintParameters = value;
         }
 
         /// <summary>
@@ -379,14 +307,8 @@ namespace sttp
         /// </remarks>
         public virtual int ProcessingInterval
         {
-            get
-            {
-                return m_processingInterval;
-            }
-            set
-            {
-                m_processingInterval = value;
-            }
+            get => m_processingInterval;
+            set => m_processingInterval = value;
         }
 
         /// <summary>
@@ -395,14 +317,8 @@ namespace sttp
         /// </summary>
         public bool Throttled
         {
-            get
-            {
-                return m_throttled;
-            }
-            set
-            {
-                m_throttled = value;
-            }
+            get => m_throttled;
+            set => m_throttled = value;
         }
 
         /// <summary>
@@ -411,14 +327,8 @@ namespace sttp
         /// </summary>
         public double PublishInterval
         {
-            get
-            {
-                return m_publishInterval;
-            }
-            set
-            {
-                m_publishInterval = value;
-            }
+            get => m_publishInterval;
+            set => m_publishInterval = value;
         }
 
         /// <summary>
@@ -428,14 +338,8 @@ namespace sttp
         /// </summary>
         public bool IncludeTime
         {
-            get
-            {
-                return m_includeTime;
-            }
-            set
-            {
-                m_includeTime = value;
-            }
+            get => m_includeTime;
+            set => m_includeTime = value;
         }
 
         /// <summary>
@@ -445,14 +349,8 @@ namespace sttp
         /// </summary>
         public virtual string ExtraConnectionStringParameters
         {
-            get
-            {
-                return m_extraConnectionStringParameters;
-            }
-            set
-            {
-                m_extraConnectionStringParameters = value;
-            }
+            get => m_extraConnectionStringParameters;
+            set => m_extraConnectionStringParameters = value;
         }
 
         #endregion

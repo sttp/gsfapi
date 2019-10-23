@@ -126,122 +126,62 @@ namespace sttp
 
             public Guid StatusFlagsID
             {
-                get
-                {
-                    return m_statusFlagsID;
-                }
-                set
-                {
-                    m_statusFlagsID = value;
-                }
+                get => m_statusFlagsID;
+                set => m_statusFlagsID = value;
             }
 
             public Guid FrequencyID
             {
-                get
-                {
-                    return m_frequencyID;
-                }
-                set
-                {
-                    m_frequencyID = value;
-                }
+                get => m_frequencyID;
+                set => m_frequencyID = value;
             }
 
             public Guid DeltaFrequencyID
             {
-                get
-                {
-                    return m_deltaFrequencyID;
-                }
-                set
-                {
-                    m_deltaFrequencyID = value;
-                }
+                get => m_deltaFrequencyID;
+                set => m_deltaFrequencyID = value;
             }
 
             public long DataQualityErrors
             {
-                get
-                {
-                    return Interlocked.Read(ref m_dataQualityErrors);
-                }
-                set
-                {
-                    Interlocked.Exchange(ref m_dataQualityErrors, value);
-                }
+                get => Interlocked.Read(ref m_dataQualityErrors);
+                set => Interlocked.Exchange(ref m_dataQualityErrors, value);
             }
 
             public long TimeQualityErrors
             {
-                get
-                {
-                    return Interlocked.Read(ref m_timeQualityErrors);
-                }
-                set
-                {
-                    Interlocked.Exchange(ref m_timeQualityErrors, value);
-                }
+                get => Interlocked.Read(ref m_timeQualityErrors);
+                set => Interlocked.Exchange(ref m_timeQualityErrors, value);
             }
 
             public long DeviceErrors
             {
-                get
-                {
-                    return Interlocked.Read(ref m_deviceErrors);
-                }
-                set
-                {
-                    Interlocked.Exchange(ref m_deviceErrors, value);
-                }
+                get => Interlocked.Read(ref m_deviceErrors);
+                set => Interlocked.Exchange(ref m_deviceErrors, value);
             }
 
             public long MeasurementsReceived
             {
-                get
-                {
-                    return Interlocked.Read(ref m_measurementsReceived);
-                }
-                set
-                {
-                    Interlocked.Exchange(ref m_measurementsReceived, value);
-                }
+                get => Interlocked.Read(ref m_measurementsReceived);
+                set => Interlocked.Exchange(ref m_measurementsReceived, value);
             }
 
             public long MeasurementsExpected
             {
-                get
-                {
-                    return (long)Interlocked.CompareExchange(ref m_measurementsExpected, 0.0D, 0.0D);
-                }
-                set
-                {
-                    Interlocked.Exchange(ref m_measurementsExpected, value);
-                }
+                get => (long)Interlocked.CompareExchange(ref m_measurementsExpected, 0.0D, 0.0D);
+                set => Interlocked.Exchange(ref m_measurementsExpected, value);
             }
 
             public long MeasurementsWithError
             {
-                get
-                {
-                    return Interlocked.Read(ref m_measurementsWithError);
-                }
-                set
-                {
-                    Interlocked.Exchange(ref m_measurementsWithError, value);
-                }
+                get => Interlocked.Read(ref m_measurementsWithError);
+                set => Interlocked.Exchange(ref m_measurementsWithError, value);
             }
 
             public long MeasurementsDefined
             {
-                get
-                {
-                    return Interlocked.Read(ref m_measurementsDefined);
-                }
-                set
-                {
-                    Interlocked.Exchange(ref m_measurementsDefined, value);
-                }
+                get => Interlocked.Read(ref m_measurementsDefined);
+                set => Interlocked.Exchange(ref m_measurementsDefined, value);
             }
 
             #endregion
@@ -462,7 +402,7 @@ namespace sttp
         private int m_sttpProtocolID;
         private SecurityMode m_securityMode;
         private bool m_useMillisecondResolution;
-        private bool m_requestNaNValueFilter;
+        //private bool m_requestNaNValueFilter;
         private bool m_autoConnect;
         private string m_metadataFilters;
         private string m_localCertificate;
@@ -582,14 +522,8 @@ namespace sttp
         /// </summary>
         public SecurityMode SecurityMode
         {
-            get
-            {
-                return m_securityMode;
-            }
-            set
-            {
-                m_securityMode = value;
-            }
+            get => m_securityMode;
+            set => m_securityMode = value;
         }
 
         /// <summary>
@@ -603,10 +537,7 @@ namespace sttp
         /// </remarks>
         public string LoggingPath
         {
-            get
-            {
-                return m_loggingPath;
-            }
+            get => m_loggingPath;
             set
             {
                 if (!string.IsNullOrWhiteSpace(value))
@@ -626,14 +557,8 @@ namespace sttp
         /// </summary>
         public bool AutoConnect
         {
-            get
-            {
-                return m_autoConnect;
-            }
-            set
-            {
-                m_autoConnect = value;
-            }
+            get => m_autoConnect;
+            set => m_autoConnect = value;
         }
 
         /// <summary>
@@ -643,14 +568,8 @@ namespace sttp
         /// </summary>
         public bool AutoSynchronizeMetadata
         {
-            get
-            {
-                return m_autoSynchronizeMetadata;
-            }
-            set
-            {
-                m_autoSynchronizeMetadata = value;
-            }
+            get => m_autoSynchronizeMetadata;
+            set => m_autoSynchronizeMetadata = value;
         }
 
         /// <summary>
@@ -667,14 +586,8 @@ namespace sttp
         /// </summary>
         public bool UseSourcePrefixNames
         {
-            get
-            {
-                return m_useSourcePrefixNames;
-            }
-            set
-            {
-                m_useSourcePrefixNames = value;
-            }
+            get => m_useSourcePrefixNames;
+            set => m_useSourcePrefixNames = value;
         }
 
         /// <summary>
@@ -690,14 +603,8 @@ namespace sttp
         /// </example>
         public string MetadataFilters
         {
-            get
-            {
-                return m_metadataFilters;
-            }
-            set
-            {
-                m_metadataFilters = value;
-            }
+            get => m_metadataFilters;
+            set => m_metadataFilters = value;
         }
 
         /// <summary>
@@ -706,14 +613,8 @@ namespace sttp
         [Obsolete("SubscriptionInfo object defines this parameter.", false)]
         public bool UseMillisecondResolution
         {
-            get
-            {
-                return m_useMillisecondResolution;
-            }
-            set
-            {
-                m_useMillisecondResolution = value;
-            }
+            get => m_useMillisecondResolution;
+            set => m_useMillisecondResolution = value;
         }
 
         /// <summary>
@@ -781,10 +682,7 @@ namespace sttp
         /// </summary>
         public OperationalModes OperationalModes
         {
-            get
-            {
-                return m_operationalModes;
-            }
+            get => m_operationalModes;
             set
             {
                 OperationalEncoding operationalEncoding;
@@ -800,10 +698,7 @@ namespace sttp
         /// </summary>
         public bool CompressMetadata
         {
-            get
-            {
-                return m_operationalModes.HasFlag(OperationalModes.CompressMetadata);
-            }
+            get => m_operationalModes.HasFlag(OperationalModes.CompressMetadata);
             set
             {
                 if (value)
@@ -818,10 +713,7 @@ namespace sttp
         /// </summary>
         public bool CompressSignalIndexCache
         {
-            get
-            {
-                return m_operationalModes.HasFlag(OperationalModes.CompressSignalIndexCache);
-            }
+            get => m_operationalModes.HasFlag(OperationalModes.CompressSignalIndexCache);
             set
             {
                 if (value)
@@ -836,10 +728,7 @@ namespace sttp
         /// </summary>
         public bool CompressPayload
         {
-            get
-            {
-                return m_operationalModes.HasFlag(OperationalModes.CompressPayloadData);
-            }
+            get => m_operationalModes.HasFlag(OperationalModes.CompressPayloadData);
             set
             {
                 if (value)
@@ -854,10 +743,7 @@ namespace sttp
         /// </summary>
         public bool ReceiveInternalMetadata
         {
-            get
-            {
-                return m_operationalModes.HasFlag(OperationalModes.ReceiveInternalMetadata);
-            }
+            get => m_operationalModes.HasFlag(OperationalModes.ReceiveInternalMetadata);
             set
             {
                 if (value)
@@ -872,10 +758,7 @@ namespace sttp
         /// </summary>
         public bool ReceiveExternalMetadata
         {
-            get
-            {
-                return m_operationalModes.HasFlag(OperationalModes.ReceiveExternalMetadata);
-            }
+            get => m_operationalModes.HasFlag(OperationalModes.ReceiveExternalMetadata);
             set
             {
                 if (value)
@@ -890,10 +773,7 @@ namespace sttp
         /// </summary>
         public OperationalEncoding OperationalEncoding
         {
-            get
-            {
-                return (OperationalEncoding)(m_operationalModes & OperationalModes.EncodingMask);
-            }
+            get => (OperationalEncoding)(m_operationalModes & OperationalModes.EncodingMask);
             set
             {
                 m_operationalModes &= ~OperationalModes.EncodingMask;
@@ -907,10 +787,7 @@ namespace sttp
         /// </summary>
         public CompressionModes CompressionModes
         {
-            get
-            {
-                return (CompressionModes)(m_operationalModes & OperationalModes.CompressionModeMask);
-            }
+            get => (CompressionModes)(m_operationalModes & OperationalModes.CompressionModeMask);
             set
             {
                 m_operationalModes &= ~OperationalModes.CompressionModeMask;
@@ -975,10 +852,7 @@ namespace sttp
         /// </remarks>
         public override int ProcessingInterval
         {
-            get
-            {
-                return base.ProcessingInterval;
-            }
+            get => base.ProcessingInterval;
             set
             {
                 base.ProcessingInterval = value;
@@ -993,14 +867,8 @@ namespace sttp
         /// </summary>
         public int MetadataSynchronizationTimeout
         {
-            get
-            {
-                return m_metadataSynchronizationTimeout;
-            }
-            set
-            {
-                m_metadataSynchronizationTimeout = value;
-            }
+            get => m_metadataSynchronizationTimeout;
+            set => m_metadataSynchronizationTimeout = value;
         }
 
         /// <summary>
@@ -1008,14 +876,8 @@ namespace sttp
         /// </summary>
         public bool UseTransactionForMetadata
         {
-            get
-            {
-                return m_useTransactionForMetadata;
-            }
-            set
-            {
-                m_useTransactionForMetadata = value;
-            }
+            get => m_useTransactionForMetadata;
+            set => m_useTransactionForMetadata = value;
         }
 
         /// <summary>
@@ -1023,14 +885,8 @@ namespace sttp
         /// </summary>
         public bool UseLocalClockAsRealTime
         {
-            get
-            {
-                return m_useLocalClockAsRealTime;
-            }
-            set
-            {
-                m_useLocalClockAsRealTime = value;
-            }
+            get => m_useLocalClockAsRealTime;
+            set => m_useLocalClockAsRealTime = value;
         }
 
         /// <summary>
@@ -1038,14 +894,8 @@ namespace sttp
         /// </summary>
         public int AllowedParsingExceptions
         {
-            get
-            {
-                return m_allowedParsingExceptions;
-            }
-            set
-            {
-                m_allowedParsingExceptions = value;
-            }
+            get => m_allowedParsingExceptions;
+            set => m_allowedParsingExceptions = value;
         }
 
         /// <summary>
@@ -1053,14 +903,8 @@ namespace sttp
         /// </summary>
         public Ticks ParsingExceptionWindow
         {
-            get
-            {
-                return m_parsingExceptionWindow;
-            }
-            set
-            {
-                m_parsingExceptionWindow = value;
-            }
+            get => m_parsingExceptionWindow;
+            set => m_parsingExceptionWindow = value;
         }
 
         /// <summary>
@@ -1068,10 +912,7 @@ namespace sttp
         /// </summary>
         public override DataSet DataSource
         {
-            get
-            {
-                return base.DataSource;
-            }
+            get => base.DataSource;
             set
             {
                 base.DataSource = value;
@@ -1100,10 +941,7 @@ namespace sttp
         /// </summary>
         public override MeasurementKey[] RequestedOutputMeasurementKeys
         {
-            get
-            {
-                return base.RequestedOutputMeasurementKeys;
-            }
+            get => base.RequestedOutputMeasurementKeys;
             set
             {
                 MeasurementKey[] oldKeys = base.RequestedOutputMeasurementKeys ?? new MeasurementKey[0];
@@ -1245,10 +1083,7 @@ namespace sttp
         /// </summary>
         protected UdpClient DataChannel
         {
-            get
-            {
-                return m_dataChannel;
-            }
+            get => m_dataChannel;
             set
             {
                 if ((object)m_dataChannel != null)
@@ -1278,14 +1113,11 @@ namespace sttp
         }
 
         /// <summary>
-        /// Gets or sets reference to <see cref="Communication.TcpClient"/> command channel, attaching and/or detaching to events as needed.
+        /// Gets or sets reference to <see cref="GSF.Communication.TcpClient"/> command channel, attaching and/or detaching to events as needed.
         /// </summary>
         protected IClient CommandChannel
         {
-            get
-            {
-                return m_commandChannel;
-            }
+            get => m_commandChannel;
             set
             {
                 if ((object)m_commandChannel != null)
@@ -1505,9 +1337,9 @@ namespace sttp
             else
                 m_useMillisecondResolution = true;
 
-            // Check if user wants to request that publisher remove NaN from the data stream to conserve bandwidth
-            if (settings.TryGetValue("requestNaNValueFilter", out setting))
-                m_requestNaNValueFilter = setting.ParseBoolean();
+            //// Check if user wants to request that publisher remove NaN from the data stream to conserve bandwidth
+            //if (settings.TryGetValue("requestNaNValueFilter", out setting))
+            //    m_requestNaNValueFilter = setting.ParseBoolean();
 
             // Check if user has defined any meta-data filter expressions
             if (settings.TryGetValue("metadataFilters", out setting))
@@ -1686,7 +1518,7 @@ namespace sttp
 
             if (!settings.TryGetValue("BypassStatistics", out setting) || !setting.ParseBoolean())
             {
-                EventHandler statisticsCalculated = (sender, args) => ResetMeasurementsPerSecondCounters();
+                void statisticsCalculated(object sender, EventArgs args) => ResetMeasurementsPerSecondCounters();
                 StatisticsEngine.Register(this, "Subscriber", "SUB");
                 StatisticsEngine.Calculated += statisticsCalculated;
                 Disposed += (sender, args) => StatisticsEngine.Calculated -= statisticsCalculated;
@@ -2610,7 +2442,7 @@ namespace sttp
                                     {
                                         // Determine the number of measurements received with valid values
                                         const MeasurementStateFlags ErrorFlags = MeasurementStateFlags.BadData | MeasurementStateFlags.BadTime | MeasurementStateFlags.SystemError;
-                                        Func<MeasurementStateFlags, bool> hasError = stateFlags => (stateFlags & ErrorFlags) != MeasurementStateFlags.Normal;
+                                        bool hasError(MeasurementStateFlags stateFlags) => (stateFlags & ErrorFlags) != MeasurementStateFlags.Normal;
                                         int measurementsReceived = frame.Count(measurement => !double.IsNaN(measurement.Value));
                                         int measurementsWithError = frame.Count(measurement => !double.IsNaN(measurement.Value) && hasError(measurement.StateFlags));
 
@@ -4008,7 +3840,6 @@ namespace sttp
         {
             Dictionary<Guid, DeviceStatisticsHelper<SubscribedDevice>> subscribedDevicesLookup = m_subscribedDevicesLookup;
             List<DeviceStatisticsHelper<SubscribedDevice>> statisticsHelpers = m_statisticsHelpers;
-            DeviceStatisticsHelper<SubscribedDevice> statisticsHelper;
 
             SignalIndexCache signalIndexCache = m_signalIndexCache;
             DataSet dataSource = DataSource;
@@ -4034,7 +3865,7 @@ namespace sttp
 
                 // Get expected measurement counts
                 groups = signalIndexCache.AuthorizedSignalIDs
-                    .Where(signalID => subscribedDevicesLookup.TryGetValue(signalID, out statisticsHelper))
+                    .Where(signalID => subscribedDevicesLookup.TryGetValue(signalID, out DeviceStatisticsHelper<SubscribedDevice> _))
                     .Select(signalID => Tuple.Create(subscribedDevicesLookup[signalID], signalID))
                     .ToList()
                     .GroupBy(tuple => tuple.Item1, tuple => tuple.Item2);
@@ -4409,11 +4240,11 @@ namespace sttp
             return Path.Combine(m_loggingPath, filePath);
         }
 
-        private void m_localConcentrator_ProcessException(object sender, EventArgs<Exception> e)
-        {
-            // Make sure any exceptions reported by local concentrator get exposed as needed
-            OnProcessException(MessageLevel.Warning, e.Argument);
-        }
+        //private void m_localConcentrator_ProcessException(object sender, EventArgs<Exception> e)
+        //{
+        //    // Make sure any exceptions reported by local concentrator get exposed as needed
+        //    OnProcessException(MessageLevel.Warning, e.Argument);
+        //}
 
         private void m_dataStreamMonitor_Elapsed(object sender, EventArgs<DateTime> e)
         {
@@ -4439,20 +4270,20 @@ namespace sttp
             OnProcessException(MessageLevel.Info, e.Argument);
         }
 
-        private void m_dataGapRecoverer_RecoveredMeasurements(object sender, EventArgs<ICollection<IMeasurement>> e)
-        {
-            OnNewMeasurements(e.Argument);
-        }
+        //private void m_dataGapRecoverer_RecoveredMeasurements(object sender, EventArgs<ICollection<IMeasurement>> e)
+        //{
+        //    OnNewMeasurements(e.Argument);
+        //}
 
-        private void m_dataGapRecoverer_StatusMessage(object sender, EventArgs<string> e)
-        {
-            OnStatusMessage(MessageLevel.Info, "[DataGapRecoverer] " + e.Argument);
-        }
+        //private void m_dataGapRecoverer_StatusMessage(object sender, EventArgs<string> e)
+        //{
+        //    OnStatusMessage(MessageLevel.Info, "[DataGapRecoverer] " + e.Argument);
+        //}
 
-        private void m_dataGapRecoverer_ProcessException(object sender, EventArgs<Exception> e)
-        {
-            OnProcessException(MessageLevel.Warning, new InvalidOperationException("[DataGapRecoverer] " + e.Argument.Message, e.Argument.InnerException));
-        }
+        //private void m_dataGapRecoverer_ProcessException(object sender, EventArgs<Exception> e)
+        //{
+        //    OnProcessException(MessageLevel.Warning, new InvalidOperationException("[DataGapRecoverer] " + e.Argument.Message, e.Argument.InnerException));
+        //}
 
         #region [ Command Channel Event Handlers ]
 

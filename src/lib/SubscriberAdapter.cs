@@ -134,10 +134,7 @@ namespace sttp
         /// </summary>
         public override string Name
         {
-            get
-            {
-                return base.Name;
-            }
+            get => base.Name;
 
             set
             {
@@ -171,10 +168,7 @@ namespace sttp
         /// </summary>
         public bool UsePayloadCompression
         {
-            get
-            {
-                return m_usePayloadCompression;
-            }
+            get => m_usePayloadCompression;
             set
             {
                 m_usePayloadCompression = value;
@@ -189,14 +183,8 @@ namespace sttp
         /// </summary>
         public bool UseCompactMeasurementFormat
         {
-            get
-            {
-                return m_useCompactMeasurementFormat;
-            }
-            set
-            {
-                m_useCompactMeasurementFormat = value || m_usePayloadCompression;
-            }
+            get => m_useCompactMeasurementFormat;
+            set => m_useCompactMeasurementFormat = value || m_usePayloadCompression;
         }
 
         /// <summary>
@@ -219,29 +207,29 @@ namespace sttp
             }
         }
 
-        /// <summary>
-        /// Gets or sets the desired processing interval, in milliseconds, for the adapter.
-        /// </summary>
-        /// <remarks>
-        /// With the exception of the values of -1 and 0, this value specifies the desired processing interval for data, i.e.,
-        /// basically a delay, or timer interval, over which to process data. A value of -1 means to use the default processing
-        /// interval while a value of 0 means to process data as fast as possible.
-        /// </remarks>
-        public override int ProcessingInterval
-        {
-            get
-            {
-                return base.ProcessingInterval;
-            }
-            set
-            {
-                base.ProcessingInterval = value;
+        ///// <summary>
+        ///// Gets or sets the desired processing interval, in milliseconds, for the adapter.
+        ///// </summary>
+        ///// <remarks>
+        ///// With the exception of the values of -1 and 0, this value specifies the desired processing interval for data, i.e.,
+        ///// basically a delay, or timer interval, over which to process data. A value of -1 means to use the default processing
+        ///// interval while a value of 0 means to process data as fast as possible.
+        ///// </remarks>
+        //public override int ProcessingInterval
+        //{
+        //    get
+        //    {
+        //        return base.ProcessingInterval;
+        //    }
+        //    set
+        //    {
+        //        base.ProcessingInterval = value;
 
-                // Update processing interval in private temporal session, if defined
-                //if ((object)m_iaonSession != null && m_iaonSession.AllAdapters != null)
-                //    m_iaonSession.AllAdapters.ProcessingInterval = value;
-            }
-        }
+        //        // Update processing interval in private temporal session, if defined
+        //        if ((object)m_iaonSession != null && m_iaonSession.AllAdapters != null)
+        //            m_iaonSession.AllAdapters.ProcessingInterval = value;
+        //    }
+        //}
 
         /// <summary>
         /// Gets or sets primary keys of input measurements the <see cref="SubscriberAdapter"/> expects, if any.
@@ -252,10 +240,7 @@ namespace sttp
         /// </remarks>
         public override MeasurementKey[] InputMeasurementKeys
         {
-            get
-            {
-                return base.InputMeasurementKeys;
-            }
+            get => base.InputMeasurementKeys;
             set
             {
                 lock (this)
@@ -292,9 +277,8 @@ namespace sttp
             get
             {
                 StringBuilder status = new StringBuilder();
-                SubscriberConnection connection;
 
-                if (m_parent.ClientConnections.TryGetValue(m_clientID, out connection))
+                if (m_parent.ClientConnections.TryGetValue(m_clientID, out SubscriberConnection connection))
                 {
                     status.Append(connection.Status);
                     status.AppendLine();
@@ -366,9 +350,8 @@ namespace sttp
         public override void Initialize()
         {
             MeasurementKey[] inputMeasurementKeys;
-            string setting;
 
-            if (Settings.TryGetValue("filterExpression", out setting))
+            if (Settings.TryGetValue("filterExpression", out string setting))
             {
                 // IMPORTANT: The allowSelect argument of ParseInputMeasurementKeys must be null
                 //            in order to prevent SQL injection via the subscription filter expression

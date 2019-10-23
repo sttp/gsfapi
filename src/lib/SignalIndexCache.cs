@@ -132,14 +132,8 @@ namespace sttp
         /// </summary>
         public Guid SubscriberID
         {
-            get
-            {
-                return m_subscriberID;
-            }
-            set
-            {
-                m_subscriberID = value;
-            }
+            get => m_subscriberID;
+            set => m_subscriberID = value;
         }
 
         /// <summary>
@@ -147,10 +141,7 @@ namespace sttp
         /// </summary>
         public ConcurrentDictionary<int, MeasurementKey> Reference
         {
-            get
-            {
-                return m_reference;
-            }
+            get => m_reference;
             set
             {
                 m_reference = value;
@@ -180,14 +171,8 @@ namespace sttp
         /// </summary>
         public Guid[] UnauthorizedSignalIDs
         {
-            get
-            {
-                return m_unauthorizedSignalIDs;
-            }
-            set
-            {
-                m_unauthorizedSignalIDs = value;
-            }
+            get => m_unauthorizedSignalIDs;
+            set => m_unauthorizedSignalIDs = value;
         }
 
         /// <summary>
@@ -209,14 +194,8 @@ namespace sttp
         /// </summary>
         public Encoding Encoding
         {
-            get
-            {
-                return m_encoding;
-            }
-            set
-            {
-                m_encoding = value;
-            }
+            get => m_encoding;
+            set => m_encoding = value;
         }
 
         /// <summary>

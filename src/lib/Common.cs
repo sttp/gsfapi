@@ -56,13 +56,7 @@ namespace sttp
         /// <summary>
         /// Gets flag that determines if managed encryption should be used.
         /// </summary>
-        public static bool UseManagedEncryption
-        {
-            get
-            {
-                return s_useManagedEncryption;
-            }
-        }
+        public static bool UseManagedEncryption => s_useManagedEncryption;
 
         /// <summary>
         /// Gets an AES symmetric algorithm to use for encryption or decryption.
