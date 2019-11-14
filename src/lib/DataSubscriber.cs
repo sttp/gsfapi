@@ -379,7 +379,7 @@ namespace sttp
         private volatile Dictionary<Guid, DeviceStatisticsHelper<SubscribedDevice>> m_subscribedDevicesLookup;
         private volatile List<DeviceStatisticsHelper<SubscribedDevice>> m_statisticsHelpers;
         private readonly LongSynchronizedOperation m_registerStatisticsOperation;
-        private IClient m_commandChannel;
+        private IClient m_clientCommandChannel;
         private UdpClient m_dataChannel;
         private bool m_tsscResetRequested;
         private TsscDecoder m_tsscDecoder;
@@ -620,9 +620,7 @@ namespace sttp
         /// <summary>
         /// Gets flag that determines whether the command channel is connected.
         /// </summary>
-        public bool CommandChannelConnected =>
-            (object)m_commandChannel != null &&
-            m_commandChannel.Enabled;
+        public bool CommandChannelConnected => m_clientCommandChannel?.Enabled ?? false;
 
         /// <summary>
         /// Gets flag that determines if this <see cref="DataSubscriber"/> has successfully authenticated with the <see cref="DataPublisher"/>.
@@ -984,7 +982,7 @@ namespace sttp
         {
             get
             {
-                string commandChannelServerUri = m_commandChannel?.ServerUri;
+                string commandChannelServerUri = m_clientCommandChannel?.ServerUri;
                 string dataChannelServerUri = m_dataChannel?.ServerUri;
 
                 if (string.IsNullOrWhiteSpace(commandChannelServerUri) && string.IsNullOrWhiteSpace(dataChannelServerUri))
@@ -1059,12 +1057,12 @@ namespace sttp
                     status.Append(m_dataChannel.Status);
                 }
 
-                if ((object)m_commandChannel != null)
+                if ((object)m_clientCommandChannel != null)
                 {
                     status.AppendLine();
                     status.AppendLine("Command Channel Status".CenterText(50));
                     status.AppendLine("----------------------".CenterText(50));
-                    status.Append(m_commandChannel.Status);
+                    status.Append(m_clientCommandChannel.Status);
                 }
 
                 status.Append(base.Status);
@@ -1113,41 +1111,41 @@ namespace sttp
         }
 
         /// <summary>
-        /// Gets or sets reference to <see cref="GSF.Communication.TcpClient"/> command channel, attaching and/or detaching to events as needed.
+        /// Gets or sets reference to <see cref="TcpClient"/> command channel, attaching and/or detaching to events as needed.
         /// </summary>
-        protected IClient CommandChannel
+        protected IClient ClientCommandChannel
         {
-            get => m_commandChannel;
+            get => m_clientCommandChannel;
             set
             {
-                if ((object)m_commandChannel != null)
+                if ((object)m_clientCommandChannel != null)
                 {
                     // Detach from events on existing command channel reference
-                    m_commandChannel.ConnectionAttempt -= m_commandChannel_ConnectionAttempt;
-                    m_commandChannel.ConnectionEstablished -= m_commandChannel_ConnectionEstablished;
-                    m_commandChannel.ConnectionException -= m_commandChannel_ConnectionException;
-                    m_commandChannel.ConnectionTerminated -= m_commandChannel_ConnectionTerminated;
-                    m_commandChannel.ReceiveData -= m_commandChannel_ReceiveData;
-                    m_commandChannel.ReceiveDataException -= m_commandChannel_ReceiveDataException;
-                    m_commandChannel.SendDataException -= m_commandChannel_SendDataException;
+                    m_clientCommandChannel.ConnectionAttempt -= ClientCommandChannelConnectionAttempt;
+                    m_clientCommandChannel.ConnectionEstablished -= ClientCommandChannelConnectionEstablished;
+                    m_clientCommandChannel.ConnectionException -= ClientCommandChannelConnectionException;
+                    m_clientCommandChannel.ConnectionTerminated -= ClientCommandChannelConnectionTerminated;
+                    m_clientCommandChannel.ReceiveData -= ClientCommandChannelReceiveData;
+                    m_clientCommandChannel.ReceiveDataException -= ClientCommandChannelReceiveDataException;
+                    m_clientCommandChannel.SendDataException -= ClientCommandChannelSendDataException;
 
-                    if (m_commandChannel != value)
-                        m_commandChannel.Dispose();
+                    if (m_clientCommandChannel != value)
+                        m_clientCommandChannel.Dispose();
                 }
 
                 // Assign new command channel reference
-                m_commandChannel = value;
+                m_clientCommandChannel = value;
 
-                if ((object)m_commandChannel != null)
+                if ((object)m_clientCommandChannel != null)
                 {
                     // Attach to desired events on new command channel reference
-                    m_commandChannel.ConnectionAttempt += m_commandChannel_ConnectionAttempt;
-                    m_commandChannel.ConnectionEstablished += m_commandChannel_ConnectionEstablished;
-                    m_commandChannel.ConnectionException += m_commandChannel_ConnectionException;
-                    m_commandChannel.ConnectionTerminated += m_commandChannel_ConnectionTerminated;
-                    m_commandChannel.ReceiveData += m_commandChannel_ReceiveData;
-                    m_commandChannel.ReceiveDataException += m_commandChannel_ReceiveDataException;
-                    m_commandChannel.SendDataException += m_commandChannel_SendDataException;
+                    m_clientCommandChannel.ConnectionAttempt += ClientCommandChannelConnectionAttempt;
+                    m_clientCommandChannel.ConnectionEstablished += ClientCommandChannelConnectionEstablished;
+                    m_clientCommandChannel.ConnectionException += ClientCommandChannelConnectionException;
+                    m_clientCommandChannel.ConnectionTerminated += ClientCommandChannelConnectionTerminated;
+                    m_clientCommandChannel.ReceiveData += ClientCommandChannelReceiveData;
+                    m_clientCommandChannel.ReceiveDataException += ClientCommandChannelReceiveDataException;
+                    m_clientCommandChannel.SendDataException += ClientCommandChannelSendDataException;
                 }
             }
         }
@@ -1227,7 +1225,7 @@ namespace sttp
                     if (disposing)
                     {
                         DataLossInterval = 0.0D;
-                        CommandChannel = null;
+                        ClientCommandChannel = null;
                         DataChannel = null;
 
                         //if ((object)m_dataGapRecoverer != null)
@@ -1422,7 +1420,7 @@ namespace sttp
                 commandChannel.NoDelay = true;
 
                 // Assign command channel client reference and attach to needed events
-                CommandChannel = commandChannel;
+                ClientCommandChannel = commandChannel;
             }
             else
             {
@@ -1440,14 +1438,14 @@ namespace sttp
                 commandChannel.NoDelay = true;
 
                 // Assign command channel client reference and attach to needed events
-                CommandChannel = commandChannel;
+                ClientCommandChannel = commandChannel;
             }
 
             // Get proper connection string - either from specified command channel or from base connection string
             if (settings.TryGetValue("commandChannel", out setting))
-                m_commandChannel.ConnectionString = setting;
+                m_clientCommandChannel.ConnectionString = setting;
             else
-                m_commandChannel.ConnectionString = ConnectionString;
+                m_clientCommandChannel.ConnectionString = ConnectionString;
 
             // Check for simplified compression setup flag
             if (settings.TryGetValue("compression", out setting) && setting.ParseBoolean())
@@ -1486,7 +1484,7 @@ namespace sttp
             //        {
             //            // Remove dataGapRecovery connection setting from command channel connection string, if defined there.
             //            // This will prevent any recursive data gap recovery operations from being established:
-            //            Dictionary<string, string> connectionSettings = m_commandChannel.ConnectionString.ParseKeyValuePairs();
+            //            Dictionary<string, string> connectionSettings = m_clientCommandChannel.ConnectionString.ParseKeyValuePairs();
             //            connectionSettings.Remove("dataGapRecovery");
             //            connectionSettings.Remove("autoConnect");
             //            connectionSettings.Remove("synchronizeMetadata");
@@ -1529,7 +1527,7 @@ namespace sttp
             }
 
             if (PersistConnectionForMetadata)
-                m_commandChannel.ConnectAsync();
+                m_clientCommandChannel.ConnectAsync();
 
             Initialized = true;
         }
@@ -2102,7 +2100,7 @@ namespace sttp
         /// <returns><c>true</c> if <paramref name="commandCode"/> transmission was successful; otherwise <c>false</c>.</returns>
         public virtual bool SendServerCommand(ServerCommand commandCode, byte[] data = null)
         {
-            if ((object)m_commandChannel != null && m_commandChannel.CurrentState == ClientState.Connected)
+            if ((object)m_clientCommandChannel != null && m_clientCommandChannel.CurrentState == ClientState.Connected)
             {
                 try
                 {
@@ -2116,7 +2114,7 @@ namespace sttp
                             commandPacket.Write(data, 0, data.Length);
 
                         // Send command packet to publisher
-                        m_commandChannel.SendAsync(commandPacket.ToArray(), 0, (int)commandPacket.Length);
+                        m_clientCommandChannel.SendAsync(commandPacket.ToArray(), 0, (int)commandPacket.Length);
                         m_metadataRefreshPending = commandCode == ServerCommand.MetaDataRefresh;
                     }
 
@@ -2157,7 +2155,7 @@ namespace sttp
             m_lastBytesReceived = 0;
 
             if (!PersistConnectionForMetadata)
-                m_commandChannel.ConnectAsync();
+                m_clientCommandChannel.ConnectAsync();
             else
                 OnConnected();
 
@@ -2196,8 +2194,8 @@ namespace sttp
                 m_dataStreamMonitor.Enabled = false;
 
             // Disconnect command channel
-            if (!PersistConnectionForMetadata && (object)m_commandChannel != null)
-                m_commandChannel.Disconnect();
+            if (!PersistConnectionForMetadata && (object)m_clientCommandChannel != null)
+                m_clientCommandChannel.Disconnect();
 
             if ((object)m_subscribedDevicesTimer != null)
                 m_subscribedDevicesTimer.Stop();
@@ -2212,7 +2210,7 @@ namespace sttp
         /// <returns>Text of the status message.</returns>
         public override string GetShortStatus(int maxLength)
         {
-            if ((object)m_commandChannel != null && m_commandChannel.CurrentState == ClientState.Connected)
+            if ((object)m_clientCommandChannel != null && m_clientCommandChannel.CurrentState == ClientState.Connected)
                 return "Subscriber is connected and receiving data points".CenterText(maxLength);
 
             return "Subscriber is not connected.".CenterText(maxLength);
@@ -4259,7 +4257,7 @@ namespace sttp
             bool dataReceived = m_monitoredBytesReceived > 0;
 
             if ((object)m_dataChannel == null && m_metadataRefreshPending)
-                dataReceived = (DateTime.UtcNow - m_commandChannel.Statistics.LastReceive).Seconds < DataLossInterval;
+                dataReceived = (DateTime.UtcNow - m_clientCommandChannel.Statistics.LastReceive).Seconds < DataLossInterval;
 
             if (!dataReceived)
             {
@@ -4295,7 +4293,7 @@ namespace sttp
 
         #region [ Command Channel Event Handlers ]
 
-        private void m_commandChannel_ConnectionEstablished(object sender, EventArgs e)
+        private void ClientCommandChannelConnectionEstablished(object sender, EventArgs e)
         {
             // Define operational modes as soon as possible
             SendServerCommand(ServerCommand.DefineOperationalModes, BigEndian.GetBytes((uint)m_operationalModes));
@@ -4318,20 +4316,20 @@ namespace sttp
             //    m_dataGapRecoverer.Enabled = true;
         }
 
-        private void m_commandChannel_ConnectionTerminated(object sender, EventArgs e)
+        private void ClientCommandChannelConnectionTerminated(object sender, EventArgs e)
         {
             OnConnectionTerminated();
             OnStatusMessage(MessageLevel.Info, "Data subscriber command channel connection to publisher was terminated.");
             DisconnectClient();
         }
 
-        private void m_commandChannel_ConnectionException(object sender, EventArgs<Exception> e)
+        private void ClientCommandChannelConnectionException(object sender, EventArgs<Exception> e)
         {
             Exception ex = e.Argument;
             OnProcessException(MessageLevel.Info, new ConnectionException("Data subscriber encountered an exception while attempting command channel publisher connection: " + ex.Message, ex));
         }
 
-        private void m_commandChannel_ConnectionAttempt(object sender, EventArgs e)
+        private void ClientCommandChannelConnectionAttempt(object sender, EventArgs e)
         {
             // Inject a short delay between multiple connection attempts
             if (m_commandChannelConnectionAttempts > 0)
@@ -4341,7 +4339,7 @@ namespace sttp
             m_commandChannelConnectionAttempts++;
         }
 
-        private void m_commandChannel_SendDataException(object sender, EventArgs<Exception> e)
+        private void ClientCommandChannelSendDataException(object sender, EventArgs<Exception> e)
         {
             Exception ex = e.Argument;
 
@@ -4349,7 +4347,7 @@ namespace sttp
                 OnProcessException(MessageLevel.Info, new InvalidOperationException("Data subscriber encountered an exception while sending command channel data to publisher connection: " + ex.Message, ex));
         }
 
-        private void m_commandChannel_ReceiveData(object sender, EventArgs<int> e)
+        private void ClientCommandChannelReceiveData(object sender, EventArgs<int> e)
         {
             try
             {
@@ -4358,7 +4356,7 @@ namespace sttp
 
                 m_lastBytesReceived = length;
 
-                m_commandChannel.Read(buffer, 0, length);
+                m_clientCommandChannel.Read(buffer, 0, length);
                 ProcessServerResponse(buffer, length);
             }
             catch (Exception ex)
@@ -4367,7 +4365,7 @@ namespace sttp
             }
         }
 
-        private void m_commandChannel_ReceiveDataException(object sender, EventArgs<Exception> e)
+        private void ClientCommandChannelReceiveDataException(object sender, EventArgs<Exception> e)
         {
             Exception ex = e.Argument;
 
