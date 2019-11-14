@@ -43,7 +43,7 @@ namespace sttp
     /// <summary>
     /// Represents an unsynchronized client subscription to the <see cref="DataPublisher" />.
     /// </summary>
-    public class SubscriberAdapter : FacileActionAdapterBase
+    public class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
     {
         #region [ Members ]
 
@@ -62,7 +62,7 @@ namespace sttp
         /// This event is expected to only be raised when an input adapter has been designed to process
         /// a finite amount of data, e.g., reading a historical range of data during temporal processing.
         /// </remarks>
-        public event EventHandler<EventArgs<SubscriberAdapter, EventArgs>> ProcessingComplete;
+        public event EventHandler<EventArgs<IClientSubscription, EventArgs>> ProcessingComplete;
 
         // Fields
         private readonly SignalIndexCache m_signalIndexCache;
@@ -87,7 +87,7 @@ namespace sttp
         private volatile int m_timeIndex;
         private SharedTimer m_baseTimeRotationTimer;
         private volatile bool m_startTimeSent;
-        //private IaonSession m_iaonSession;
+        private IaonSession m_iaonSession;
 
         private readonly List<byte[]> m_bufferBlockCache;
         private readonly object m_bufferBlockCacheLock;
@@ -207,29 +207,26 @@ namespace sttp
             }
         }
 
-        ///// <summary>
-        ///// Gets or sets the desired processing interval, in milliseconds, for the adapter.
-        ///// </summary>
-        ///// <remarks>
-        ///// With the exception of the values of -1 and 0, this value specifies the desired processing interval for data, i.e.,
-        ///// basically a delay, or timer interval, over which to process data. A value of -1 means to use the default processing
-        ///// interval while a value of 0 means to process data as fast as possible.
-        ///// </remarks>
-        //public override int ProcessingInterval
-        //{
-        //    get
-        //    {
-        //        return base.ProcessingInterval;
-        //    }
-        //    set
-        //    {
-        //        base.ProcessingInterval = value;
+        /// <summary>
+        /// Gets or sets the desired processing interval, in milliseconds, for the adapter.
+        /// </summary>
+        /// <remarks>
+        /// With the exception of the values of -1 and 0, this value specifies the desired processing interval for data, i.e.,
+        /// basically a delay, or timer interval, over which to process data. A value of -1 means to use the default processing
+        /// interval while a value of 0 means to process data as fast as possible.
+        /// </remarks>
+        public override int ProcessingInterval
+        {
+            get => base.ProcessingInterval;
+            set
+            {
+                base.ProcessingInterval = value;
 
-        //        // Update processing interval in private temporal session, if defined
-        //        if ((object)m_iaonSession != null && m_iaonSession.AllAdapters != null)
-        //            m_iaonSession.AllAdapters.ProcessingInterval = value;
-        //    }
-        //}
+                // Update processing interval in private temporal session, if defined
+                if ((object)m_iaonSession != null && m_iaonSession.AllAdapters != null)
+                    m_iaonSession.AllAdapters.ProcessingInterval = value;
+            }
+        }
 
         /// <summary>
         /// Gets or sets primary keys of input measurements the <see cref="SubscriberAdapter"/> expects, if any.
@@ -286,26 +283,21 @@ namespace sttp
 
                 status.Append(base.Status);
 
-                //if ((object)m_iaonSession != null)
-                //    status.Append(m_iaonSession.Status);
+                if ((object)m_iaonSession != null)
+                    status.Append(m_iaonSession.Status);
 
                 return status.ToString();
             }
         }
 
-        ///// <summary>
-        ///// Gets the status of the active temporal session, if any.
-        ///// </summary>
-        //public string TemporalSessionStatus
-        //{
-        //    get
-        //    {
-        //        if ((object)m_iaonSession == null)
-        //            return null;
+        /// <summary>
+        /// Gets the status of the active temporal session, if any.
+        /// </summary>
+        public string TemporalSessionStatus => m_iaonSession?.Status;
 
-        //        return m_iaonSession.Status;
-        //    }
-        //}
+        int IClientSubscription.CompressionStrength { get; set; } = 31;
+
+        GSF.TimeSeries.Transport.SignalIndexCache IClientSubscription.SignalIndexCache => null;
 
         #endregion
 
@@ -332,8 +324,8 @@ namespace sttp
                             m_baseTimeRotationTimer = null;
                         }
 
-                        //// Dispose Iaon session
-                        //this.DisposeTemporalSession(ref m_iaonSession);
+                        // Dispose Iaon session
+                        this.DisposeTemporalSession(ref m_iaonSession);
                     }
                 }
                 finally
@@ -411,9 +403,9 @@ namespace sttp
             m_bufferBlockRetransmissionTimer.AutoReset = false;
             m_bufferBlockRetransmissionTimer.Elapsed += BufferBlockRetransmissionTimer_Elapsed;
 
-            //// Handle temporal session initialization
-            //if (this.TemporalConstraintIsDefined())
-            //    m_iaonSession = this.CreateTemporalSession();
+            // Handle temporal session initialization
+            if (this.TemporalConstraintIsDefined())
+                m_iaonSession = this.CreateTemporalSession();
         }
 
         /// <summary>
@@ -896,15 +888,20 @@ namespace sttp
                 BufferBlockRetransmission(this, EventArgs.Empty);
         }
 
-        private void OnProcessingComplete()
-        {
-            if ((object)ProcessingComplete != null)
-                ProcessingComplete(this, new EventArgs<SubscriberAdapter, EventArgs>(this, EventArgs.Empty));
-        }
-
         private void BaseTimeRotationTimer_Elapsed(object sender, EventArgs<DateTime> e)
         {
             RotateBaseTimes();
+        }
+
+        void IClientSubscription.OnStatusMessage(MessageLevel level, string status, string eventName, MessageFlags flags) => OnStatusMessage(level, status, eventName, flags);
+
+        void IClientSubscription.OnProcessException(MessageLevel level, Exception ex, string eventName, MessageFlags flags) => OnProcessException(level, ex, eventName, flags);
+       
+        // Explicitly implement processing completed event bubbler to satisfy IClientSubscription interface
+        void IClientSubscription.OnProcessingCompleted(object sender, EventArgs e)
+        {
+            if ((object)ProcessingComplete != null)
+                ProcessingComplete(sender, new EventArgs<IClientSubscription, EventArgs>(this, e));
         }
 
         #endregion

@@ -37,6 +37,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Configuration;
 using System.Data;
 using System.Globalization;
 using System.IO;
@@ -62,6 +63,7 @@ using GSF.Threading;
 using GSF.TimeSeries;
 using GSF.TimeSeries.Adapters;
 using GSF.TimeSeries.Statistics;
+using GSF.TimeSeries.Transport;
 using GSF.Units;
 
 namespace sttp
@@ -170,6 +172,15 @@ namespace sttp
         /// This message is sent in response to <see cref="ServerResponse.BufferBlock"/>.
         /// </remarks>
         ConfirmBufferBlock = 0x08,
+
+        /// <summary>
+        /// Provides measurements to the publisher over the command channel.
+        /// </summary>
+        /// <remarks>
+        /// Allows for unsolicited publication of measurement data to the server
+        /// so that consumers of data can also provide data to other consumers.
+        /// </remarks>
+        PublishCommandMeasurements = 0x09,
 
         /// <summary>
         /// Code for handling user-defined commands.
@@ -722,7 +733,7 @@ namespace sttp
         public const string DefaultMetadataTables =
             "SELECT NodeID, UniqueID, OriginalSource, IsConcentrator, Acronym, Name, AccessID, ParentAcronym, ProtocolName, FramesPerSecond, CompanyAcronym, VendorAcronym, VendorDeviceName, Longitude, Latitude, InterconnectionName, ContactList, Enabled, UpdatedOn FROM DeviceDetail WHERE IsConcentrator = 0;" +
             "SELECT DeviceAcronym, ID, SignalID, PointTag, SignalReference, SignalAcronym, PhasorSourceIndex, Description, Internal, Enabled, UpdatedOn FROM MeasurementDetail;" +
-            "SELECT ID, DeviceAcronym, Label, Type, Phase, DestinationPhasorID, SourceIndex, UpdatedOn FROM PhasorDetail;" +
+            "SELECT ID, DeviceAcronym, Label, Type, Phase, DestinationPhasorID, SourceIndex, BaseKV, UpdatedOn FROM PhasorDetail;" +
             "SELECT VersionNumber FROM SchemaVersion";
 
         /// <summary>
@@ -778,13 +789,6 @@ namespace sttp
         private long m_lifetimeLatencyMeasurements;
         private long m_bufferBlockRetransmissions;
 
-        //// For backwards compatibility.
-        //// If a client requests metadata, but fails to define the type of
-        //// metadata they would like to receive, we assume the client is
-        //// using an old version of the protocol. These flags will define
-        //// what type of metadata this type of client should actually receive.
-        //private OperationalModes m_forceReceiveMetadataFlags;
-
         private bool m_disposed;
 
         #endregion
@@ -812,7 +816,6 @@ namespace sttp
             m_forceNaNValueFilter = DefaultForceNaNValueFilter;
             m_useBaseTimeOffsets = DefaultUseBaseTimeOffsets;
             m_metadataTables = DefaultMetadataTables;
-            //m_forceReceiveMetadataFlags = OperationalModes.ReceiveInternalMetadata;
 
             using (Logger.AppendStackMessages("HostAdapter", "Data Publisher Collection"))
             {
@@ -1528,8 +1531,8 @@ namespace sttp
                     {
                         clientEnumeration.Append(
                             $"  {i.ToString().PadLeft(3)} - {connection.ConnectionID}\r\n" +
-                            $"          {connection.SubscriberInfo}\r\n" + GetOperationalModes(connection) + "\r\n\r\n");
-                           // + $"          Active Temporal Session = {(hasActiveTemporalSession ? "Yes" : "No")}\r\n\r\n");
+                            $"          {connection.SubscriberInfo}\r\n" + GetOperationalModes(connection) +
+                            $"          Active Temporal Session = {(hasActiveTemporalSession ? "Yes" : "No")}\r\n\r\n");
                     }
                 }
             }
@@ -1635,53 +1638,51 @@ namespace sttp
             return "";
         }
 
-        ///// <summary>
-        ///// Gets temporal status for a specified client connection.
-        ///// </summary>
-        ///// <param name="clientIndex">Enumerated index for client connection.</param>
-        //[AdapterCommand("Gets temporal status for a subscriber, if any, using its enumerated index.", "Administrator", "Editor", "Viewer")]
-        //public virtual string GetTemporalStatus(int clientIndex)
-        //{
-        //    Guid clientID = Guid.Empty;
-        //    bool success = true;
+        /// <summary>
+        /// Gets temporal status for a specified client connection.
+        /// </summary>
+        /// <param name="clientIndex">Enumerated index for client connection.</param>
+        [AdapterCommand("Gets temporal status for a subscriber, if any, using its enumerated index.", "Administrator", "Editor", "Viewer")]
+        public virtual string GetTemporalStatus(int clientIndex)
+        {
+            Guid clientID = Guid.Empty;
+            bool success = true;
 
-        //    try
-        //    {
-        //        clientID = m_commandChannel.ClientIDs[clientIndex];
-        //    }
-        //    catch
-        //    {
-        //        success = false;
-        //        OnStatusMessage(MessageLevel.Error, $"Failed to find connected client with enumerated index {clientIndex}");
-        //    }
+            try
+            {
+                clientID = m_commandChannel.ClientIDs[clientIndex];
+            }
+            catch
+            {
+                success = false;
+                OnStatusMessage(MessageLevel.Error, $"Failed to find connected client with enumerated index {clientIndex}");
+            }
 
-        //    if (success)
-        //    {
-        //        ClientConnection connection;
+            if (success)
+            {
+                if (m_clientConnections.TryGetValue(clientID, out SubscriberConnection connection))
+                {
+                    string temporalStatus = null;
 
-        //        if (m_clientConnections.TryGetValue(clientID, out connection))
-        //        {
-        //            string temporalStatus = null;
+                    if ((object)connection.Subscription != null)
+                    {
+                        if (connection.Subscription.TemporalConstraintIsDefined())
+                            temporalStatus = connection.Subscription.TemporalSessionStatus;
+                        else
+                            temporalStatus = "Subscription does not have an active temporal session.";
+                    }
 
-        //            if ((object)connection.Subscription != null)
-        //            {
-        //                if (connection.Subscription.TemporalConstraintIsDefined())
-        //                    temporalStatus = connection.Subscription.TemporalSessionStatus;
-        //                else
-        //                    temporalStatus = "Subscription does not have an active temporal session.";
-        //            }
+                    if (string.IsNullOrWhiteSpace(temporalStatus))
+                        temporalStatus = "Temporal session status is unavailable.";
 
-        //            if (string.IsNullOrWhiteSpace(temporalStatus))
-        //                temporalStatus = "Temporal session status is unavailable.";
+                    return temporalStatus;
+                }
 
-        //            return temporalStatus;
-        //        }
+                OnStatusMessage(MessageLevel.Error, $"Failed to find connected client {clientID}");
+            }
 
-        //        OnStatusMessage(MessageLevel.Error, $"Failed to find connected client {clientID}");
-        //    }
-
-        //    return "";
-        //}
+            return "";
+        }
 
         /// <summary>
         /// Gets the local certificate currently in use by the data publisher.
@@ -2163,7 +2164,6 @@ namespace sttp
             try
             {
                 CertificatePolicy policy;
-
                 string remoteCertificateFile;
                 X509Certificate certificate;
 
@@ -2335,7 +2335,7 @@ namespace sttp
 
                         // Data packets and buffer blocks can be published on a UDP data channel, so check for this...
                         if (useDataChannel)
-                            publishChannel = m_clientPublicationChannels.GetOrAdd(clientID, id => connection.PublishChannel); // (object)connection != null ? connection.PublishChannel : m_commandChannel
+                            publishChannel = m_clientPublicationChannels.GetOrAdd(clientID, id => connection.PublishChannel);
                         else
                             publishChannel = m_commandChannel;
 
@@ -2430,7 +2430,7 @@ namespace sttp
                     OnStatusMessage(MessageLevel.Info, "Client disconnected from command channel.");
                 }
 
-                m_clientPublicationChannels.TryRemove(clientID, out IServer _);
+                m_clientPublicationChannels.TryRemove(clientID, out _);
             }
             catch (Exception ex)
             {
@@ -2495,7 +2495,7 @@ namespace sttp
         // Gets specified property from client connection based on subscriber ID
         private TResult GetConnectionProperty<TResult>(Guid subscriberID, Func<SubscriberConnection, TResult> predicate)
         {
-            TResult result = default(TResult);
+            TResult result = default;
 
             // Lookup client connection by subscriber ID
             SubscriberConnection connection = m_clientConnections.Values.FirstOrDefault(cc => cc.SubscriberID == subscriberID);
@@ -3180,6 +3180,43 @@ namespace sttp
             }
         }
 
+        private void HandlePublishCommandMeasurements(SubscriberConnection connection, byte[] buffer, int startIndex)
+        {
+            try
+            {
+                List<IMeasurement> measurements = new List<IMeasurement>();
+
+                int index = startIndex;
+                int payloadByteLength = BigEndian.ToInt32(buffer, index);
+                index += sizeof(int);
+
+                string dataString = connection.Encoding.GetString(buffer, index, payloadByteLength);
+                ConnectionStringParser<SettingAttribute> connectionStringParser = new ConnectionStringParser<SettingAttribute>();
+
+                foreach (string measurementString in dataString.Split(new[] { ";;" }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    CommandMeasurement measurement = new CommandMeasurement();
+                    connectionStringParser.ParseConnectionString(measurementString, measurement);
+
+                    measurements.Add(new Measurement()
+                    {
+                        Metadata = MeasurementKey.LookUpBySignalID(measurement.SignalID).Metadata,
+                        Timestamp = measurement.Timestamp,
+                        Value = measurement.Value,
+                        StateFlags = measurement.StateFlags
+                    });
+                }
+
+                OnNewMeasurements(measurements);
+            }
+            catch (Exception ex)
+            {
+                string errorMessage = $"Data packet command failed due to exception: {ex.Message}";
+                OnProcessException(MessageLevel.Error, new Exception(errorMessage, ex));
+                SendClientResponse(connection.ClientID, ServerResponse.Failed, ServerCommand.PublishCommandMeasurements, errorMessage);
+            }
+        }
+
         /// <summary>
         /// Handles custom commands defined by the user of the publisher API.
         /// </summary>
@@ -3321,12 +3358,12 @@ namespace sttp
         }
 
         // Bubble up processing complete notifications from subscriptions
-        private void subscription_ProcessingComplete(object sender, EventArgs<SubscriberAdapter, EventArgs> e)
+        private void subscription_ProcessingComplete(object sender, EventArgs<IClientSubscription, EventArgs> e)
         {
             // Expose notification via data publisher event subscribers
             ProcessingComplete?.Invoke(sender, e.Argument2);
 
-            SubscriberAdapter subscription = e.Argument1;
+            IClientSubscription subscription = e.Argument1;
             string senderType = (object)sender == null ? "N/A" : sender.GetType().Name;
 
             // Send direct notification to associated client
@@ -3404,6 +3441,11 @@ namespace sttp
                             case ServerCommand.ConfirmBufferBlock:
                                 // Handle confirmation of receipt of a buffer block
                                 HandleConfirmBufferBlock(connection, buffer, index, length);
+                                break;
+
+                            case ServerCommand.PublishCommandMeasurements:
+                                // Handle publication of command measurements
+                                HandlePublishCommandMeasurements(connection, buffer, index);
                                 break;
 
                             case ServerCommand.UserCommand00:
@@ -3495,7 +3537,7 @@ namespace sttp
         private void m_commandChannel_ClientConnectingException(object sender, EventArgs<Exception> e)
         {
             Exception ex = e.Argument;
-            OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data publisher encountered an exception while connecting client to the command channel: {ex.Message}", ex));
+            OnProcessException(MessageLevel.Info, new ConnectionException($"Data publisher encountered an exception while connecting client to the command channel: {ex.Message}", ex));
         }
 
         private void m_commandChannel_ServerStarted(object sender, EventArgs e)
