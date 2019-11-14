@@ -33,6 +33,7 @@ using System.Data;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
@@ -81,12 +82,6 @@ namespace sttp
             #region [ Members ]
 
             // Fields
-            private readonly string m_name;
-
-            private Guid m_statusFlagsID;
-            private Guid m_frequencyID;
-            private Guid m_deltaFrequencyID;
-
             private long m_dataQualityErrors;
             private long m_timeQualityErrors;
             private long m_deviceErrors;
@@ -94,7 +89,6 @@ namespace sttp
             private double m_measurementsExpected;
             private long m_measurementsWithError;
             private long m_measurementsDefined;
-
             private bool m_disposed;
 
             #endregion
@@ -106,7 +100,7 @@ namespace sttp
                 if ((object)name == null)
                     throw new ArgumentNullException(nameof(name));
 
-                m_name = name;
+                Name = name;
                 StatisticsEngine.Register(this, name, "Device", "PMU");
             }
 
@@ -122,24 +116,24 @@ namespace sttp
 
             #region [ Properties ]
 
-            public string Name => m_name;
+            public string Name { get; }
 
             public Guid StatusFlagsID
             {
-                get => m_statusFlagsID;
-                set => m_statusFlagsID = value;
+                get;
+                set;
             }
 
             public Guid FrequencyID
             {
-                get => m_frequencyID;
-                set => m_frequencyID = value;
+                get;
+                set;
             }
 
             public Guid DeltaFrequencyID
             {
-                get => m_deltaFrequencyID;
-                set => m_deltaFrequencyID = value;
+                get;
+                set;
             }
 
             public long DataQualityErrors
@@ -191,13 +185,10 @@ namespace sttp
             public override bool Equals(object obj)
             {
                 SubscribedDevice subscribedDevice = obj as SubscribedDevice;
-                return (object)subscribedDevice != null && m_name.Equals(subscribedDevice.m_name);
+                return (object)subscribedDevice != null && Name.Equals(subscribedDevice.Name);
             }
 
-            public override int GetHashCode()
-            {
-                return m_name.GetHashCode();
-            }
+            public override int GetHashCode() => Name.GetHashCode();
 
             /// <summary>
             /// Releases all the resources used by the <see cref="SubscribedDevice"/> object.
@@ -277,7 +268,7 @@ namespace sttp
         // Constants
 
         /// <summary>
-        /// Defines default value for <see cref="DataSubscriber.OperationalModes"/>.
+        /// Defines default value for <see cref="OperationalModes"/> property.
         /// </summary>
         public const OperationalModes DefaultOperationalModes = (OperationalModes)((uint)OperationalModes.VersionMask & 1u) | OperationalModes.CompressMetadata | OperationalModes.CompressSignalIndexCache | OperationalModes.ReceiveInternalMetadata;
 
@@ -292,7 +283,7 @@ namespace sttp
         public const bool DefaultUseTransactionForMetadata = true;
 
         /// <summary>
-        /// Default value for <see cref="LoggingPath"/>.
+        /// Default value for <see cref="LoggingPath"/> property.
         /// </summary>
         public const string DefaultLoggingPath = "ConfigurationCache";
 
@@ -376,11 +367,11 @@ namespace sttp
         public event EventHandler ExceededParsingExceptionThreshold;
 
         // Fields
-        private volatile Dictionary<Guid, DeviceStatisticsHelper<SubscribedDevice>> m_subscribedDevicesLookup;
-        private volatile List<DeviceStatisticsHelper<SubscribedDevice>> m_statisticsHelpers;
-        private readonly LongSynchronizedOperation m_registerStatisticsOperation;
         private IClient m_clientCommandChannel;
+        private IServer m_serverCommandChannel;
         private UdpClient m_dataChannel;
+        private Guid m_activeClientID;
+        private string m_connectionID;
         private bool m_tsscResetRequested;
         private TsscDecoder m_tsscDecoder;
         private ushort m_tsscSequenceNumber;
@@ -395,6 +386,7 @@ namespace sttp
         private volatile bool m_authenticated;
         private volatile bool m_subscribed;
         private volatile int m_lastBytesReceived;
+        private DateTime m_lastReceivedAt;
         private long m_monitoredBytesReceived;
         private long m_totalBytesReceived;
         private long m_lastMissingCacheWarning;
@@ -402,14 +394,8 @@ namespace sttp
         private int m_sttpProtocolID;
         private SecurityMode m_securityMode;
         private bool m_useMillisecondResolution;
-        //private bool m_requestNaNValueFilter;
         private bool m_autoConnect;
         private string m_metadataFilters;
-        private string m_localCertificate;
-        private string m_remoteCertificate;
-        private SslPolicyErrors m_validPolicyErrors;
-        private X509ChainStatusFlags m_validChainFlags;
-        private bool m_checkCertificateRevocation;
         private bool m_internal;
         private bool m_includeTime;
         private bool m_filterOutputMeasurements;
@@ -436,6 +422,9 @@ namespace sttp
         private Ticks m_parsingExceptionWindow;
         private bool m_supportsRealTimeProcessing;
         private bool m_supportsTemporalProcessing;
+        private volatile Dictionary<Guid, DeviceStatisticsHelper<SubscribedDevice>> m_subscribedDevicesLookup;
+        private volatile List<DeviceStatisticsHelper<SubscribedDevice>> m_statisticsHelpers;
+        private readonly LongSynchronizedOperation m_registerStatisticsOperation;
 
         private readonly List<BufferBlockMeasurement> m_bufferBlockCache;
         private uint m_expectedBufferBlockSequenceNumber;
@@ -576,8 +565,7 @@ namespace sttp
         /// Gets flag that indicates whether the connection will be persisted
         /// even while the adapter is offline in order to synchronize metadata.
         /// </summary>
-        public bool PersistConnectionForMetadata =>
-            !AutoStart && AutoSynchronizeMetadata && !this.TemporalConstraintIsDefined();
+        public bool PersistConnectionForMetadata => !AutoStart && AutoSynchronizeMetadata && !this.TemporalConstraintIsDefined();
 
         /// <summary>
         /// Gets or sets flag that determines if child devices associated with a subscription
@@ -620,7 +608,7 @@ namespace sttp
         /// <summary>
         /// Gets flag that determines whether the command channel is connected.
         /// </summary>
-        public bool CommandChannelConnected => m_clientCommandChannel?.Enabled ?? false;
+        public bool CommandChannelConnected => m_clientCommandChannel?.Enabled ?? m_serverCommandChannel?.Enabled ?? false;
 
         /// <summary>
         /// Gets flag that determines if this <see cref="DataSubscriber"/> has successfully authenticated with the <see cref="DataPublisher"/>.
@@ -943,7 +931,7 @@ namespace sttp
             set
             {
                 MeasurementKey[] oldKeys = base.RequestedOutputMeasurementKeys ?? new MeasurementKey[0];
-                MeasurementKey[] newKeys = value ?? new MeasurementKey[0];
+                MeasurementKey[] newKeys = value ?? Array.Empty<MeasurementKey>();
                 HashSet<MeasurementKey> oldKeySet = new HashSet<MeasurementKey>(oldKeys);
 
                 base.RequestedOutputMeasurementKeys = value;
@@ -982,7 +970,14 @@ namespace sttp
         {
             get
             {
-                string commandChannelServerUri = m_clientCommandChannel?.ServerUri;
+                if ((object)m_serverCommandChannel != null && string.IsNullOrWhiteSpace(m_connectionID))
+                {
+                    Guid clientID = m_serverCommandChannel.ClientIDs.FirstOrDefault();
+                    IPEndPoint endPoint = GetCommandChannelSocket().RemoteEndPoint as IPEndPoint;
+                    m_connectionID = SubscriberConnection.GetEndPointConnectionID(clientID, endPoint);
+                }
+                
+                string commandChannelServerUri = m_clientCommandChannel?.ServerUri ?? m_connectionID;
                 string dataChannelServerUri = m_dataChannel?.ServerUri;
 
                 if (string.IsNullOrWhiteSpace(commandChannelServerUri) && string.IsNullOrWhiteSpace(dataChannelServerUri))
@@ -1065,6 +1060,14 @@ namespace sttp
                     status.Append(m_clientCommandChannel.Status);
                 }
 
+                if ((object)m_serverCommandChannel != null)
+                {
+                    status.AppendLine();
+                    status.AppendLine("Command Channel Status".CenterText(50));
+                    status.AppendLine("----------------------".CenterText(50));
+                    status.Append(m_serverCommandChannel.Status);
+                }
+
                 status.Append(base.Status);
 
                 return status.ToString();
@@ -1087,10 +1090,10 @@ namespace sttp
                 if ((object)m_dataChannel != null)
                 {
                     // Detach from events on existing data channel reference
-                    m_dataChannel.ConnectionException -= m_dataChannel_ConnectionException;
-                    m_dataChannel.ConnectionAttempt -= m_dataChannel_ConnectionAttempt;
-                    m_dataChannel.ReceiveData -= m_dataChannel_ReceiveData;
-                    m_dataChannel.ReceiveDataException -= m_dataChannel_ReceiveDataException;
+                    m_dataChannel.ConnectionException -= DataChannelConnectionException;
+                    m_dataChannel.ConnectionAttempt -= DataChannelConnectionAttempt;
+                    m_dataChannel.ReceiveData -= DataChannelReceiveData;
+                    m_dataChannel.ReceiveDataException -= DataChannelReceiveDataException;
 
                     if ((object)m_dataChannel != value)
                         m_dataChannel.Dispose();
@@ -1102,10 +1105,10 @@ namespace sttp
                 if ((object)m_dataChannel != null)
                 {
                     // Attach to desired events on new data channel reference
-                    m_dataChannel.ConnectionException += m_dataChannel_ConnectionException;
-                    m_dataChannel.ConnectionAttempt += m_dataChannel_ConnectionAttempt;
-                    m_dataChannel.ReceiveData += m_dataChannel_ReceiveData;
-                    m_dataChannel.ReceiveDataException += m_dataChannel_ReceiveDataException;
+                    m_dataChannel.ConnectionException += DataChannelConnectionException;
+                    m_dataChannel.ConnectionAttempt += DataChannelConnectionAttempt;
+                    m_dataChannel.ReceiveData += DataChannelReceiveData;
+                    m_dataChannel.ReceiveDataException += DataChannelReceiveDataException;
                 }
             }
         }
@@ -1146,6 +1149,51 @@ namespace sttp
                     m_clientCommandChannel.ReceiveData += ClientCommandChannelReceiveData;
                     m_clientCommandChannel.ReceiveDataException += ClientCommandChannelReceiveDataException;
                     m_clientCommandChannel.SendDataException += ClientCommandChannelSendDataException;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets reference to <see cref="TcpServer"/> command channel, attaching and/or detaching to events as needed.
+        /// </summary>
+        /// <remarks>
+        /// This handles reverse connectivity operations.
+        /// </remarks>
+        protected IServer ServerCommandChannel
+        {
+            get => m_serverCommandChannel;
+            set
+            {
+                if ((object)m_serverCommandChannel != null)
+                {
+                    // Detach from events on existing command channel reference
+                    m_serverCommandChannel.ClientConnected -= ServerCommandChannelClientConnected;
+                    m_serverCommandChannel.ClientDisconnected -= ServerCommandChannelClientDisconnected;
+                    m_serverCommandChannel.ClientConnectingException -= ServerCommandChannelClientConnectingException;
+                    m_serverCommandChannel.ReceiveClientData -= ServerCommandChannelReceiveClientData;
+                    m_serverCommandChannel.ReceiveClientDataException -= ServerCommandChannelReceiveClientDataException;
+                    m_serverCommandChannel.SendClientDataException -= ServerCommandChannelSendClientDataException;
+                    m_serverCommandChannel.ServerStarted -= ServerCommandChannelServerStarted;
+                    m_serverCommandChannel.ServerStopped -= ServerCommandChannelServerStopped;
+
+                    if (m_serverCommandChannel != value)
+                        m_serverCommandChannel.Dispose();
+                }
+
+                // Assign new command channel reference
+                m_serverCommandChannel = value;
+
+                if ((object)m_serverCommandChannel != null)
+                {
+                    // Attach to desired events on new command channel reference
+                    m_serverCommandChannel.ClientConnected += ServerCommandChannelClientConnected;
+                    m_serverCommandChannel.ClientDisconnected += ServerCommandChannelClientDisconnected;
+                    m_serverCommandChannel.ClientConnectingException += ServerCommandChannelClientConnectingException;
+                    m_serverCommandChannel.ReceiveClientData += ServerCommandChannelReceiveClientData;
+                    m_serverCommandChannel.ReceiveClientDataException += ServerCommandChannelReceiveClientDataException;
+                    m_serverCommandChannel.SendClientDataException += ServerCommandChannelSendClientDataException;
+                    m_serverCommandChannel.ServerStarted += ServerCommandChannelServerStarted;
+                    m_serverCommandChannel.ServerStopped += ServerCommandChannelServerStopped;
                 }
             }
         }
@@ -1288,27 +1336,6 @@ namespace sttp
             m_supportsRealTimeProcessing = !settings.TryGetValue("supportsRealTimeProcessing", out setting) || setting.ParseBoolean();
             m_supportsTemporalProcessing = settings.TryGetValue("supportsTemporalProcessing", out setting) && setting.ParseBoolean();
 
-            // Settings specific to Transport Layer Security
-            if (m_securityMode == SecurityMode.TLS)
-            {
-                if (!settings.TryGetValue("localCertificate", out m_localCertificate) || !File.Exists(m_localCertificate))
-                    m_localCertificate = GetLocalCertificate();
-
-                if (!settings.TryGetValue("remoteCertificate", out m_remoteCertificate) || !RemoteCertificateExists())
-                    throw new ArgumentException("The \"remoteCertificate\" setting must be defined and certificate file must exist when using TLS security mode.");
-
-                if (!settings.TryGetValue("validPolicyErrors", out setting) || !Enum.TryParse(setting, out m_validPolicyErrors))
-                    m_validPolicyErrors = SslPolicyErrors.None;
-
-                if (!settings.TryGetValue("validChainFlags", out setting) || !Enum.TryParse(setting, out m_validChainFlags))
-                    m_validChainFlags = X509ChainStatusFlags.NoError;
-
-                if (settings.TryGetValue("checkCertificateRevocation", out setting) && !string.IsNullOrWhiteSpace(setting))
-                    m_checkCertificateRevocation = setting.ParseBoolean();
-                else
-                    m_checkCertificateRevocation = true;
-            }
-
             // Check if measurements for this connection should be marked as "internal" - i.e., owned and allowed for proxy
             if (settings.TryGetValue("internal", out setting))
                 m_internal = setting.ParseBoolean();
@@ -1334,10 +1361,6 @@ namespace sttp
                 m_useMillisecondResolution = setting.ParseBoolean();
             else
                 m_useMillisecondResolution = true;
-
-            //// Check if user wants to request that publisher remove NaN from the data stream to conserve bandwidth
-            //if (settings.TryGetValue("requestNaNValueFilter", out setting))
-            //    m_requestNaNValueFilter = setting.ParseBoolean();
 
             // Check if user has defined any meta-data filter expressions
             if (settings.TryGetValue("metadataFilters", out setting))
@@ -1395,57 +1418,131 @@ namespace sttp
                 TryFilterOutputMeasurements();
             }
 
+            Dictionary<string, string> commandChannelSettings;
+
+            // Attempt to retrieve any defined command channel settings
+            if (settings.TryGetValue("commandChannel", out string commandChannelConnectionString))
+                commandChannelSettings = commandChannelConnectionString.ParseKeyValuePairs();
+            else
+                commandChannelSettings = settings;
+
+            bool serverBasedConnection = !commandChannelSettings.TryGetValue("server", out string server) || string.IsNullOrWhiteSpace(server);
+
             if (m_securityMode == SecurityMode.TLS)
             {
-                // Create a new TLS client and certificate checker
-                TlsClient commandChannel = new TlsClient();
+                bool checkCertificateRevocation;
+
+                if (!commandChannelSettings.TryGetValue("localCertificate", out string localCertificate) || !File.Exists(localCertificate))
+                    localCertificate = GetLocalCertificate();
+
+                if (!commandChannelSettings.TryGetValue("remoteCertificate", out string remoteCertificate) || !RemoteCertificateExists(ref remoteCertificate))
+                    throw new ArgumentException("The \"remoteCertificate\" setting must be defined and certificate file must exist when using TLS security mode.");
+
+                if (!commandChannelSettings.TryGetValue("validPolicyErrors", out setting) || !Enum.TryParse(setting, out SslPolicyErrors validPolicyErrors))
+                    validPolicyErrors = SslPolicyErrors.None;
+
+                if (!commandChannelSettings.TryGetValue("validChainFlags", out setting) || !Enum.TryParse(setting, out X509ChainStatusFlags validChainFlags))
+                    validChainFlags = X509ChainStatusFlags.NoError;
+
+                if (commandChannelSettings.TryGetValue("checkCertificateRevocation", out setting) && !string.IsNullOrWhiteSpace(setting))
+                    checkCertificateRevocation = setting.ParseBoolean();
+                else
+                    checkCertificateRevocation = true;
+
                 SimpleCertificateChecker certificateChecker = new SimpleCertificateChecker();
 
                 // Set up certificate checker
-                certificateChecker.TrustedCertificates.Add(new X509Certificate2(FilePath.GetAbsolutePath(m_remoteCertificate)));
-                certificateChecker.ValidPolicyErrors = m_validPolicyErrors;
-                certificateChecker.ValidChainFlags = m_validChainFlags;
+                certificateChecker.TrustedCertificates.Add(new X509Certificate2(FilePath.GetAbsolutePath(remoteCertificate)));
+                certificateChecker.ValidPolicyErrors = validPolicyErrors;
+                certificateChecker.ValidChainFlags = validChainFlags;
 
-                // Initialize default settings
-                commandChannel.PayloadAware = true;
-                commandChannel.PayloadMarker = null;
-                commandChannel.PayloadEndianOrder = EndianOrder.BigEndian;
-                commandChannel.PersistSettings = false;
-                commandChannel.MaxConnectionAttempts = 1;
-                commandChannel.CertificateFile = FilePath.GetAbsolutePath(m_localCertificate);
-                commandChannel.CheckCertificateRevocation = m_checkCertificateRevocation;
-                commandChannel.CertificateChecker = certificateChecker;
-                commandChannel.ReceiveBufferSize = bufferSize;
-                commandChannel.SendBufferSize = bufferSize;
-                commandChannel.NoDelay = true;
+                if (serverBasedConnection)
+                {
+                    // Create a new TLS server
+                    TlsServer commandChannel = new TlsServer();
 
-                // Assign command channel client reference and attach to needed events
-                ClientCommandChannel = commandChannel;
+                    // Initialize default settings
+                    commandChannel.ConfigurationString = commandChannelConnectionString;
+                    commandChannel.PayloadAware = true;
+                    commandChannel.PayloadMarker = null;
+                    commandChannel.PayloadEndianOrder = EndianOrder.BigEndian;
+                    commandChannel.PersistSettings = false;
+                    commandChannel.MaxClientConnections = 1; // Subscriber can only serve a single publisher
+                    commandChannel.CertificateFile = localCertificate;
+                    commandChannel.CheckCertificateRevocation = checkCertificateRevocation;
+                    commandChannel.CertificateChecker = certificateChecker;
+                    commandChannel.RequireClientCertificate = true;
+                    commandChannel.ReceiveBufferSize = bufferSize;
+                    commandChannel.SendBufferSize = bufferSize;
+                    commandChannel.NoDelay = true;
+
+                    // Assign command channel server reference and attach to needed events
+                    ServerCommandChannel = commandChannel;
+                }
+                else
+                {
+                    // Create a new TLS client
+                    TlsClient commandChannel = new TlsClient();
+
+                    // Initialize default settings
+                    commandChannel.ConnectionString = commandChannelConnectionString ?? ConnectionString;
+                    commandChannel.PayloadAware = true;
+                    commandChannel.PayloadMarker = null;
+                    commandChannel.PayloadEndianOrder = EndianOrder.BigEndian;
+                    commandChannel.PersistSettings = false;
+                    commandChannel.MaxConnectionAttempts = 1;
+                    commandChannel.CertificateFile = FilePath.GetAbsolutePath(localCertificate);
+                    commandChannel.CheckCertificateRevocation = checkCertificateRevocation;
+                    commandChannel.CertificateChecker = certificateChecker;
+                    commandChannel.ReceiveBufferSize = bufferSize;
+                    commandChannel.SendBufferSize = bufferSize;
+                    commandChannel.NoDelay = true;
+
+                    // Assign command channel client reference and attach to needed events
+                    ClientCommandChannel = commandChannel;
+                }
             }
             else
             {
-                // Create a new TCP client
-                TcpClient commandChannel = new TcpClient();
+                if (serverBasedConnection)
+                {
+                    // Create a new TCP server
+                    TcpServer commandChannel = new TcpServer();
 
-                // Initialize default settings
-                commandChannel.PayloadAware = true;
-                commandChannel.PayloadMarker = null;
-                commandChannel.PayloadEndianOrder = EndianOrder.BigEndian;
-                commandChannel.PersistSettings = false;
-                commandChannel.MaxConnectionAttempts = 1;
-                commandChannel.ReceiveBufferSize = bufferSize;
-                commandChannel.SendBufferSize = bufferSize;
-                commandChannel.NoDelay = true;
+                    // Initialize default settings
+                    commandChannel.ConfigurationString = commandChannelConnectionString;
+                    commandChannel.PayloadAware = true;
+                    commandChannel.PayloadMarker = null;
+                    commandChannel.PayloadEndianOrder = EndianOrder.BigEndian;
+                    commandChannel.PersistSettings = false;
+                    commandChannel.MaxClientConnections = 1; // Subscriber can only serve a single publisher
+                    commandChannel.ReceiveBufferSize = bufferSize;
+                    commandChannel.SendBufferSize = bufferSize;
+                    commandChannel.NoDelay = true;
 
-                // Assign command channel client reference and attach to needed events
-                ClientCommandChannel = commandChannel;
+                    // Assign command channel server reference and attach to needed events
+                    ServerCommandChannel = commandChannel;
+                }
+                else
+                {
+                    // Create a new TCP client
+                    TcpClient commandChannel = new TcpClient();
+
+                    // Initialize default settings
+                    commandChannel.ConnectionString = commandChannelConnectionString ?? ConnectionString;
+                    commandChannel.PayloadAware = true;
+                    commandChannel.PayloadMarker = null;
+                    commandChannel.PayloadEndianOrder = EndianOrder.BigEndian;
+                    commandChannel.PersistSettings = false;
+                    commandChannel.MaxConnectionAttempts = 1;
+                    commandChannel.ReceiveBufferSize = bufferSize;
+                    commandChannel.SendBufferSize = bufferSize;
+                    commandChannel.NoDelay = true;
+
+                    // Assign command channel client reference and attach to needed events
+                    ClientCommandChannel = commandChannel;
+                }
             }
-
-            // Get proper connection string - either from specified command channel or from base connection string
-            if (settings.TryGetValue("commandChannel", out setting))
-                m_clientCommandChannel.ConnectionString = setting;
-            else
-                m_clientCommandChannel.ConnectionString = ConnectionString;
 
             // Check for simplified compression setup flag
             if (settings.TryGetValue("compression", out setting) && setting.ParseBoolean())
@@ -1527,44 +1624,12 @@ namespace sttp
             }
 
             if (PersistConnectionForMetadata)
-                m_clientCommandChannel.ConnectAsync();
-
-            Initialized = true;
-        }
-
-        // Gets the path to the local certificate from the configuration file
-        private string GetLocalCertificate()
-        {
-            CategorizedSettingsElement localCertificateElement = ConfigurationFile.Current.Settings["systemSettings"]["LocalCertificate"];
-            string localCertificate = null;
-
-            if ((object)localCertificateElement != null)
-                localCertificate = localCertificateElement.Value;
-
-            if ((object)localCertificate == null || !File.Exists(FilePath.GetAbsolutePath(localCertificate)))
-                throw new InvalidOperationException("Unable to find local certificate. Local certificate file must exist when using TLS security mode.");
-
-            return localCertificate;
-        }
-
-        // Checks if the specified certificate exists
-        private bool RemoteCertificateExists()
-        {
-            string fullPath = FilePath.GetAbsolutePath(m_remoteCertificate);
-            CategorizedSettingsElement remoteCertificateElement;
-
-            if (!File.Exists(fullPath))
             {
-                remoteCertificateElement = ConfigurationFile.Current.Settings["systemSettings"]["RemoteCertificatesPath"];
-
-                if ((object)remoteCertificateElement != null)
-                {
-                    m_remoteCertificate = Path.Combine(remoteCertificateElement.Value, m_remoteCertificate);
-                    fullPath = FilePath.GetAbsolutePath(m_remoteCertificate);
-                }
+                m_clientCommandChannel?.ConnectAsync();
+                m_serverCommandChannel?.Start();
             }
 
-            return File.Exists(fullPath);
+            Initialized = true;
         }
 
         // Initialize (or reinitialize) the output measurements associated with the data subscriber.
@@ -1884,7 +1949,7 @@ namespace sttp
                 }
                 catch (Exception ex)
                 {
-                    OnProcessException(MessageLevel.Error, new InvalidOperationException("Exception occurred while trying to make publisher subscription: " + ex.Message, ex));
+                    OnProcessException(MessageLevel.Error, new InvalidOperationException($"Exception occurred while trying to make publisher subscription: {ex.Message}", ex));
                 }
             }
             else
@@ -1892,11 +1957,9 @@ namespace sttp
                 OnProcessException(MessageLevel.Error, new InvalidOperationException("Cannot make publisher subscription without a connection string."));
             }
 
-            // Reset decompressor on successful resubscription
+            // Reset decompresser on successful resubscription
             if (success)
-            {
                 m_tsscResetRequested = true;
-            }
 
             return success;
         }
@@ -2064,7 +2127,7 @@ namespace sttp
             catch (Exception ex)
             {
                 // Process exception for logging
-                OnProcessException(MessageLevel.Warning, new InvalidOperationException("Failed to queue meta-data synchronization: " + ex.Message, ex));
+                OnProcessException(MessageLevel.Warning, new InvalidOperationException($"Failed to queue meta-data synchronization: {ex.Message}", ex));
             }
         }
 
@@ -2100,7 +2163,7 @@ namespace sttp
         /// <returns><c>true</c> if <paramref name="commandCode"/> transmission was successful; otherwise <c>false</c>.</returns>
         public virtual bool SendServerCommand(ServerCommand commandCode, byte[] data = null)
         {
-            if ((object)m_clientCommandChannel != null && m_clientCommandChannel.CurrentState == ClientState.Connected)
+            if (m_clientCommandChannel?.CurrentState == ClientState.Connected || m_serverCommandChannel?.CurrentState == ServerState.Running && m_activeClientID != Guid.Empty)
             {
                 try
                 {
@@ -2114,7 +2177,8 @@ namespace sttp
                             commandPacket.Write(data, 0, data.Length);
 
                         // Send command packet to publisher
-                        m_clientCommandChannel.SendAsync(commandPacket.ToArray(), 0, (int)commandPacket.Length);
+                        m_clientCommandChannel?.SendAsync(commandPacket.ToArray(), 0, (int)commandPacket.Length);
+                        m_serverCommandChannel?.SendToAsync(m_activeClientID, commandPacket.ToArray(), 0, (int)commandPacket.Length);
                         m_metadataRefreshPending = commandCode == ServerCommand.MetaDataRefresh;
                     }
 
@@ -2153,11 +2217,17 @@ namespace sttp
             m_totalBytesReceived = 0L;
             m_monitoredBytesReceived = 0L;
             m_lastBytesReceived = 0;
+            m_lastReceivedAt = DateTime.MinValue;
 
             if (!PersistConnectionForMetadata)
+            {
                 m_clientCommandChannel.ConnectAsync();
+                m_serverCommandChannel.Start();
+            }
             else
+            {
                 OnConnected();
+            }
 
             if (PersistConnectionForMetadata && CommandChannelConnected)
                 SubscribeToOutputMeasurements(true);
@@ -2194,8 +2264,13 @@ namespace sttp
                 m_dataStreamMonitor.Enabled = false;
 
             // Disconnect command channel
-            if (!PersistConnectionForMetadata && (object)m_clientCommandChannel != null)
-                m_clientCommandChannel.Disconnect();
+            if (!PersistConnectionForMetadata)
+            {
+                m_clientCommandChannel?.Disconnect();
+                m_serverCommandChannel?.Stop();
+            }
+
+            m_activeClientID = Guid.Empty;
 
             if ((object)m_subscribedDevicesTimer != null)
                 m_subscribedDevicesTimer.Stop();
@@ -2210,8 +2285,11 @@ namespace sttp
         /// <returns>Text of the status message.</returns>
         public override string GetShortStatus(int maxLength)
         {
-            if ((object)m_clientCommandChannel != null && m_clientCommandChannel.CurrentState == ClientState.Connected)
+            if (m_clientCommandChannel?.CurrentState == ClientState.Connected)
                 return "Subscriber is connected and receiving data points".CenterText(maxLength);
+
+            if (m_serverCommandChannel?.CurrentState == ServerState.Running && m_activeClientID != Guid.Empty)
+                return "Subscriber has a client-based connection from publisher and is receiving data points".CenterText(maxLength);
 
             return "Subscriber is not connected.".CenterText(maxLength);
         }
@@ -2309,9 +2387,9 @@ namespace sttp
 
                             if (m_totalBytesReceived == 0)
                             {
-                                // At the point when data is being received, data monitor should be enabled
-                                if ((object)m_dataStreamMonitor != null && !m_dataStreamMonitor.Enabled)
-                                    m_dataStreamMonitor.Enabled = true;
+                                // At the point when data is being received, data monitor should be enabled (when not a server-based connection)
+                                if (!m_dataStreamMonitor?.Enabled ?? false)
+                                    m_dataStreamMonitor.Enabled = (object)m_serverCommandChannel == null;
 
                                 // Establish run-time log for subscriber
                                 if (m_autoConnect /* || m_dataGapRecoveryEnabled*/)
@@ -2319,7 +2397,7 @@ namespace sttp
                                     if ((object)m_runTimeLog == null)
                                     {
                                         m_runTimeLog = new RunTimeLog();
-                                        m_runTimeLog.FileName = GetLoggingPath(Name + "_RunTimeLog.txt");
+                                        m_runTimeLog.FileName = GetLoggingPath($"{Name}_RunTimeLog.txt");
                                         m_runTimeLog.ProcessException += m_runTimeLog_ProcessException;
                                         m_runTimeLog.Initialize();
                                     }
@@ -2377,7 +2455,7 @@ namespace sttp
                                     }
                                     catch (Exception ex)
                                     {
-                                        OnProcessException(MessageLevel.Error, new InvalidOperationException($"Decompression failure: (Decoded {measurements.Count} of {count} measurements)" + ex.Message, ex));
+                                        OnProcessException(MessageLevel.Error, new InvalidOperationException($"Decompression failure: (Decoded {measurements.Count} of {count} measurements){ex.Message}", ex));
                                     }
                                 }
                                 else
@@ -2558,7 +2636,7 @@ namespace sttp
                                 signalIndex = BigEndian.ToUInt16(buffer, responseIndex + 4);
 
                                 if (!m_signalIndexCache.Reference.TryGetValue(signalIndex, out MeasurementKey measurementKey))
-                                    throw new InvalidOperationException("Failed to find associated signal identification for runtime ID " + signalIndex);
+                                    throw new InvalidOperationException($"Failed to find associated signal identification for runtime ID {signalIndex}");
 
                                 // Skip the sequence number and signal index when creating the buffer block measurement
                                 bufferBlockMeasurement = new BufferBlockMeasurement(buffer, responseIndex + 6, responseLength - 6)
@@ -2712,7 +2790,7 @@ namespace sttp
                 }
                 catch (Exception ex)
                 {
-                    OnProcessException(MessageLevel.Error, new InvalidOperationException("Failed to process publisher response packet due to exception: " + ex.Message, ex));
+                    OnProcessException(MessageLevel.Error, new InvalidOperationException($"Failed to process publisher response packet due to exception: {ex.Message}", ex));
                 }
             }
         }
@@ -2901,7 +2979,7 @@ namespace sttp
                 }
 
                 // Reset data stream monitor while meta-data synchronization is in progress
-                if ((object)m_dataStreamMonitor != null && m_dataStreamMonitor.Enabled)
+                if (m_dataStreamMonitor?.Enabled ?? false)
                 {
                     m_dataStreamMonitor.Enabled = false;
                     dataMonitoringEnabled = true;
@@ -2953,7 +3031,7 @@ namespace sttp
                         InitSyncProgress(metadata.Tables.Cast<DataTable>().Select(dataTable => (long)dataTable.Rows.Count).Sum() + 3);
 
                         // Prefix all children devices with the name of the parent since the same device names could appear in different connections (helps keep device names unique)
-                        string sourcePrefix = m_useSourcePrefixNames ? Name + "!" : "";
+                        string sourcePrefix = m_useSourcePrefixNames ? $"{Name}!" : "";
                         Dictionary<string, int> deviceIDs = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
                         string deviceAcronym, signalTypeAcronym;
                         decimal longitude, latitude;
@@ -3452,7 +3530,7 @@ namespace sttp
                             foreach (int id in deviceIDs.Values)
                             {
                                 if (definedSourceIndicies.TryGetValue(id, out List<int> sourceIndicies))
-                                    command.ExecuteNonQuery(deletePhasorSql + $" AND SourceIndex NOT IN ({string.Join(",", sourceIndicies)})", m_metadataSynchronizationTimeout, id);
+                                    command.ExecuteNonQuery($"{deletePhasorSql} AND SourceIndex NOT IN ({string.Join(",", sourceIndicies)})", m_metadataSynchronizationTimeout, id);
                                 else
                                     command.ExecuteNonQuery(deletePhasorSql, m_metadataSynchronizationTimeout, id);
                             }
@@ -3466,7 +3544,7 @@ namespace sttp
                     }
                     catch (Exception ex)
                     {
-                        OnProcessException(MessageLevel.Error, new InvalidOperationException("Failed to synchronize meta-data to local cache: " + ex.Message, ex));
+                        OnProcessException(MessageLevel.Error, new InvalidOperationException($"Failed to synchronize meta-data to local cache: {ex.Message}", ex));
 
                         if ((object)transaction != null)
                         {
@@ -3476,7 +3554,7 @@ namespace sttp
                             }
                             catch (Exception rollbackException)
                             {
-                                OnProcessException(MessageLevel.Error, new InvalidOperationException("Failed to roll back database transaction due to exception: " + rollbackException.Message, rollbackException));
+                                OnProcessException(MessageLevel.Error, new InvalidOperationException($"Failed to roll back database transaction due to exception: {rollbackException.Message}", rollbackException));
                             }
                         }
 
@@ -3502,13 +3580,13 @@ namespace sttp
             }
             catch (Exception ex)
             {
-                OnProcessException(MessageLevel.Error, new InvalidOperationException("Failed to synchronize meta-data to local cache: " + ex.Message, ex));
+                OnProcessException(MessageLevel.Error, new InvalidOperationException($"Failed to synchronize meta-data to local cache: {ex.Message}", ex));
             }
             finally
             {
                 // Restart data stream monitor after meta-data synchronization if it was originally enabled
                 if (dataMonitoringEnabled && (object)m_dataStreamMonitor != null)
-                    m_dataStreamMonitor.Enabled = true;
+                    m_dataStreamMonitor.Enabled = (object)m_serverCommandChannel == null;
             }
         }
 
@@ -3703,6 +3781,24 @@ namespace sttp
             // If user didn't initiate disconnect, restart the connection
             if (Enabled)
                 Start();
+        }
+
+        // Gets the socket instance used by this client
+        private Socket GetCommandChannelSocket()
+        {
+            Guid clientID = m_serverCommandChannel?.ClientIDs.FirstOrDefault() ?? Guid.Empty;
+
+            switch (m_serverCommandChannel)
+            {
+                case TcpServer tcpServerCommandChannel
+                    when tcpServerCommandChannel.TryGetClient(clientID, out TransportProvider<Socket> tcpProvider):
+                        return tcpProvider.Provider;
+                case TlsServer tlsServerCommandChannel
+                    when tlsServerCommandChannel.TryGetClient(clientID, out TransportProvider<TlsServer.TlsSocket> tlsProvider):
+                        return tlsProvider.Provider.Socket;
+                default:
+                    return (m_clientCommandChannel as TcpClient)?.Client;
+            }
         }
 
         private void HandleDeviceStatisticsRegistration()
@@ -3934,7 +4030,7 @@ namespace sttp
             catch (Exception ex)
             {
                 // Process exception for logging
-                OnProcessException(MessageLevel.Error, new InvalidOperationException("Failed to queue meta-data synchronization due to exception: " + ex.Message, ex));
+                OnProcessException(MessageLevel.Error, new InvalidOperationException($"Failed to queue meta-data synchronization due to exception: {ex.Message}", ex));
             }
         }
 
@@ -4257,7 +4353,10 @@ namespace sttp
             bool dataReceived = m_monitoredBytesReceived > 0;
 
             if ((object)m_dataChannel == null && m_metadataRefreshPending)
-                dataReceived = (DateTime.UtcNow - m_clientCommandChannel.Statistics.LastReceive).Seconds < DataLossInterval;
+            {
+                if (m_lastReceivedAt > DateTime.MinValue)   
+                    dataReceived = (DateTime.UtcNow - m_lastReceivedAt).Seconds < DataLossInterval;
+            }
 
             if (!dataReceived)
             {
@@ -4291,7 +4390,7 @@ namespace sttp
         //    OnProcessException(MessageLevel.Warning, new InvalidOperationException("[DataGapRecoverer] " + e.Argument.Message, e.Argument.InnerException));
         //}
 
-        #region [ Command Channel Event Handlers ]
+        #region [ Client Command Channel Event Handlers ]
 
         private void ClientCommandChannelConnectionEstablished(object sender, EventArgs e)
         {
@@ -4326,7 +4425,7 @@ namespace sttp
         private void ClientCommandChannelConnectionException(object sender, EventArgs<Exception> e)
         {
             Exception ex = e.Argument;
-            OnProcessException(MessageLevel.Info, new ConnectionException("Data subscriber encountered an exception while attempting command channel publisher connection: " + ex.Message, ex));
+            OnProcessException(MessageLevel.Info, new ConnectionException($"Data subscriber encountered an exception while attempting command channel publisher connection: {ex.Message}", ex));
         }
 
         private void ClientCommandChannelConnectionAttempt(object sender, EventArgs e)
@@ -4344,7 +4443,7 @@ namespace sttp
             Exception ex = e.Argument;
 
             if (!HandleSocketException(ex) && !(ex is ObjectDisposedException))
-                OnProcessException(MessageLevel.Info, new InvalidOperationException("Data subscriber encountered an exception while sending command channel data to publisher connection: " + ex.Message, ex));
+                OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data subscriber encountered an exception while sending command channel data to publisher connection: {ex.Message}", ex));
         }
 
         private void ClientCommandChannelReceiveData(object sender, EventArgs<int> e)
@@ -4355,8 +4454,11 @@ namespace sttp
                 byte[] buffer = new byte[length];
 
                 m_lastBytesReceived = length;
+                m_lastReceivedAt = DateTime.UtcNow;
 
-                m_clientCommandChannel.Read(buffer, 0, length);
+                m_clientCommandChannel?.Read(buffer, 0, length);
+                m_serverCommandChannel?.Read(m_activeClientID, buffer, 0, length);
+
                 ProcessServerResponse(buffer, length);
             }
             catch (Exception ex)
@@ -4370,20 +4472,71 @@ namespace sttp
             Exception ex = e.Argument;
 
             if (!HandleSocketException(ex) && !(ex is ObjectDisposedException))
-                OnProcessException(MessageLevel.Info, new InvalidOperationException("Data subscriber encountered an exception while receiving command channel data from publisher connection: " + ex.Message, ex));
+                OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data subscriber encountered an exception while receiving command channel data from publisher connection: {ex.Message}", ex));
+        }
+
+        #endregion
+
+        #region [ Server Command Channel Event Handlers ]
+
+        private void ServerCommandChannelReceiveClientData(object sender, EventArgs<Guid, int> e)
+        {
+            ClientCommandChannelReceiveData(sender, new EventArgs<int>(e.Argument2));
+        }
+
+        private void ServerCommandChannelClientConnected(object sender, EventArgs<Guid> e)
+        {
+            m_activeClientID = e.Argument;
+            ClientCommandChannelConnectionEstablished(sender, EventArgs.Empty);
+        }
+
+        private void ServerCommandChannelClientDisconnected(object sender, EventArgs<Guid> e)
+        {
+            ClientCommandChannelConnectionTerminated(sender, EventArgs.Empty);
+        }
+
+        private void ServerCommandChannelClientConnectingException(object sender, EventArgs<Exception> e)
+        {
+            Exception ex = e.Argument;
+            OnProcessException(MessageLevel.Info, new ConnectionException($"Data subscriber encountered an exception while connecting client-based publisher to the command channel: {ex.Message}", ex));
+        }
+
+        private void ServerCommandChannelServerStarted(object sender, EventArgs e)
+        {
+            OnStatusMessage(MessageLevel.Info, "Data subscriber command channel started.");
+        }
+
+        private void ServerCommandChannelServerStopped(object sender, EventArgs e)
+        {
+        }
+
+        private void ServerCommandChannelSendClientDataException(object sender, EventArgs<Guid, Exception> e)
+        {
+            Exception ex = e.Argument2;
+
+            if (!HandleSocketException(ex) && !(ex is NullReferenceException) && !(ex is ObjectDisposedException))
+                OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data subscriber encountered an exception while sending command channel data to client-based publisher connection: {ex.Message}", ex));
+        }
+
+        private void ServerCommandChannelReceiveClientDataException(object sender, EventArgs<Guid, Exception> e)
+        {
+            Exception ex = e.Argument2;
+
+            if (!HandleSocketException(ex) && !(ex is NullReferenceException) && !(ex is ObjectDisposedException))
+                OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data subscriber encountered an exception while receiving command channel data from client-based publisher connection: {ex.Message}", ex));
         }
 
         #endregion
 
         #region [ Data Channel Event Handlers ]
 
-        private void m_dataChannel_ConnectionException(object sender, EventArgs<Exception> e)
+        private void DataChannelConnectionException(object sender, EventArgs<Exception> e)
         {
             Exception ex = e.Argument;
-            OnProcessException(MessageLevel.Info, new ConnectionException("Data subscriber encountered an exception while attempting to establish UDP data channel connection: " + ex.Message, ex));
+            OnProcessException(MessageLevel.Info, new ConnectionException($"Data subscriber encountered an exception while attempting to establish UDP data channel connection: {ex.Message}", ex));
         }
 
-        private void m_dataChannel_ConnectionAttempt(object sender, EventArgs e)
+        private void DataChannelConnectionAttempt(object sender, EventArgs e)
         {
             // Inject a short delay between multiple connection attempts
             if (m_dataChannelConnectionAttempts > 0)
@@ -4393,7 +4546,7 @@ namespace sttp
             m_dataChannelConnectionAttempts++;
         }
 
-        private void m_dataChannel_ReceiveData(object sender, EventArgs<int> e)
+        private void DataChannelReceiveData(object sender, EventArgs<int> e)
         {
             try
             {
@@ -4411,16 +4564,65 @@ namespace sttp
             }
         }
 
-        private void m_dataChannel_ReceiveDataException(object sender, EventArgs<Exception> e)
+        private void DataChannelReceiveDataException(object sender, EventArgs<Exception> e)
         {
             Exception ex = e.Argument;
 
             if (!HandleSocketException(ex) && !(ex is ObjectDisposedException))
-                OnProcessException(MessageLevel.Info, new InvalidOperationException("Data subscriber encountered an exception while receiving UDP data from publisher connection: " + ex.Message, ex));
+                OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data subscriber encountered an exception while receiving UDP data from publisher connection: {ex.Message}", ex));
         }
 
         #endregion
 
         #endregion
+
+        #region [ Static ]
+
+        // Static Methods
+
+        /// <summary>
+        /// Gets the path to the local certificate from the configuration file.
+        /// </summary>
+        /// <returns>Path to the local certificate from the configuration file.</returns>
+        internal static string GetLocalCertificate()
+        {
+            CategorizedSettingsElement localCertificateElement = ConfigurationFile.Current.Settings["systemSettings"]["LocalCertificate"];
+            string localCertificate = null;
+
+            if ((object)localCertificateElement != null)
+                localCertificate = localCertificateElement.Value;
+
+            if ((object)localCertificate == null || !File.Exists(FilePath.GetAbsolutePath(localCertificate)))
+                throw new InvalidOperationException("Unable to find local certificate. Local certificate file must exist when using TLS security mode.");
+
+            return localCertificate;
+        }
+
+        /// <summary>
+        /// Checks if the specified certificate exists, updating path if needed.
+        /// </summary>
+        /// <param name="remoteCertificate">Reference certificate.</param>
+        /// <returns><c>true</c> if certificate exists; otherwise, <c>false</c>.</returns>
+        internal static bool RemoteCertificateExists(ref string remoteCertificate)
+        {
+            string fullPath = FilePath.GetAbsolutePath(remoteCertificate);
+            CategorizedSettingsElement remoteCertificateElement;
+
+            if (!File.Exists(fullPath))
+            {
+                remoteCertificateElement = ConfigurationFile.Current.Settings["systemSettings"]["RemoteCertificatesPath"];
+
+                if ((object)remoteCertificateElement != null)
+                {
+                    remoteCertificate = Path.Combine(remoteCertificateElement.Value, remoteCertificate);
+                    fullPath = FilePath.GetAbsolutePath(remoteCertificate);
+                }
+            }
+
+            return File.Exists(fullPath);
+        }
+
+        #endregion
+
     }
 }

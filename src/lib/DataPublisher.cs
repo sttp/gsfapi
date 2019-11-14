@@ -65,6 +65,7 @@ using GSF.TimeSeries.Adapters;
 using GSF.TimeSeries.Statistics;
 using GSF.TimeSeries.Transport;
 using GSF.Units;
+using TcpClient = GSF.Communication.TcpClient;
 
 namespace sttp
 {
@@ -754,14 +755,16 @@ namespace sttp
 
         // Fields
         private IServer m_serverCommandChannel;
+        private IClient m_clientCommandChannel;
         private CertificatePolicyChecker m_certificateChecker;
         private Dictionary<X509Certificate, DataRow> m_subscriberIdentities;
         private ConcurrentDictionary<Guid, SubscriberConnection> m_clientConnections;
         private readonly ConcurrentDictionary<Guid, IServer> m_clientPublicationChannels;
         private readonly Dictionary<Guid, Dictionary<int, string>> m_clientNotifications;
         private readonly object m_clientNotificationsLock;
-        private SharedTimer m_commandChannelRestartTimer;
         private SharedTimer m_cipherKeyRotationTimer;
+        private long m_commandChannelConnectionAttempts;
+        private Guid m_proxyClientID;
         private RoutingTables m_routingTables;
         private string m_metadataTables;
         private string m_cachedMeasurementExpression;
@@ -832,12 +835,6 @@ namespace sttp
             m_routingTables.StatusMessage += m_routingTables_StatusMessage;
             m_routingTables.ProcessException += m_routingTables_ProcessException;
 
-            // Setup a timer for restarting the command channel if it fails
-            m_commandChannelRestartTimer = Common.TimerScheduler.CreateTimer(2000);
-            m_commandChannelRestartTimer.AutoReset = false;
-            m_commandChannelRestartTimer.Enabled = false;
-            m_commandChannelRestartTimer.Elapsed += m_commandChannelRestartTimer_Elapsed;
-
             // Setup a timer for rotating cipher keys
             m_cipherKeyRotationTimer = Common.TimerScheduler.CreateTimer((int)DefaultCipherKeyRotationPeriod);
             m_cipherKeyRotationTimer.AutoReset = true;
@@ -865,7 +862,7 @@ namespace sttp
         /// Gets or sets flag that determines whether data sent over the data channel should be encrypted.
         /// </summary>
         [ConnectionStringParameter,
-        Description("Define the flag that determines whether data sent over the data channel should be encrypted. This value is only relevant when requireAuthentication is true."),
+        Description("Define the flag that determines whether data sent over the data channel should be encrypted. This value is only relevant when SecurityMode is TLS."),
         DefaultValue(DefaultEncryptPayload)]
         public bool EncryptPayload
         {
@@ -1043,9 +1040,8 @@ namespace sttp
             {
                 StringBuilder status = new StringBuilder();
 
-                if ((object)m_serverCommandChannel != null)
-                    status.Append(m_serverCommandChannel.Status);
-
+                status.Append(m_serverCommandChannel?.Status);
+                status.Append(m_clientCommandChannel?.Status);
                 status.Append(base.Status);
                 status.AppendFormat("        Reporting interval: {0:N0} per subscriber", MeasurementReportingInterval);
                 status.AppendLine();
@@ -1067,10 +1063,10 @@ namespace sttp
             get => base.Name;
             set
             {
-                IPersistSettings commandChannel = m_serverCommandChannel as IPersistSettings;
+                IPersistSettings commandChannel = m_serverCommandChannel as IPersistSettings ?? m_clientCommandChannel as IPersistSettings;
                 base.Name = value.ToUpper();
 
-                if ((object)commandChannel != null)
+                if (commandChannel != null)
                     commandChannel.SettingsCategory = value.Replace("!", "").ToLower();
             }
         }
@@ -1141,9 +1137,52 @@ namespace sttp
         }
 
         /// <summary>
+        /// Gets or sets reference to <see cref="TcpClient"/> command channel, attaching and/or detaching to events as needed.
+        /// </summary>
+        /// <remarks>
+        /// This handles reverse connectivity operations.
+        /// </remarks>
+        protected IClient ClientCommandChannel
+        {
+            get => m_clientCommandChannel;
+            set
+            {
+                if ((object)m_clientCommandChannel != null)
+                {
+                    // Detach from events on existing command channel reference
+                    m_clientCommandChannel.ConnectionAttempt -= ClientCommandChannelConnectionAttempt;
+                    m_clientCommandChannel.ConnectionEstablished -= ClientCommandChannelConnectionEstablished;
+                    m_clientCommandChannel.ConnectionException -= ClientCommandChannelConnectionException;
+                    m_clientCommandChannel.ConnectionTerminated -= ClientCommandChannelConnectionTerminated;
+                    m_clientCommandChannel.ReceiveDataComplete -= ClientCommandChannelReceiveDataComplete;
+                    m_clientCommandChannel.ReceiveDataException -= ClientCommandChannelReceiveDataException;
+                    m_clientCommandChannel.SendDataException -= ClientCommandChannelSendDataException;
+
+                    if (m_clientCommandChannel != value)
+                        m_clientCommandChannel.Dispose();
+                }
+
+                // Assign new command channel reference
+                m_clientCommandChannel = value;
+
+                if ((object)m_clientCommandChannel != null)
+                {
+                    // Attach to desired events on new command channel reference
+                    m_clientCommandChannel.ConnectionAttempt += ClientCommandChannelConnectionAttempt;
+                    m_clientCommandChannel.ConnectionEstablished += ClientCommandChannelConnectionEstablished;
+                    m_clientCommandChannel.ConnectionException += ClientCommandChannelConnectionException;
+                    m_clientCommandChannel.ConnectionTerminated += ClientCommandChannelConnectionTerminated;
+                    m_clientCommandChannel.ReceiveDataComplete += ClientCommandChannelReceiveDataComplete;
+                    m_clientCommandChannel.ReceiveDataException += ClientCommandChannelReceiveDataException;
+                    m_clientCommandChannel.SendDataException += ClientCommandChannelSendDataException;
+                }
+            }
+        }
+
+        /// <summary>
         /// Gets flag indicating if publisher is connected and listening.
         /// </summary>
-        public bool IsConnected => m_serverCommandChannel.Enabled;
+        public bool IsConnected => m_serverCommandChannel?.Enabled ?? m_clientCommandChannel?.Enabled ?? false;
 
         /// <summary>
         /// Gets the total number of buffer block retransmissions on all subscriptions over the lifetime of the publisher.
@@ -1238,14 +1277,6 @@ namespace sttp
                             m_routingTables.Dispose();
                         }
                         m_routingTables = null;
-
-                        // Dispose command channel restart timer
-                        if ((object)m_commandChannelRestartTimer != null)
-                        {
-                            m_commandChannelRestartTimer.Elapsed -= m_commandChannelRestartTimer_Elapsed;
-                            m_commandChannelRestartTimer.Dispose();
-                        }
-                        m_commandChannelRestartTimer = null;
 
                         // Dispose the cipher key rotation timer
                         if ((object)m_cipherKeyRotationTimer != null)
@@ -1348,54 +1379,141 @@ namespace sttp
                 cache.Start();
             }
 
+            Dictionary<string, string> commandChannelSettings;
+            bool clientBasedConnection = false;
+
+            // Attempt to retrieve any defined command channel settings
+            if (settings.TryGetValue("commandChannel", out string commandChannelConnectionString))
+                commandChannelSettings = commandChannelConnectionString.ParseKeyValuePairs();
+            else
+                commandChannelSettings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            if (commandChannelSettings.TryGetValue("server", out string server))
+                clientBasedConnection = !string.IsNullOrWhiteSpace(server);
+
+            if (!commandChannelSettings.TryGetValue("bufferSize", out setting) || !int.TryParse(setting, out int bufferSize))
+                bufferSize = ClientBase.DefaultReceiveBufferSize;
+
             if (m_securityMode == SecurityMode.TLS)
             {
-                // Create a new TLS server
-                TlsServer commandChannel = new TlsServer();
-
-                // Create certificate checker
+                // Create certificate checker for publisher
                 m_certificateChecker = new CertificatePolicyChecker();
                 m_subscriberIdentities = new Dictionary<X509Certificate, DataRow>();
                 UpdateCertificateChecker();
 
-                // Initialize default settings
-                commandChannel.SettingsCategory = Name.Replace("!", "").ToLower();
-                commandChannel.ConfigurationString = "port=6165";
-                commandChannel.PayloadAware = true;
-                commandChannel.PayloadMarker = null;
-                commandChannel.PayloadEndianOrder = EndianOrder.BigEndian;
-                commandChannel.RequireClientCertificate = true;
-                commandChannel.CertificateChecker = m_certificateChecker;
-                commandChannel.PersistSettings = true;
-                commandChannel.NoDelay = true;
+                if (clientBasedConnection)
+                {
+                    bool checkCertificateRevocation;
 
-                // Assign command channel client reference and attach to needed events
-                ServerCommandChannel = commandChannel;
+                    if (!commandChannelSettings.TryGetValue("localCertificate", out string localCertificate) || !File.Exists(localCertificate))
+                        localCertificate = DataSubscriber.GetLocalCertificate();
+
+                    if (commandChannelSettings.TryGetValue("remoteCertificate", out setting))
+                        OnStatusMessage(MessageLevel.Warning, $"Requested override of remoteCertificate \"{setting}\" ignored. System will use configured subscriber settings.", "DataPublisher TlsClient Initialization", MessageFlags.UsageIssue);
+
+                    if (commandChannelSettings.TryGetValue("validPolicyErrors", out setting))
+                        OnStatusMessage(MessageLevel.Warning, $"Requested override of validPolicyErrors \"{setting}\" ignored. System will use configured subscriber settings.", "DataPublisher TlsClient Initialization", MessageFlags.UsageIssue);
+
+                    if (commandChannelSettings.TryGetValue("validChainFlags", out setting))
+                        OnStatusMessage(MessageLevel.Warning, $"Requested override of validChainFlags \"{setting}\" ignored. System will use configured subscriber settings.", "DataPublisher TlsClient Initialization", MessageFlags.UsageIssue);
+
+                    if (commandChannelSettings.TryGetValue("checkCertificateRevocation", out setting) && !string.IsNullOrWhiteSpace(setting))
+                        checkCertificateRevocation = setting.ParseBoolean();
+                    else
+                        checkCertificateRevocation = true;
+
+                    // Create a new TLS client
+                    TlsClient commandChannel = new TlsClient();
+
+                    // Initialize default settings
+                    commandChannel.PayloadAware = true;
+                    commandChannel.PayloadMarker = null;
+                    commandChannel.PayloadEndianOrder = EndianOrder.BigEndian;
+                    commandChannel.PersistSettings = false;
+                    commandChannel.MaxConnectionAttempts = 1;
+                    commandChannel.CertificateFile = FilePath.GetAbsolutePath(localCertificate);
+                    commandChannel.CheckCertificateRevocation = checkCertificateRevocation;
+                    commandChannel.CertificateChecker = m_certificateChecker;
+                    commandChannel.ReceiveBufferSize = bufferSize;
+                    commandChannel.SendBufferSize = bufferSize;
+                    commandChannel.NoDelay = true;
+
+                    // Assign command channel client reference and attach to needed events
+                    ClientCommandChannel = commandChannel;
+                }
+                else
+                {
+                    // Create a new TLS server
+                    TlsServer commandChannel = new TlsServer();
+
+                    // Initialize default settings
+                    commandChannel.SettingsCategory = Name.Replace("!", "").ToLower();
+                    commandChannel.ConfigurationString = "port=6165";
+                    commandChannel.PayloadAware = true;
+                    commandChannel.PayloadMarker = null;
+                    commandChannel.PayloadEndianOrder = EndianOrder.BigEndian;
+                    commandChannel.RequireClientCertificate = true;
+                    commandChannel.CertificateChecker = m_certificateChecker;
+                    commandChannel.PersistSettings = true;
+                    commandChannel.NoDelay = true;
+
+                    // Assign command channel server reference and attach to needed events
+                    ServerCommandChannel = commandChannel;
+                }
             }
             else
             {
-                // Create a new TCP server
-                TcpServer commandChannel = new TcpServer();
+                if (clientBasedConnection)
+                {
+                    // Create a new TCP client
+                    TcpClient commandChannel = new TcpClient();
 
-                // Initialize default settings
-                commandChannel.SettingsCategory = Name.Replace("!", "").ToLower();
-                commandChannel.ConfigurationString = "port=6165";
-                commandChannel.PayloadAware = true;
-                commandChannel.PayloadMarker = null;
-                commandChannel.PayloadEndianOrder = EndianOrder.BigEndian;
-                commandChannel.PersistSettings = true;
-                commandChannel.NoDelay = true;
+                    // Initialize default settings
+                    commandChannel.PayloadAware = true;
+                    commandChannel.PayloadMarker = null;
+                    commandChannel.PayloadEndianOrder = EndianOrder.BigEndian;
+                    commandChannel.PersistSettings = false;
+                    commandChannel.MaxConnectionAttempts = -1; // Reconnects not handled by base class
+                    commandChannel.ReceiveBufferSize = bufferSize;
+                    commandChannel.SendBufferSize = bufferSize;
+                    commandChannel.NoDelay = true;
 
-                // Assign command channel client reference and attach to needed events
-                ServerCommandChannel = commandChannel;
+                    // Assign command channel client reference and attach to needed events
+                    ClientCommandChannel = commandChannel;
+                }
+                else
+                {
+                    // Create a new TCP server
+                    TcpServer commandChannel = new TcpServer();
+
+                    // Initialize default settings
+                    commandChannel.SettingsCategory = Name.Replace("!", "").ToLower();
+                    commandChannel.ConfigurationString = "port=6165";
+                    commandChannel.PayloadAware = true;
+                    commandChannel.PayloadMarker = null;
+                    commandChannel.PayloadEndianOrder = EndianOrder.BigEndian;
+                    commandChannel.PersistSettings = true;
+                    commandChannel.NoDelay = true;
+
+                    // Assign command channel server reference and attach to needed events
+                    ServerCommandChannel = commandChannel;
+                }
             }
 
-            // Initialize TCP server - this will load persisted settings
-            m_serverCommandChannel.Initialize();
+            if (clientBasedConnection)
+            {
+                // Set client-based connection string
+                m_clientCommandChannel.ConnectionString = commandChannelConnectionString;
+            }
+            else
+            {
+                // Initialize TCP server - this will load persisted settings
+                m_serverCommandChannel.Initialize();
 
-            // Allow user to override persisted settings by specifying a command channel setting
-            if (settings.TryGetValue("commandChannel", out setting) && !string.IsNullOrWhiteSpace(setting))
-                m_serverCommandChannel.ConfigurationString = setting;
+                // Allow user to override persisted server settings by specifying a command channel setting
+                if (!string.IsNullOrWhiteSpace(commandChannelConnectionString))
+                    m_serverCommandChannel.ConfigurationString = commandChannelConnectionString;
+            }
 
             // Start cipher key rotation timer when encrypting payload
             if (m_encryptPayload && (object)m_cipherKeyRotationTimer != null)
@@ -1450,13 +1568,13 @@ namespace sttp
         /// </summary>
         public override void Start()
         {
-            if (!Enabled)
-            {
-                base.Start();
+            if (Enabled)
+                return;
 
-                if ((object)m_serverCommandChannel != null)
-                    m_serverCommandChannel.Start();
-            }
+            base.Start();
+
+            m_serverCommandChannel?.Start();
+            m_clientCommandChannel?.ConnectAsync();
         }
 
         /// <summary>
@@ -1465,9 +1583,9 @@ namespace sttp
         public override void Stop()
         {
             base.Stop();
-
-            if ((object)m_serverCommandChannel != null)
-                m_serverCommandChannel.Stop();
+            
+            m_serverCommandChannel?.Stop();
+            m_clientCommandChannel?.Disconnect();
         }
 
         /// <summary>
@@ -1479,6 +1597,9 @@ namespace sttp
         {
             if ((object)m_serverCommandChannel != null)
                 return $"Publishing data to {m_serverCommandChannel.ClientIDs.Length} clients.".CenterText(maxLength);
+
+            if ((object)m_clientCommandChannel != null)
+                return "Publishing data to a single client through a client-based connection.".CenterText(maxLength);
 
             return "Currently not connected".CenterText(maxLength);
         }
@@ -1504,7 +1625,7 @@ namespace sttp
         private string EnumerateClients(bool filterToTemporalSessions)
         {
             StringBuilder clientEnumeration = new StringBuilder();
-            Guid[] clientIDs = (Guid[])m_serverCommandChannel.ClientIDs.Clone();
+            Guid[] clientIDs = (Guid[])m_serverCommandChannel?.ClientIDs.Clone() ?? new[] { m_proxyClientID };
             bool hasActiveTemporalSession;
 
             if (filterToTemporalSessions)
@@ -1581,7 +1702,7 @@ namespace sttp
 
             try
             {
-                clientID = m_serverCommandChannel.ClientIDs[clientIndex];
+                clientID = m_serverCommandChannel?.ClientIDs[clientIndex] ?? m_proxyClientID;
             }
             catch
             {
@@ -1610,7 +1731,7 @@ namespace sttp
 
             try
             {
-                clientID = m_serverCommandChannel.ClientIDs[clientIndex];
+                clientID = m_serverCommandChannel?.ClientIDs[clientIndex] ?? m_proxyClientID;
             }
             catch
             {
@@ -1641,7 +1762,7 @@ namespace sttp
 
             try
             {
-                clientID = m_serverCommandChannel.ClientIDs[clientIndex];
+                clientID = m_serverCommandChannel?.ClientIDs[clientIndex] ?? m_proxyClientID;
             }
             catch
             {
@@ -1687,7 +1808,7 @@ namespace sttp
             commandChannel = m_serverCommandChannel as TlsServer;
 
             if ((object)commandChannel == null)
-                throw new InvalidOperationException("Certificates can only be imported in TLS security mode.");
+                throw new InvalidOperationException("Certificates can only be exported in TLS security mode with a server-based command channel.");
 
             return File.ReadAllBytes(FilePath.GetAbsolutePath(commandChannel.CertificateFile));
         }
@@ -1708,7 +1829,7 @@ namespace sttp
             commandChannel = m_serverCommandChannel as TlsServer;
 
             if ((object)commandChannel == null)
-                throw new InvalidOperationException("Certificates can only be imported in TLS security mode.");
+                throw new InvalidOperationException("Certificates can only be imported in TLS security mode with a server-based command channel.");
 
             trustedCertificatesPath = FilePath.GetAbsolutePath(commandChannel.TrustedCertificatesPath);
             filePath = Path.Combine(trustedCertificatesPath, fileName);
@@ -1782,14 +1903,11 @@ namespace sttp
 
             byte[] serializedSignalIndexCache;
 
-            // ReSharper disable once UnusedParameter.Local
-            bool hasRightsFunc(Guid _) => true;
-
             if ((object)inputMeasurementKeys != null)
             {
-                //hasRightsFunc = RequireAuthentication
-                //    ? new SubscriberRightsLookup(DataSource, signalIndexCache.SubscriberID).HasRightsFunc
-                //    : id => true;
+                Func<Guid, bool> hasRightsFunc = m_securityMode == SecurityMode.TLS ?
+                    new SubscriberRightsLookup(DataSource, signalIndexCache.SubscriberID).HasRightsFunc :
+                    _ => true;
 
                 // We will now go through the client's requested keys and see which ones are authorized for subscription,
                 // this information will be available through the returned signal index cache which will also define
@@ -2090,32 +2208,40 @@ namespace sttp
         // Attempts to get the subscriber for the given client based on that client's X.509 certificate.
         private void TryFindClientDetails(SubscriberConnection connection)
         {
-            TlsServer commandChannel = m_serverCommandChannel as TlsServer;
+            TlsServer serverCommandChannel = m_serverCommandChannel as TlsServer;
             X509Certificate remoteCertificate;
-            X509Certificate trustedCertificate;
 
             // If connection is not TLS, there is no X.509 certificate
-            if ((object)commandChannel == null)
-                return;
-
-            // If connection is not found, cannot get X.509 certificate
-            if (!commandChannel.TryGetClient(connection.ClientID, out TransportProvider<TlsServer.TlsSocket> client))
-                return;
-
-            // Get remote certificate and corresponding trusted certificate
-            remoteCertificate = client.Provider.SslStream.RemoteCertificate;
-            trustedCertificate = m_certificateChecker.GetTrustedCertificate(remoteCertificate);
-
-            if ((object)trustedCertificate != null)
+            if ((object)serverCommandChannel == null)
             {
-                if (m_subscriberIdentities.TryGetValue(trustedCertificate, out DataRow subscriber))
-                {
-                    // Load client details from subscriber identity
-                    connection.SubscriberID = Guid.Parse(subscriber["ID"].ToNonNullString(Guid.Empty.ToString()).Trim());
-                    connection.SubscriberAcronym = subscriber["Acronym"].ToNonNullString().Trim();
-                    connection.SubscriberName = subscriber["Name"].ToNonNullString().Trim();
-                    connection.ValidIPAddresses = ParseAddressList(subscriber["ValidIPAddresses"].ToNonNullString());
-                }
+                TlsClient clientCommandChannel = m_clientCommandChannel as TlsClient;
+
+                if ((object)clientCommandChannel == null)
+                    return;
+
+                // Get remote certificate and corresponding trusted certificate
+                remoteCertificate = clientCommandChannel.SslStream.RemoteCertificate;
+            }
+            else
+            {
+                // If connection is not found, cannot get X.509 certificate
+                if (!serverCommandChannel.TryGetClient(connection.ClientID, out TransportProvider<TlsServer.TlsSocket> client))
+                    return;
+
+                // Get remote certificate and corresponding trusted certificate
+                remoteCertificate = client.Provider.SslStream.RemoteCertificate;
+            }
+
+            if ((object)remoteCertificate == null)
+                return;
+
+            if (m_subscriberIdentities.TryGetValue(m_certificateChecker.GetTrustedCertificate(remoteCertificate), out DataRow subscriber))
+            {
+                // Load client details from subscriber identity
+                connection.SubscriberID = Guid.Parse(subscriber["ID"].ToNonNullString(Guid.Empty.ToString()).Trim());
+                connection.SubscriberAcronym = subscriber["Acronym"].ToNonNullString().Trim();
+                connection.SubscriberName = subscriber["Name"].ToNonNullString().Trim();
+                connection.ValidIPAddresses = ParseAddressList(subscriber["ValidIPAddresses"].ToNonNullString());
             }
         }
 
@@ -2207,9 +2333,6 @@ namespace sttp
                 SubscriberAdapter subscription = connection.Subscription;
                 MeasurementKey[] requestedInputs;
                 HashSet<MeasurementKey> authorizedSignals;
-
-                // ReSharper disable once UnusedParameter.Local
-                bool hasRightsFunc(Guid _) => true;
                 string message;
 
                 // Determine if the connection has been disabled or removed - make sure to set authenticated to false if necessary
@@ -2223,6 +2346,10 @@ namespace sttp
                     // from the remote subscription - this will prevent possible SQL injection attacks.
                     requestedInputs = AdapterBase.ParseInputMeasurementKeys(DataSource, false, subscription.RequestedInputFilter);
                     authorizedSignals = new HashSet<MeasurementKey>();
+
+                    Func<Guid, bool> hasRightsFunc = m_securityMode == SecurityMode.TLS ?
+                        new SubscriberRightsLookup(DataSource, subscription.SubscriberID).HasRightsFunc :
+                        _ => true;
 
                     foreach (MeasurementKey input in requestedInputs)
                     {
@@ -2322,26 +2449,42 @@ namespace sttp
                             }
                         }
 
-                        IServer publishChannel;
-
-                        // Data packets and buffer blocks can be published on a UDP data channel, so check for this...
-                        if (useDataChannel)
-                            publishChannel = m_clientPublicationChannels.GetOrAdd(clientID, id => connection.PublishChannel);
-                        else
-                            publishChannel = m_serverCommandChannel;
-
-                        // Send response packet
-                        if ((object)publishChannel != null && publishChannel.CurrentState == ServerState.Running)
+                        if (m_clientCommandChannel == null)
                         {
-                            byte[] responseData = workingBuffer.ToArray();
+                            IServer publishChannel;
 
-                            if (publishChannel is UdpServer)
-                                publishChannel.MulticastAsync(responseData, 0, responseData.Length);
+                            // Data packets and buffer blocks can be published on a UDP data channel, so check for this...
+                            if (useDataChannel)
+                                publishChannel = m_clientPublicationChannels.GetOrAdd(clientID, id => connection.ServerPublishChannel);
                             else
-                                publishChannel.SendToAsync(clientID, responseData, 0, responseData.Length);
+                                publishChannel = m_serverCommandChannel;
 
-                            m_totalBytesSent += responseData.Length;
-                            success = true;
+                            // Send response packet
+                            if (publishChannel?.CurrentState == ServerState.Running)
+                            {
+                                byte[] responseData = workingBuffer.ToArray();
+
+                                if (publishChannel is UdpServer)
+                                    publishChannel.MulticastAsync(responseData, 0, responseData.Length);
+                                else
+                                    publishChannel.SendToAsync(clientID, responseData, 0, responseData.Length);
+
+                                m_totalBytesSent += responseData.Length;
+                                success = true;
+                            }
+                        }
+                        else
+                        {
+                            // Send client-based response packet
+                            if (m_clientCommandChannel.CurrentState == ClientState.Connected)
+                            {
+                                byte[] responseData = workingBuffer.ToArray();
+
+                                m_clientCommandChannel.SendAsync(responseData, 0, responseData.Length);
+
+                                m_totalBytesSent += responseData.Length;
+                                success = true;
+                            }
                         }
                     }
                 }
@@ -2409,6 +2552,8 @@ namespace sttp
         // Disconnect client - this should be called from non-blocking thread (e.g., thread pool)
         private void DisconnectClient(object state)
         {
+            m_commandChannelConnectionAttempts = 0;
+
             try
             {
                 Guid clientID = (Guid)state;
@@ -2418,7 +2563,11 @@ namespace sttp
                 if (m_clientConnections.TryRemove(clientID, out SubscriberConnection connection))
                 {
                     connection.Dispose();
-                    OnStatusMessage(MessageLevel.Info, "Client disconnected from command channel.");
+
+                    if (clientID == m_proxyClientID)
+                        OnStatusMessage(MessageLevel.Info, "Data publisher client-based connection disconnected from subscriber.");
+                    else
+                        OnStatusMessage(MessageLevel.Info, "Client disconnected from command channel.");
                 }
 
                 m_clientPublicationChannels.TryRemove(clientID, out _);
@@ -2558,23 +2707,6 @@ namespace sttp
                 {
                     if ((object)connection != null && connection.Authenticated)
                         connection.RotateCipherKeys();
-                }
-            }
-        }
-
-        // Command channel restart timer handler
-        private void m_commandChannelRestartTimer_Elapsed(object sender, EventArgs<DateTime> e)
-        {
-            if ((object)m_serverCommandChannel != null)
-            {
-                try
-                {
-                    // After a short delay, we try to restart the command channel
-                    m_serverCommandChannel.Start();
-                }
-                catch (Exception ex)
-                {
-                    OnProcessException(MessageLevel.Warning, new InvalidOperationException($"Failed to restart data publisher command channel: {ex.Message}", ex));
                 }
             }
         }
@@ -2902,9 +3034,9 @@ namespace sttp
                     }
 
                     // Determine whether we need to check subscriber for rights to the data
-                    //bool checkSubscriberRights = false; // RequireAuthentication && table.Columns.Contains("SignalID");
+                    bool checkSubscriberRights = m_securityMode == SecurityMode.TLS && table.Columns.Contains("SignalID");
 
-                    if (m_sharedDatabase || filters.Count == 0) //&& !checkSubscriberRights
+                    if (m_sharedDatabase || filters.Count == 0 && !checkSubscriberRights)
                     {
                         // Add a copy of the results to the dataset for meta-data exchange
                         metadata.Tables.Add(table.Copy());
@@ -2921,12 +3053,11 @@ namespace sttp
                         filteredRows = table.Select(string.Join(" AND ", filters), sortField);
 
                         // Reduce data to only what the subscriber has rights to
-                        //// ReSharper disable once AccessToDisposedClosure
-                        //if (checkSubscriberRights)
-                        //{
-                        //    SubscriberRightsLookup lookup = new SubscriberRightsLookup(DataSource, connection.SubscriberID);
-                        //    filteredRows = filteredRows.Where(row => lookup.HasRights(row.ConvertField<Guid>("SignalID")));
-                        //}
+                        if (checkSubscriberRights)
+                        {
+                            SubscriberRightsLookup lookup = new SubscriberRightsLookup(DataSource, connection.SubscriberID);
+                            filteredRows = filteredRows.Where(row => lookup.HasRights(row.ConvertField<Guid>("SignalID")));
+                        }
 
                         // Apply any maximum row count that user may have specified
                         filteredRowList = filteredRows.Take(takeCount).ToList();
@@ -3264,47 +3395,47 @@ namespace sttp
 
         private byte[] SerializeMetadata(Guid clientID, DataSet metadata)
         {
-            byte[] serializedMetadata = null;
+            if (!m_clientConnections.TryGetValue(clientID, out SubscriberConnection connection))
+                return null;
 
-            if (m_clientConnections.TryGetValue(clientID, out SubscriberConnection connection))
+            byte[] serializedMetadata;
+
+            OperationalModes operationalModes = connection.OperationalModes;
+            CompressionModes compressionModes = (CompressionModes)(operationalModes & OperationalModes.CompressionModeMask);
+            bool compressMetadata = (operationalModes & OperationalModes.CompressMetadata) > 0;
+            GZipStream deflater = null;
+
+            // Encode XML into encoded data buffer
+            using (BlockAllocatedMemoryStream encodedData = new BlockAllocatedMemoryStream())
+            using (XmlTextWriter xmlWriter = new XmlTextWriter(encodedData, GetClientEncoding(clientID)))
             {
-                OperationalModes operationalModes = connection.OperationalModes;
-                CompressionModes compressionModes = (CompressionModes)(operationalModes & OperationalModes.CompressionModeMask);
-                bool compressMetadata = (operationalModes & OperationalModes.CompressMetadata) > 0;
-                GZipStream deflater = null;
+                metadata.WriteXml(xmlWriter, XmlWriteMode.WriteSchema);
+                xmlWriter.Flush();
 
-                // Encode XML into encoded data buffer
-                using (BlockAllocatedMemoryStream encodedData = new BlockAllocatedMemoryStream())
-                using (XmlTextWriter xmlWriter = new XmlTextWriter(encodedData, GetClientEncoding(clientID)))
+                // Return result of encoding
+                serializedMetadata = encodedData.ToArray();
+            }
+
+            if (compressMetadata && compressionModes.HasFlag(CompressionModes.GZip))
+            {
+                try
                 {
-                    metadata.WriteXml(xmlWriter, XmlWriteMode.WriteSchema);
-                    xmlWriter.Flush();
+                    // Compress serialized metadata into compressed data buffer
+                    using (BlockAllocatedMemoryStream compressedData = new BlockAllocatedMemoryStream())
+                    {
+                        deflater = new GZipStream(compressedData, CompressionMode.Compress, true);
+                        deflater.Write(serializedMetadata, 0, serializedMetadata.Length);
+                        deflater.Close();
+                        deflater = null;
 
-                    // Return result of encoding
-                    serializedMetadata = encodedData.ToArray();
+                        // Return result of compression
+                        serializedMetadata = compressedData.ToArray();
+                    }
                 }
-
-                if (compressMetadata && compressionModes.HasFlag(CompressionModes.GZip))
+                finally
                 {
-                    try
-                    {
-                        // Compress serialized metadata into compressed data buffer
-                        using (BlockAllocatedMemoryStream compressedData = new BlockAllocatedMemoryStream())
-                        {
-                            deflater = new GZipStream(compressedData, CompressionMode.Compress, true);
-                            deflater.Write(serializedMetadata, 0, serializedMetadata.Length);
-                            deflater.Close();
-                            deflater = null;
-
-                            // Return result of compression
-                            serializedMetadata = compressedData.ToArray();
-                        }
-                    }
-                    finally
-                    {
-                        if ((object)deflater != null)
-                            deflater.Close();
-                    }
+                    if ((object)deflater != null)
+                        deflater.Close();
                 }
             }
 
@@ -3364,7 +3495,7 @@ namespace sttp
 
         #endregion
 
-        #region [ Command Channel Handlers ]
+        #region [ Server Command Channel Event Handlers ]
 
         private void ServerCommandChannelReceiveClientDataComplete(object sender, EventArgs<Guid, byte[], int> e)
         {
@@ -3478,8 +3609,8 @@ namespace sttp
         private void ServerCommandChannelClientConnected(object sender, EventArgs<Guid> e)
         {
             Guid clientID = e.Argument;
-            SubscriberConnection connection = new SubscriberConnection(this, clientID, m_serverCommandChannel);
-
+            SubscriberConnection connection = new SubscriberConnection(this, clientID, m_serverCommandChannel, m_clientCommandChannel);
+            
             connection.ClientNotFoundExceptionOccurred = false;
 
             if (m_securityMode == SecurityMode.TLS)
@@ -3502,11 +3633,9 @@ namespace sttp
             }
             else if (m_securityMode == SecurityMode.TLS)
             {
-                const string ErrorFormat = "Unable to authenticate client. Client connected using" +
-                    " certificate of subscriber \"{0}\", however the IP address used ({1}) was" +
+                string errorMessage = "Unable to authenticate client. Client connected using" + 
+                    $" certificate of subscriber \"{connection.SubscriberName}\", however the IP address used ({connection.IPAddress}) was" + 
                     " not found among the list of valid IP addresses.";
-
-                string errorMessage = string.Format(ErrorFormat, connection.SubscriberName, connection.IPAddress);
 
                 OnProcessException(MessageLevel.Warning, new InvalidOperationException(errorMessage));
             }
@@ -3542,9 +3671,20 @@ namespace sttp
             {
                 OnStatusMessage(MessageLevel.Info, "Data publisher command channel was unexpectedly terminated, restarting...");
 
+                Action restartServerCommandChannel = () =>
+                {
+                    try
+                    {
+                        m_serverCommandChannel.Start();
+                    }
+                    catch (Exception ex)
+                    {
+                        OnProcessException(MessageLevel.Warning, new InvalidOperationException($"Failed to restart data publisher command channel: {ex.Message}", ex));
+                    }
+                };
+
                 // We must wait for command channel to completely shutdown before trying to restart...
-                if ((object)m_commandChannelRestartTimer != null)
-                    m_commandChannelRestartTimer.Start();
+                restartServerCommandChannel.DelayAndExecute(2000);
             }
             else
             {
@@ -3566,6 +3706,58 @@ namespace sttp
 
             if (!HandleSocketException(e.Argument1, ex) && !(ex is NullReferenceException) && !(ex is ObjectDisposedException))
                 OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data publisher encountered an exception while receiving command channel data from client connection: {ex.Message}", ex));
+        }
+
+        #endregion
+
+        #region [ Client Command Channel Event Handlers ]
+
+        private void ClientCommandChannelConnectionEstablished(object sender, EventArgs e)
+        {
+            m_proxyClientID = Guid.NewGuid();
+            ServerCommandChannelClientConnected(sender, new EventArgs<Guid>(m_proxyClientID));
+        }
+
+        private void ClientCommandChannelConnectionTerminated(object sender, EventArgs e)
+        {
+            ServerCommandChannelClientDisconnected(sender, new EventArgs<Guid>(m_proxyClientID));
+        }
+
+        private void ClientCommandChannelConnectionException(object sender, EventArgs<Exception> e)
+        {
+            Exception ex = e.Argument;
+            OnProcessException(MessageLevel.Info, new ConnectionException($"Data publisher encountered an exception while attempting client-based command channel subscriber connection: {ex.Message}", ex));
+        }
+
+        private void ClientCommandChannelConnectionAttempt(object sender, EventArgs e)
+        {
+            // Inject a short delay between multiple connection attempts
+            if (m_commandChannelConnectionAttempts > 0)
+                Thread.Sleep(2000);
+
+            OnStatusMessage(MessageLevel.Info, "Attempting client-based command channel connection to subscriber...");
+            m_commandChannelConnectionAttempts++;
+        }
+
+        private void ClientCommandChannelSendDataException(object sender, EventArgs<Exception> e)
+        {
+            Exception ex = e.Argument;
+
+            if (!HandleSocketException(m_proxyClientID, ex) && !(ex is ObjectDisposedException))
+                OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data publisher encountered an exception while sending client-based command channel data to subscriber connection: {ex.Message}", ex));
+        }
+
+        private void ClientCommandChannelReceiveDataComplete(object sender, EventArgs<byte[], int> e)
+        {
+            ServerCommandChannelReceiveClientDataComplete(sender, new EventArgs<Guid, byte[], int>(m_proxyClientID, e.Argument1, e.Argument2));
+        }
+
+        private void ClientCommandChannelReceiveDataException(object sender, EventArgs<Exception> e)
+        {
+            Exception ex = e.Argument;
+
+            if (!HandleSocketException(m_proxyClientID, ex) && !(ex is ObjectDisposedException))
+                OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data publisher encountered an exception while receiving client-based command channel data from subscriber connection: {ex.Message}", ex));
         }
 
         #endregion

@@ -103,7 +103,7 @@ namespace sttp
                 foreach (KeyValuePair<int, MeasurementKey> signalIndex in remoteCache.Reference)
                 {
                     Guid signalID = signalIndex.Value.SignalID;
-                    DataRow[] filteredRows = activeMeasurements.Select("SignalID = '" + signalID.ToString() + "'");
+                    DataRow[] filteredRows = activeMeasurements.Select($"SignalID = '{signalID}'");
 
                     if (filteredRows.Length > 0)
                     {

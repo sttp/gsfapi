@@ -350,7 +350,7 @@ namespace sttp
                     Metadata = key.Metadata;
                 }
                 else
-                    throw new InvalidOperationException("Failed to find associated signal identification for runtime ID " + value);
+                    throw new InvalidOperationException($"Failed to find associated signal identification for runtime ID {value}");
             }
         }
 

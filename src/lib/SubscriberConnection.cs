@@ -34,6 +34,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
+using TcpClient = GSF.Communication.TcpClient;
 
 namespace sttp
 {
@@ -54,8 +55,9 @@ namespace sttp
         private DataPublisher m_parent;
         private readonly Guid m_clientID;
         private Guid m_subscriberID;
-        private readonly string m_connectionID;
+        private string m_connectionID;
         private readonly string m_hostName;
+        private readonly IPAddress m_ipAddress;
         private string m_subscriberAcronym;
         private string m_subscriberName;
         private string m_subscriberInfo;
@@ -64,8 +66,8 @@ namespace sttp
         private volatile byte[][][] m_keyIVs;
         private volatile int m_cipherIndex;
         private List<IPAddress> m_validIPAddresses;
-        private IPAddress m_ipAddress;
-        private IServer m_commandChannel;
+        private IServer m_serverCommandChannel;
+        private IClient m_clientCommandChannel;
         private UdpServer m_dataChannel;
         private string m_configurationString;
         private bool m_connectionEstablished;
@@ -87,12 +89,14 @@ namespace sttp
         /// </summary>
         /// <param name="parent">Parent data publisher.</param>
         /// <param name="clientID">Client ID of associated connection.</param>
-        /// <param name="commandChannel"><see cref="TcpServer"/> command channel used to lookup connection information.</param>
-        public SubscriberConnection(DataPublisher parent, Guid clientID, IServer commandChannel)
+        /// <param name="serverCommandChannel"><see cref="TcpServer"/> command channel used to lookup connection information.</param>
+        /// <param name="clientCommandChannel"><see cref="TcpClient"/> command channel used to lookup connection information.</param>
+        public SubscriberConnection(DataPublisher parent, Guid clientID, IServer serverCommandChannel, IClient clientCommandChannel)
         {
             m_parent = parent;
             m_clientID = clientID;
-            m_commandChannel = commandChannel;
+            m_serverCommandChannel = serverCommandChannel;
+            m_clientCommandChannel = clientCommandChannel;
             m_subscriberID = clientID;
             m_keyIVs = null;
             m_cipherIndex = 0;
@@ -108,73 +112,7 @@ namespace sttp
             m_reconnectTimer.AutoReset = false;
             m_reconnectTimer.Elapsed += m_reconnectTimer_Elapsed;
 
-            // Attempt to lookup remote connection identification for logging purposes
-            try
-            {
-                Socket commandChannelSocket = GetCommandChannelSocket();
-                IPEndPoint remoteEndPoint = null;
-
-                if ((object)commandChannel != null)
-                    remoteEndPoint = commandChannelSocket.RemoteEndPoint as IPEndPoint;
-
-                if ((object)remoteEndPoint != null)
-                {
-                    m_ipAddress = remoteEndPoint.Address;
-
-                    if (remoteEndPoint.AddressFamily == AddressFamily.InterNetworkV6)
-                        m_connectionID = "[" + m_ipAddress + "]:" + remoteEndPoint.Port;
-                    else
-                        m_connectionID = m_ipAddress + ":" + remoteEndPoint.Port;
-
-                    try
-                    {
-                        IPHostEntry ipHost = Dns.GetHostEntry(remoteEndPoint.Address);
-
-                        if (!string.IsNullOrWhiteSpace(ipHost.HostName))
-                        {
-                            m_hostName = ipHost.HostName;
-                            m_connectionID = m_hostName + " (" + m_connectionID + ")";
-                        }
-                    }
-
-                    // Just ignoring possible DNS lookup failures...
-                    catch (ArgumentNullException)
-                    {
-                        // The hostNameOrAddress parameter is null. 
-                    }
-                    catch (ArgumentOutOfRangeException)
-                    {
-                        // The length of hostNameOrAddress parameter is greater than 255 characters. 
-                    }
-                    catch (ArgumentException)
-                    {
-                        // The hostNameOrAddress parameter is an invalid IP address. 
-                    }
-                    catch (SocketException)
-                    {
-                        // An error was encountered when resolving the hostNameOrAddress parameter.    
-                    }
-                }
-            }
-            catch
-            {
-                // At worst we'll just use the client GUID for identification
-                m_connectionID = m_subscriberID == Guid.Empty ? clientID.ToString() : m_subscriberID.ToString();
-            }
-
-            if (string.IsNullOrWhiteSpace(m_connectionID))
-                m_connectionID = "unavailable";
-
-            if (string.IsNullOrWhiteSpace(m_hostName))
-            {
-                if ((object)m_ipAddress != null)
-                    m_hostName = m_ipAddress.ToString();
-                else
-                    m_hostName = m_connectionID;
-            }
-
-            if ((object)m_ipAddress == null)
-                m_ipAddress = IPAddress.None;
+            LookupEndPointInfo(clientID, GetCommandChannelSocket().RemoteEndPoint as IPEndPoint, ref m_ipAddress, ref m_hostName, ref m_connectionID);
         }
 
         /// <summary>
@@ -236,12 +174,17 @@ namespace sttp
         /// <summary>
         /// Gets <see cref="IServer"/> command channel.
         /// </summary>
-        public IServer CommandChannel => m_commandChannel;
+        public IServer ServerCommandChannel => m_serverCommandChannel;
+
+        /// <summary>
+        /// Gets <see cref="IClient"/> command channel.
+        /// </summary>
+        public IClient ClientCommandChannel => m_clientCommandChannel;
 
         /// <summary>
         /// Gets <see cref="IServer"/> publication channel - that is, data channel if defined otherwise command channel.
         /// </summary>
-        public IServer PublishChannel => (object)m_dataChannel == null ? m_commandChannel : m_dataChannel;
+        public IServer ServerPublishChannel => (object)m_dataChannel == null ? m_serverCommandChannel : m_dataChannel;
 
         /// <summary>
         /// Gets connected state of the associated client socket.
@@ -300,7 +243,14 @@ namespace sttp
         public Guid SubscriberID
         {
             get => m_subscriberID;
-            set => m_subscriberID = value;
+            set
+            {
+                m_subscriberID = value;
+
+                // When connection ID is just a Guid, prefer subscriber ID over client ID when available
+                if (m_connectionID.Equals(m_clientID.ToString(), StringComparison.OrdinalIgnoreCase) && m_subscriberID != Guid.Empty)
+                    m_connectionID =  m_subscriberID.ToString();
+            }
         }
 
         /// <summary>
@@ -365,21 +315,6 @@ namespace sttp
             get => m_authenticated;
             set => m_authenticated = value;
         }
-
-        ///// <summary>
-        ///// Gets or sets shared secret used to lookup cipher keys only known to client and server.
-        ///// </summary>
-        //public string SharedSecret
-        //{
-        //    get
-        //    {
-        //        return m_sharedSecret;
-        //    }
-        //    set
-        //    {
-        //        m_sharedSecret = value;
-        //    }
-        //}
 
         /// <summary>
         /// Gets active and standby keys and initialization vectors.
@@ -480,7 +415,7 @@ namespace sttp
                 status.AppendLine();
                 status.AppendFormat(formatString, "Subscriber acronym", SubscriberAcronym);
                 status.AppendLine();
-                status.AppendFormat(formatString, "Publish channel protocol", PublishChannel.TransportProtocol);
+                status.AppendFormat(formatString, "Publish channel protocol", ServerPublishChannel.TransportProtocol);
                 status.AppendLine();
                 status.AppendFormat(formatString, "Data packet security", (object)m_keyIVs == null ? "unencrypted" : "encrypted");
                 status.AppendLine();
@@ -535,8 +470,8 @@ namespace sttp
                         }
 
                         DataChannel = null;
-                        m_commandChannel = null;
-                        m_ipAddress = null;
+                        m_serverCommandChannel = null;
+                        m_clientCommandChannel = null;
                         m_subscription = null;
                         m_parent = null;
                     }
@@ -659,7 +594,7 @@ namespace sttp
                 catch (Exception ex)
                 {
                     // Send failure message
-                    m_parent.SendClientResponse(m_clientID, ServerResponse.Failed, ServerCommand.RotateCipherKeys, "Failed to establish new cipher keys: " + ex.Message);
+                    m_parent.SendClientResponse(m_clientID, ServerResponse.Failed, ServerCommand.RotateCipherKeys, $"Failed to establish new cipher keys: {ex.Message}");
                     m_parent.OnStatusMessage(MessageLevel.Warning, $"Failed to establish new cipher keys for {ConnectionID}: {ex.Message}");
                     return false;
                 }
@@ -677,16 +612,17 @@ namespace sttp
         /// <returns>The socket instance used by the client to send and receive data over the command channel.</returns>
         public Socket GetCommandChannelSocket()
         {
-            TcpServer tcpCommandChannel = m_commandChannel as TcpServer;
-            TlsServer tlsCommandChannel = m_commandChannel as TlsServer;
-
-            if ((object)tcpCommandChannel != null && tcpCommandChannel.TryGetClient(m_clientID, out TransportProvider<Socket> tcpProvider))
-                return tcpProvider.Provider;
-
-            if ((object)tlsCommandChannel != null && tlsCommandChannel.TryGetClient(m_clientID, out TransportProvider<TlsServer.TlsSocket> tlsProvider))
-                return tlsProvider.Provider.Socket;
-
-            return null;
+            switch (m_serverCommandChannel)
+            {
+                case TcpServer tcpServerCommandChannel
+                    when tcpServerCommandChannel.TryGetClient(m_clientID, out TransportProvider<Socket> tcpProvider):
+                        return tcpProvider.Provider;
+                case TlsServer tlsServerCommandChannel
+                    when tlsServerCommandChannel.TryGetClient(m_clientID, out TransportProvider<TlsServer.TlsSocket> tlsProvider):
+                        return tlsProvider.Provider.Socket;
+                default:
+                    return (m_clientCommandChannel as TcpClient)?.Client;
+            }
         }
 
         private void m_pingTimer_Elapsed(object sender, EventArgs<DateTime> e)
@@ -717,9 +653,7 @@ namespace sttp
             if (m_connectionEstablished)
             {
                 m_parent.OnStatusMessage(MessageLevel.Info, "Data channel stopped unexpectedly, restarting data channel...");
-
-                if ((object)m_reconnectTimer != null)
-                    m_reconnectTimer.Start();
+                m_reconnectTimer?.Start();
             }
             else
             {
@@ -748,5 +682,102 @@ namespace sttp
         }
 
         #endregion
+
+        #region [ Static ]
+
+        // Static Methods
+
+        /// <summary>
+        /// Looks up and returns a good end-user connection ID for an <see cref="IPEndPoint"/>.
+        /// </summary>
+        /// <param name="clientID"><see cref="Guid"/> based client ID.</param>
+        /// <param name="remoteEndPoint">Remote <see cref="IPEndPoint"/>.</param>
+        /// <returns>End-user connection ID for an <see cref="IPEndPoint"/>.</returns>
+        public static string GetEndPointConnectionID(Guid clientID, IPEndPoint remoteEndPoint)
+        {
+            IPAddress ipAddress = IPAddress.None;
+            string hostName = null;
+            string connectionID = "";
+            
+            LookupEndPointInfo(clientID, remoteEndPoint, ref ipAddress, ref hostName, ref connectionID);
+
+            return connectionID;
+        }
+
+        /// <summary>
+        /// Looks up IP, DNS host name and a good end-user connection ID for an <see cref="IPEndPoint"/>.
+        /// </summary>
+        /// <param name="clientID"><see cref="Guid"/> based client ID.</param>
+        /// <param name="remoteEndPoint">Remote <see cref="IPEndPoint"/>.</param>
+        /// <param name="ipAddress">Parsed IP address.</param>
+        /// <param name="hostName">Looked-up DNS host name.</param>
+        /// <param name="connectionID">String based connection identifier for human reference.</param>
+        public static void LookupEndPointInfo(Guid clientID, IPEndPoint remoteEndPoint, ref IPAddress ipAddress, ref string hostName, ref string connectionID)
+        {
+            // Attempt to lookup remote connection identification for logging purposes
+            try
+            {
+                if ((object)remoteEndPoint != null)
+                {
+                    ipAddress = remoteEndPoint.Address;
+
+                    if (remoteEndPoint.AddressFamily == AddressFamily.InterNetworkV6)
+                        connectionID = $"[{ipAddress}]:{remoteEndPoint.Port}";
+                    else
+                        connectionID = $"{ipAddress}:{remoteEndPoint.Port}";
+
+                    try
+                    {
+                        IPHostEntry ipHost = Dns.GetHostEntry(remoteEndPoint.Address);
+
+                        if (!string.IsNullOrWhiteSpace(ipHost.HostName))
+                        {
+                            hostName = ipHost.HostName;
+                            connectionID = $"{hostName} ({connectionID})";
+                        }
+                    }
+
+                    // Just ignoring possible DNS lookup failures...
+                    catch (ArgumentNullException)
+                    {
+                        // The hostNameOrAddress parameter is null. 
+                    }
+                    catch (ArgumentOutOfRangeException)
+                    {
+                        // The length of hostNameOrAddress parameter is greater than 255 characters. 
+                    }
+                    catch (ArgumentException)
+                    {
+                        // The hostNameOrAddress parameter is an invalid IP address. 
+                    }
+                    catch (SocketException)
+                    {
+                        // An error was encountered when resolving the hostNameOrAddress parameter.    
+                    }
+                }
+            }
+            catch
+            {
+                // At worst we'll just use the client GUID for identification
+                connectionID = clientID.ToString();
+            }
+
+            if (string.IsNullOrWhiteSpace(connectionID))
+                connectionID = "unavailable";
+
+            if (string.IsNullOrWhiteSpace(hostName))
+            {
+                if ((object)ipAddress != null)
+                    hostName = ipAddress.ToString();
+                else
+                    hostName = connectionID;
+            }
+
+            if ((object)ipAddress == null)
+                ipAddress = IPAddress.None;
+        }
+
+        #endregion
+
     }
 }
