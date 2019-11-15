@@ -30,6 +30,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
+using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -414,14 +415,15 @@ namespace sttp
         private string m_loggingPath;
         private RunTimeLog m_runTimeLog;
         private bool m_bypassingStatistics;
-        //private bool m_dataGapRecoveryEnabled;
-        //private DataGapRecoverer m_dataGapRecoverer;
+        private bool m_dataGapRecoveryEnabled;
+        private DataGapRecoverer m_dataGapRecoverer;
         private int m_parsingExceptionCount;
         private long m_lastParsingExceptionTime;
         private int m_allowedParsingExceptions;
         private Ticks m_parsingExceptionWindow;
         private bool m_supportsRealTimeProcessing;
         private bool m_supportsTemporalProcessing;
+		//private Ticks m_lastMeasurementCheck;
         private volatile Dictionary<Guid, DeviceStatisticsHelper<SubscribedDevice>> m_subscribedDevicesLookup;
         private volatile List<DeviceStatisticsHelper<SubscribedDevice>> m_statisticsHelpers;
         private readonly LongSynchronizedOperation m_registerStatisticsOperation;
@@ -917,8 +919,8 @@ namespace sttp
                         SubscribeToOutputMeasurements(true);
                 }
 
-                //if ((object)m_dataGapRecoverer != null)
-                //    m_dataGapRecoverer.DataSource = value;
+                if ((object)m_dataGapRecoverer != null)
+                    m_dataGapRecoverer.DataSource = value;
             }
         }
 
@@ -944,24 +946,21 @@ namespace sttp
             }
         }
 
-        ///// <summary>
-        ///// Gets or sets output measurements that the <see cref="AdapterBase"/> will produce, if any.
-        ///// </summary>
-        //public override IMeasurement[] OutputMeasurements
-        //{
-        //    get
-        //    {
-        //        return base.OutputMeasurements;
-        //    }
+        /// <summary>
+        /// Gets or sets output measurements that the <see cref="AdapterBase"/> will produce, if any.
+        /// </summary>
+        public override IMeasurement[] OutputMeasurements
+        {
+            get => base.OutputMeasurements;
 
-        //    set
-        //    {
-        //        base.OutputMeasurements = value;
+            set
+            {
+                base.OutputMeasurements = value;
 
-        //        if ((object)m_dataGapRecoverer != null)
-        //            m_dataGapRecoverer.FilterExpression = this.OutputMeasurementKeys().Select(key => key.SignalID.ToString()).ToDelimitedString(';');
-        //    }
-        //}
+                if ((object)m_dataGapRecoverer != null)
+                    m_dataGapRecoverer.FilterExpression = this.OutputMeasurementKeys().Select(key => key.SignalID.ToString()).ToDelimitedString(';');
+            }
+        }
 
         /// <summary>
         /// Gets connection info for adapter, if any.
@@ -1030,11 +1029,11 @@ namespace sttp
 
                 status.AppendLine();
 
-                //status.AppendFormat("    Data gap recovery mode: {0}", m_dataGapRecoveryEnabled ? "Enabled" : "Disabled");
-                //status.AppendLine();
+                status.AppendFormat("    Data gap recovery mode: {0}", m_dataGapRecoveryEnabled ? "Enabled" : "Disabled");
+                status.AppendLine();
 
-                //if (m_dataGapRecoveryEnabled && (object)m_dataGapRecoverer != null)
-                //    status.Append(m_dataGapRecoverer.Status);
+                if (m_dataGapRecoveryEnabled && (object)m_dataGapRecoverer != null)
+                    status.Append(m_dataGapRecoverer.Status);
 
                 if ((object)m_runTimeLog != null)
                 {
@@ -1276,14 +1275,14 @@ namespace sttp
                         ClientCommandChannel = null;
                         DataChannel = null;
 
-                        //if ((object)m_dataGapRecoverer != null)
-                        //{
-                        //    m_dataGapRecoverer.RecoveredMeasurements -= m_dataGapRecoverer_RecoveredMeasurements;
-                        //    m_dataGapRecoverer.StatusMessage -= m_dataGapRecoverer_StatusMessage;
-                        //    m_dataGapRecoverer.ProcessException -= m_dataGapRecoverer_ProcessException;
-                        //    m_dataGapRecoverer.Dispose();
-                        //    m_dataGapRecoverer = null;
-                        //}
+                        if ((object)m_dataGapRecoverer != null)
+                        {
+                            m_dataGapRecoverer.RecoveredMeasurements -= m_dataGapRecoverer_RecoveredMeasurements;
+                            m_dataGapRecoverer.StatusMessage -= m_dataGapRecoverer_StatusMessage;
+                            m_dataGapRecoverer.ProcessException -= m_dataGapRecoverer_ProcessException;
+                            m_dataGapRecoverer.Dispose();
+                            m_dataGapRecoverer = null;
+                        }
 
                         if ((object)m_runTimeLog != null)
                         {
@@ -1562,54 +1561,62 @@ namespace sttp
                     OnStatusMessage(MessageLevel.Info, $"Logging path \"{setting}\" not found, defaulting to \"{FilePath.GetAbsolutePath("")}\"...", flags: MessageFlags.UsageIssue);
             }
 
-            //// Initialize data gap recovery processing, if requested
-            //if (settings.TryGetValue("dataGapRecovery", out setting))
-            //{
-            //    // Make sure setting exists to allow user to by-pass phasor data source validation at startup
-            //    ConfigurationFile configFile = ConfigurationFile.Current;
-            //    CategorizedSettingsElementCollection systemSettings = configFile.Settings["systemSettings"];
-            //    CategorizedSettingsElement dataGapRecoveryEnabledSetting = systemSettings["DataGapRecoveryEnabled"];
+            // Initialize data gap recovery processing, if requested
+            if (settings.TryGetValue("dataGapRecovery", out setting))
+            {
+                if ((object)m_clientCommandChannel == null)
+                {
+                    m_dataGapRecoveryEnabled = false;
+                    OnStatusMessage(MessageLevel.Warning, "Cannot use data gap recovery operations with a server-based data subscriber configuration. Data gap recovery will not be enabled.", "Data Subscriber Initialization", MessageFlags.UsageIssue);
+                }
+                else
+                {
+                    // Make sure setting exists to allow user to by-pass phasor data source validation at startup
+                    ConfigurationFile configFile = ConfigurationFile.Current;
+                    CategorizedSettingsElementCollection systemSettings = configFile.Settings["systemSettings"];
+                    CategorizedSettingsElement dataGapRecoveryEnabledSetting = systemSettings["DataGapRecoveryEnabled"];
 
-            //    // See if this node should process phasor source validation
-            //    if ((object)dataGapRecoveryEnabledSetting == null || dataGapRecoveryEnabledSetting.ValueAsBoolean())
-            //    {
-            //        // Example connection string for data gap recovery:
-            //        //  dataGapRecovery={enabled=true; recoveryStartDelay=10.0; minimumRecoverySpan=0.0; maximumRecoverySpan=3600.0}
-            //        Dictionary<string, string> dataGapSettings = setting.ParseKeyValuePairs();
+                    // See if this node should process phasor source validation
+                    if ((object)dataGapRecoveryEnabledSetting == null || dataGapRecoveryEnabledSetting.ValueAsBoolean())
+                    {
+                        // Example connection string for data gap recovery:
+                        //  dataGapRecovery={enabled=true; recoveryStartDelay=10.0; minimumRecoverySpan=0.0; maximumRecoverySpan=3600.0}
+                        Dictionary<string, string> dataGapSettings = setting.ParseKeyValuePairs();
 
-            //        if (dataGapSettings.TryGetValue("enabled", out setting) && setting.ParseBoolean())
-            //        {
-            //            // Remove dataGapRecovery connection setting from command channel connection string, if defined there.
-            //            // This will prevent any recursive data gap recovery operations from being established:
-            //            Dictionary<string, string> connectionSettings = m_clientCommandChannel.ConnectionString.ParseKeyValuePairs();
-            //            connectionSettings.Remove("dataGapRecovery");
-            //            connectionSettings.Remove("autoConnect");
-            //            connectionSettings.Remove("synchronizeMetadata");
-            //            connectionSettings.Remove("outputMeasurements");
+                        if (dataGapSettings.TryGetValue("enabled", out setting) && setting.ParseBoolean())
+                        {
+                            // Remove dataGapRecovery connection setting from command channel connection string, if defined there.
+                            // This will prevent any recursive data gap recovery operations from being established:
+                            Dictionary<string, string> connectionSettings = m_clientCommandChannel.ConnectionString.ParseKeyValuePairs();
+                            connectionSettings.Remove("dataGapRecovery");
+                            connectionSettings.Remove("autoConnect");
+                            connectionSettings.Remove("synchronizeMetadata");
+                            connectionSettings.Remove("outputMeasurements");
 
-            //            // Note that the data gap recoverer will connect on the same command channel port as
-            //            // the real-time subscriber (TCP only)
-            //            m_dataGapRecoveryEnabled = true;
-            //            m_dataGapRecoverer = new DataGapRecoverer();
-            //            m_dataGapRecoverer.SourceConnectionName = Name;
-            //            m_dataGapRecoverer.DataSource = DataSource;
-            //            m_dataGapRecoverer.ConnectionString = string.Join("; ", $"autoConnect=false; synchronizeMetadata=false{(string.IsNullOrWhiteSpace(m_loggingPath) ? "" : "; loggingPath=" + m_loggingPath)}", dataGapSettings.JoinKeyValuePairs(), connectionSettings.JoinKeyValuePairs());
-            //            m_dataGapRecoverer.FilterExpression = this.OutputMeasurementKeys().Select(key => key.SignalID.ToString()).ToDelimitedString(';');
-            //            m_dataGapRecoverer.RecoveredMeasurements += m_dataGapRecoverer_RecoveredMeasurements;
-            //            m_dataGapRecoverer.StatusMessage += m_dataGapRecoverer_StatusMessage;
-            //            m_dataGapRecoverer.ProcessException += m_dataGapRecoverer_ProcessException;
-            //            m_dataGapRecoverer.Initialize();
-            //        }
-            //        else
-            //        {
-            //            m_dataGapRecoveryEnabled = false;
-            //        }
-            //    }
-            //}
-            //else
-            //{
-            //    m_dataGapRecoveryEnabled = false;
-            //}
+                            // Note that the data gap recoverer will connect on the same command channel port as
+                            // the real-time subscriber (TCP only)
+                            m_dataGapRecoveryEnabled = true;
+                            m_dataGapRecoverer = new DataGapRecoverer();
+                            m_dataGapRecoverer.SourceConnectionName = Name;
+                            m_dataGapRecoverer.DataSource = DataSource;
+                            m_dataGapRecoverer.ConnectionString = string.Join("; ", $"autoConnect=false; synchronizeMetadata=false{(string.IsNullOrWhiteSpace(m_loggingPath) ? "" : "; loggingPath=" + m_loggingPath)}", dataGapSettings.JoinKeyValuePairs(), connectionSettings.JoinKeyValuePairs());
+                            m_dataGapRecoverer.FilterExpression = this.OutputMeasurementKeys().Select(key => key.SignalID.ToString()).ToDelimitedString(';');
+                            m_dataGapRecoverer.RecoveredMeasurements += m_dataGapRecoverer_RecoveredMeasurements;
+                            m_dataGapRecoverer.StatusMessage += m_dataGapRecoverer_StatusMessage;
+                            m_dataGapRecoverer.ProcessException += m_dataGapRecoverer_ProcessException;
+                            m_dataGapRecoverer.Initialize();
+                        }
+                        else
+                        {
+                            m_dataGapRecoveryEnabled = false;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                m_dataGapRecoveryEnabled = false;
+            }
 
             if (!settings.TryGetValue("BypassStatistics", out setting) || !setting.ParseBoolean())
             {
@@ -2021,94 +2028,92 @@ namespace sttp
             SendServerCommand(ServerCommand.MetaDataRefresh, m_metadataFilters);
         }
 
-        ///// <summary>
-        ///// Log a data gap for data gap recovery.
-        ///// </summary>
-        ///// <param name="timeString">The string representing the data gap.</param>
-        //[AdapterCommand("Logs a data gap for data gap recovery.", "Administrator", "Editor")]
-        //public virtual void LogDataGap(string timeString)
-        //{
-        //    DateTimeOffset start;
-        //    DateTimeOffset end = default(DateTimeOffset);
-        //    string[] split = timeString.Split(';');
+        /// <summary>
+        /// Log a data gap for data gap recovery.
+        /// </summary>
+        /// <param name="timeString">The string representing the data gap.</param>
+        [AdapterCommand("Logs a data gap for data gap recovery.", "Administrator", "Editor")]
+        public virtual void LogDataGap(string timeString)
+        {
+            DateTimeOffset end = default;
+            string[] split = timeString.Split(';');
 
-        //    if (!m_dataGapRecoveryEnabled)
-        //        throw new InvalidOperationException("Data gap recovery is not enabled.");
+            if (!m_dataGapRecoveryEnabled)
+                throw new InvalidOperationException("Data gap recovery is not enabled.");
 
-        //    if (split.Length != 2)
-        //        throw new FormatException("Invalid format for time string - ex: 2014-03-27 02:10:47.566;2014-03-27 02:10:59.733");
+            if (split.Length != 2)
+                throw new FormatException("Invalid format for time string - ex: 2014-03-27 02:10:47.566;2014-03-27 02:10:59.733");
 
-        //    string startTime = split[0];
-        //    string endTime = split[1];
+            string startTime = split[0];
+            string endTime = split[1];
 
-        //    bool parserSuccessful =
-        //        DateTimeOffset.TryParse(startTime, CultureInfo.CurrentCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AllowInnerWhite, out start) &&
-        //        DateTimeOffset.TryParse(endTime, CultureInfo.CurrentCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AllowInnerWhite, out end);
+            bool parserSuccessful =
+                DateTimeOffset.TryParse(startTime, CultureInfo.CurrentCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AllowInnerWhite, out DateTimeOffset start) &&
+                DateTimeOffset.TryParse(endTime, CultureInfo.CurrentCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AllowInnerWhite, out end);
 
-        //    if (!parserSuccessful)
-        //        throw new FormatException("Invalid format for time string - ex: 2014-03-27 02:10:47.566;2014-03-27 02:10:59.733");
+            if (!parserSuccessful)
+                throw new FormatException("Invalid format for time string - ex: 2014-03-27 02:10:47.566;2014-03-27 02:10:59.733");
 
-        //    m_dataGapRecoverer?.LogDataGap(start, end, true);
-        //}
+            m_dataGapRecoverer?.LogDataGap(start, end, true);
+        }
 
-        ///// <summary>
-        ///// Remove a data gap from data gap recovery.
-        ///// </summary>
-        ///// <param name="timeString">The string representing the data gap.</param>
-        //[AdapterCommand("Removes a data gap from data gap recovery.", "Administrator", "Editor")]
-        //public virtual string RemoveDataGap(string timeString)
-        //{
-        //    DateTimeOffset start;
-        //    DateTimeOffset end = default(DateTimeOffset);
-        //    string[] split = timeString.Split(';');
+        /// <summary>
+        /// Remove a data gap from data gap recovery.
+        /// </summary>
+        /// <param name="timeString">The string representing the data gap.</param>
+        [AdapterCommand("Removes a data gap from data gap recovery.", "Administrator", "Editor")]
+        public virtual string RemoveDataGap(string timeString)
+        {
+            DateTimeOffset end = default;
+            string[] split = timeString.Split(';');
 
-        //    if (!m_dataGapRecoveryEnabled)
-        //        throw new InvalidOperationException("Data gap recovery is not enabled.");
+            if (!m_dataGapRecoveryEnabled)
+                throw new InvalidOperationException("Data gap recovery is not enabled.");
 
-        //    if (split.Length != 2)
-        //        throw new FormatException("Invalid format for time string - ex: 2014-03-27 02:10:47.566;2014-03-27 02:10:59.733");
+            if (split.Length != 2)
+                throw new FormatException("Invalid format for time string - ex: 2014-03-27 02:10:47.566;2014-03-27 02:10:59.733");
 
-        //    string startTime = split[0];
-        //    string endTime = split[1];
+            string startTime = split[0];
+            string endTime = split[1];
 
-        //    bool parserSuccessful =
-        //        DateTimeOffset.TryParse(startTime, CultureInfo.CurrentCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AllowInnerWhite, out start) &&
-        //        DateTimeOffset.TryParse(endTime, CultureInfo.CurrentCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AllowInnerWhite, out end);
+            bool parserSuccessful =
+                DateTimeOffset.TryParse(startTime, CultureInfo.CurrentCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AllowInnerWhite, out DateTimeOffset start) &&
+                DateTimeOffset.TryParse(endTime, CultureInfo.CurrentCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AllowInnerWhite, out end);
 
-        //    if (!parserSuccessful)
-        //        throw new FormatException("Invalid format for time string - ex: 2014-03-27 02:10:47.566;2014-03-27 02:10:59.733");
+            if (!parserSuccessful)
+                throw new FormatException("Invalid format for time string - ex: 2014-03-27 02:10:47.566;2014-03-27 02:10:59.733");
 
-        //    if (m_dataGapRecoverer?.RemoveDataGap(start, end) ?? false)
-        //        return "Data gap successfully removed.";
-        //    else
-        //        return "Data gap not found.";
-        //}
+            if (m_dataGapRecoverer?.RemoveDataGap(start, end) ?? false)
+                return "Data gap successfully removed.";
+            
+            return "Data gap not found.";
+        }
 
-        ///// <summary>
-        ///// Displays the contents of the outage log.
-        ///// </summary>
-        ///// <returns>The contents of the outage log.</returns>
-        //[AdapterCommand("Displays data gaps queued for data gap recovery.", "Administrator", "Editor", "Viewer")]
-        //public virtual string DumpOutageLog()
-        //{
-        //    if (m_dataGapRecoveryEnabled && (object)m_dataGapRecoverer != null)
-        //        return Environment.NewLine + m_dataGapRecoverer.DumpOutageLog();
+        /// <summary>
+        /// Displays the contents of the outage log.
+        /// </summary>
+        /// <returns>The contents of the outage log.</returns>
+        [AdapterCommand("Displays data gaps queued for data gap recovery.", "Administrator", "Editor", "Viewer")]
+        public virtual string DumpOutageLog()
+        {
+            if (m_dataGapRecoveryEnabled && (object)m_dataGapRecoverer != null)
+                return Environment.NewLine + m_dataGapRecoverer.DumpOutageLog();
 
-        //    throw new InvalidOperationException("Data gap recovery not enabled");
-        //}
+            throw new InvalidOperationException("Data gap recovery not enabled");
+        }
 
-        ///// <summary>
-        ///// Gets the status of the temporal <see cref="DataSubscriber"/> used by the data gap recovery module.
-        ///// </summary>
-        ///// <returns>Status of the temporal <see cref="DataSubscriber"/> used by the data gap recovery module.</returns>
-        //[AdapterCommand("Gets the status of the temporal subscription used by the data gap recovery module.", "Administrator", "Editor", "Viewer")]
-        //public virtual string GetDataGapRecoverySubscriptionStatus()
-        //{
-        //    if (m_dataGapRecoveryEnabled && (object)m_dataGapRecoverer != null)
-        //        return m_dataGapRecoverer.TemporalSubscriptionStatus;
+        /// <summary>
+        /// Gets the status of the temporal <see cref="DataSubscriber"/> used by the data gap recovery module.
+        /// </summary>
+        /// <returns>Status of the temporal <see cref="DataSubscriber"/> used by the data gap recovery module.</returns>
+        [AdapterCommand("Gets the status of the temporal subscription used by the data gap recovery module.", "Administrator", "Editor", "Viewer")]
+        public virtual string GetDataGapRecoverySubscriptionStatus()
+        {
+            if (m_dataGapRecoveryEnabled && (object)m_dataGapRecoverer != null)
+                return m_dataGapRecoverer.TemporalSubscriptionStatus;
 
-        //    return "Data gap recovery not enabled";
-        //}
+            return "Data gap recovery not enabled";
+        }
 
         /// <summary>
         /// Spawn meta-data synchronization.
@@ -2392,7 +2397,7 @@ namespace sttp
                                     m_dataStreamMonitor.Enabled = (object)m_serverCommandChannel == null;
 
                                 // Establish run-time log for subscriber
-                                if (m_autoConnect /* || m_dataGapRecoveryEnabled*/)
+                                if (m_autoConnect || m_dataGapRecoveryEnabled)
                                 {
                                     if ((object)m_runTimeLog == null)
                                     {
@@ -2409,11 +2414,11 @@ namespace sttp
                                     }
                                 }
 
-                                //// The duration between last disconnection and start of data transmissions
-                                //// represents a gap in data - if data gap recovery is enabled, we log
-                                //// this as a gap for recovery:
-                                //if (m_dataGapRecoveryEnabled && (object)m_dataGapRecoverer != null)
-                                //    m_dataGapRecoverer.LogDataGap(m_runTimeLog.StopTime, DateTimeOffset.UtcNow);
+                                // The duration between last disconnection and start of data transmissions
+                                // represents a gap in data - if data gap recovery is enabled, we log
+                                // this as a gap for recovery:
+                                if (m_dataGapRecoveryEnabled && (object)m_dataGapRecoverer != null)
+                                    m_dataGapRecoverer.LogDataGap(m_runTimeLog.StopTime, DateTimeOffset.UtcNow);
                             }
 
                             // Track total data packet bytes received from any channel
@@ -3688,26 +3693,6 @@ namespace sttp
             return deserializedMetadata;
         }
 
-        private UnsynchronizedSubscriptionInfo FromLocallySynchronizedInfo(SynchronizedSubscriptionInfo info)
-        {
-            return new UnsynchronizedSubscriptionInfo(false)
-            {
-                FilterExpression = info.FilterExpression,
-                UseCompactMeasurementFormat = info.UseCompactMeasurementFormat,
-                UdpDataChannel = info.UdpDataChannel,
-                DataChannelLocalPort = info.DataChannelLocalPort,
-                LagTime = info.LagTime,
-                LeadTime = info.LeadTime,
-                UseLocalClockAsRealTime = false,
-                UseMillisecondResolution = info.UseMillisecondResolution,
-                StartTime = info.StartTime,
-                StopTime = info.StopTime,
-                ConstraintParameters = info.ConstraintParameters,
-                ProcessingInterval = info.ProcessingInterval,
-                ExtraConnectionStringParameters = info.ExtraConnectionStringParameters
-            };
-        }
-
         private Encoding GetCharacterEncoding(OperationalEncoding operationalEncoding)
         {
             Encoding encoding;
@@ -3762,18 +3747,18 @@ namespace sttp
                 m_runTimeLog.Enabled = false;
             }
 
-            //// Stop data gap recovery operations
-            //if (m_dataGapRecoveryEnabled && (object)m_dataGapRecoverer != null)
-            //{
-            //    try
-            //    {
-            //        m_dataGapRecoverer.Enabled = false;
-            //    }
-            //    catch (Exception ex)
-            //    {
-            //        OnProcessException(MessageLevel.Warning, new InvalidOperationException($"Exception while attempting to flush data gap recoverer log: {ex.Message}", ex));
-            //    }
-            //}
+            // Stop data gap recovery operations
+            if (m_dataGapRecoveryEnabled && (object)m_dataGapRecoverer != null)
+            {
+                try
+                {
+                    m_dataGapRecoverer.Enabled = false;
+                }
+                catch (Exception ex)
+                {
+                    OnProcessException(MessageLevel.Warning, new InvalidOperationException($"Exception while attempting to flush data gap recoverer log: {ex.Message}", ex));
+                }
+            }
 
             DataChannel = null;
             m_metadataRefreshPending = false;
@@ -3820,7 +3805,6 @@ namespace sttp
             List<DeviceStatisticsHelper<SubscribedDevice>> subscribedDevices;
             ISet<string> subscribedDeviceNames;
             ISet<string> definedDeviceNames;
-
             DataSet dataSource;
 
             try
@@ -3944,7 +3928,6 @@ namespace sttp
         {
             Dictionary<Guid, DeviceStatisticsHelper<SubscribedDevice>> subscribedDevicesLookup = m_subscribedDevicesLookup;
             List<DeviceStatisticsHelper<SubscribedDevice>> statisticsHelpers = m_statisticsHelpers;
-
             SignalIndexCache signalIndexCache = m_signalIndexCache;
             DataSet dataSource = DataSource;
 
@@ -3969,7 +3952,7 @@ namespace sttp
 
                 // Get expected measurement counts
                 groups = signalIndexCache.AuthorizedSignalIDs
-                    .Where(signalID => subscribedDevicesLookup.TryGetValue(signalID, out DeviceStatisticsHelper<SubscribedDevice> _))
+                    .Where(signalID => subscribedDevicesLookup.TryGetValue(signalID, out _))
                     .Select(signalID => Tuple.Create(subscribedDevicesLookup[signalID], signalID))
                     .ToList()
                     .GroupBy(tuple => tuple.Item1, tuple => tuple.Item2);
@@ -4309,7 +4292,7 @@ namespace sttp
                 statisticsHelper?.Update(now);
 
                 // TODO: Missing data detection could be complex. For example, no need to continue logging data outages for devices that are offline - but how to detect?
-                //// If data channel is UDP, measurements are missing for time span and data gap recovery enabled, request missing
+                // If data channel is UDP, measurements are missing for time span and data gap recovery enabled, request missing
                 //if ((object)m_dataChannel != null && m_dataGapRecoveryEnabled && (object)m_dataGapRecoverer != null && m_lastMeasurementCheck > 0 &&
                 //    statisticsHelper.Device.MeasurementsExpected - statisticsHelper.Device.MeasurementsReceived > m_minimumMissingMeasurementThreshold)
                 //    m_dataGapRecoverer.LogDataGap(m_lastMeasurementCheck - Ticks.FromSeconds(m_transmissionDelayTimeAdjustment), now);
@@ -4375,20 +4358,20 @@ namespace sttp
             OnProcessException(MessageLevel.Info, e.Argument);
         }
 
-        //private void m_dataGapRecoverer_RecoveredMeasurements(object sender, EventArgs<ICollection<IMeasurement>> e)
-        //{
-        //    OnNewMeasurements(e.Argument);
-        //}
+        private void m_dataGapRecoverer_RecoveredMeasurements(object sender, EventArgs<ICollection<IMeasurement>> e)
+        {
+            OnNewMeasurements(e.Argument);
+        }
 
-        //private void m_dataGapRecoverer_StatusMessage(object sender, EventArgs<string> e)
-        //{
-        //    OnStatusMessage(MessageLevel.Info, "[DataGapRecoverer] " + e.Argument);
-        //}
+        private void m_dataGapRecoverer_StatusMessage(object sender, EventArgs<string> e)
+        {
+            OnStatusMessage(MessageLevel.Info, "[DataGapRecoverer] " + e.Argument);
+        }
 
-        //private void m_dataGapRecoverer_ProcessException(object sender, EventArgs<Exception> e)
-        //{
-        //    OnProcessException(MessageLevel.Warning, new InvalidOperationException("[DataGapRecoverer] " + e.Argument.Message, e.Argument.InnerException));
-        //}
+        private void m_dataGapRecoverer_ProcessException(object sender, EventArgs<Exception> e)
+        {
+            OnProcessException(MessageLevel.Warning, new InvalidOperationException("[DataGapRecoverer] " + e.Argument.Message, e.Argument.InnerException));
+        }
 
         #region [ Client Command Channel Event Handlers ]
 
@@ -4411,8 +4394,8 @@ namespace sttp
             if (m_autoConnect && Enabled)
                 StartSubscription();
 
-            //if (m_dataGapRecoveryEnabled && (object)m_dataGapRecoverer != null)
-            //    m_dataGapRecoverer.Enabled = true;
+            if (m_dataGapRecoveryEnabled && (object)m_dataGapRecoverer != null)
+                m_dataGapRecoverer.Enabled = true;
         }
 
         private void ClientCommandChannelConnectionTerminated(object sender, EventArgs e)

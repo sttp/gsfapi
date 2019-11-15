@@ -2744,7 +2744,7 @@ namespace sttp
                     DataPacketFlags flags = (DataPacketFlags)buffer[startIndex];
                     startIndex++;
 
-                    bool usePayloadCompression = m_allowPayloadCompression && ((connection.OperationalModes & OperationalModes.CompressPayloadData) > 0);
+                    bool usePayloadCompression = m_allowPayloadCompression && (connection.OperationalModes & OperationalModes.CompressPayloadData) > 0;
                     CompressionModes compressionModes = (CompressionModes)(connection.OperationalModes & OperationalModes.CompressionModeMask);
                     bool useCompactMeasurementFormat = (byte)(flags & DataPacketFlags.Compact) > 0;
                     bool addSubscription = false;

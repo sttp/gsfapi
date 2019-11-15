@@ -134,11 +134,9 @@ namespace sttp
         public event EventHandler Disposed;
 
         // Fields
-        private readonly UnsynchronizedSubscriptionInfo m_subscriptionInfo;
+        private readonly SubscriptionInfo m_subscriptionInfo;
         private readonly ManualResetEventSlim m_dataGapRecoveryCompleted;
         private DataSubscriber m_temporalSubscription;
-        private OutageLogProcessor m_dataGapLogProcessor;
-        private OutageLog m_dataGapLog;
         private SharedTimer m_dataStreamMonitor;
         private DataSet m_dataSource;
         private string m_loggingPath;
@@ -181,10 +179,12 @@ namespace sttp
             if (Directory.Exists(loggingPath))
                 m_loggingPath = loggingPath;
 
-            m_subscriptionInfo = new UnsynchronizedSubscriptionInfo(false);
-            m_subscriptionInfo.FilterExpression = DefaultFilterExpression;
-            m_subscriptionInfo.ProcessingInterval = DefaultRecoveryProcessingInterval;
-            m_subscriptionInfo.UseMillisecondResolution = DefaultUseMillisecondResolution;
+            m_subscriptionInfo = new SubscriptionInfo()
+            {
+                FilterExpression = DefaultFilterExpression, 
+                ProcessingInterval = DefaultRecoveryProcessingInterval, 
+                UseMillisecondResolution = DefaultUseMillisecondResolution
+            };
 
             m_dataStreamMonitor = Common.TimerScheduler.CreateTimer((int)(DefaultDataMonitoringInterval * 1000.0D));
             m_dataStreamMonitor.Elapsed += DataStreamMonitor_Elapsed;
@@ -218,10 +218,7 @@ namespace sttp
         /// <exception cref="ArgumentOutOfRangeException">Value cannot be null or an empty string.</exception>
         public string SourceConnectionName
         {
-            get
-            {
-                return m_sourceConnectionName;
-            }
+            get => m_sourceConnectionName;
             set
             {
                 if (string.IsNullOrWhiteSpace(value))
@@ -236,10 +233,7 @@ namespace sttp
         /// </summary>
         public DataSet DataSource
         {
-            get
-            {
-                return m_dataSource;
-            }
+            get => m_dataSource;
             set
             {
                 m_dataSource = value;
@@ -255,10 +249,7 @@ namespace sttp
         /// <exception cref="ArgumentOutOfRangeException">Value cannot be null or an empty string.</exception>
         public string ConnectionString
         {
-            get
-            {
-                return m_connectionString;
-            }
+            get => m_connectionString;
             set
             {
                 if (string.IsNullOrWhiteSpace(value))
@@ -287,10 +278,7 @@ namespace sttp
         /// <exception cref="ArgumentOutOfRangeException">Value cannot be a negative number.</exception>
         public Time RecoveryStartDelay
         {
-            get
-            {
-                return m_recoveryStartDelay;
-            }
+            get => m_recoveryStartDelay;
             set
             {
                 if (value < 0.0D)
@@ -317,10 +305,7 @@ namespace sttp
         /// <exception cref="ArgumentOutOfRangeException">Value cannot be zero or a negative number.</exception>
         public Time DataMonitoringInterval
         {
-            get
-            {
-                return m_dataStreamMonitor.Interval / 1000.0D;
-            }
+            get => m_dataStreamMonitor.Interval / 1000.0D;
             set
             {
                 if ((object)m_dataStreamMonitor == null)
@@ -340,10 +325,7 @@ namespace sttp
         /// <exception cref="ArgumentOutOfRangeException">Value cannot be a negative number.</exception>
         public Time MinimumRecoverySpan
         {
-            get
-            {
-                return m_minimumRecoverySpan;
-            }
+            get => m_minimumRecoverySpan;
             set
             {
                 if (value < 0.0D)
@@ -360,10 +342,7 @@ namespace sttp
         /// <exception cref="ArgumentOutOfRangeException">Value cannot be zero or a negative number.</exception>
         public Time MaximumRecoverySpan
         {
-            get
-            {
-                return m_maximumRecoverySpan;
-            }
+            get => m_maximumRecoverySpan;
             set
             {
                 if (value <= 0.0D)
@@ -384,10 +363,7 @@ namespace sttp
         /// </remarks>
         public string LoggingPath
         {
-            get
-            {
-                return m_loggingPath;
-            }
+            get => m_loggingPath;
             set
             {
                 if (!string.IsNullOrWhiteSpace(value))
@@ -407,14 +383,8 @@ namespace sttp
         /// </summary>
         public string FilterExpression
         {
-            get
-            {
-                return m_subscriptionInfo.FilterExpression;
-            }
-            set
-            {
-                m_subscriptionInfo.FilterExpression = value;
-            }
+            get => m_subscriptionInfo.FilterExpression;
+            set => m_subscriptionInfo.FilterExpression = value;
         }
 
         /// <summary>
@@ -433,14 +403,8 @@ namespace sttp
         /// </remarks>
         public int RecoveryProcessingInterval
         {
-            get
-            {
-                return m_subscriptionInfo.ProcessingInterval;
-            }
-            set
-            {
-                m_subscriptionInfo.ProcessingInterval = value;
-            }
+            get => m_subscriptionInfo.ProcessingInterval;
+            set => m_subscriptionInfo.ProcessingInterval = value;
         }
 
         /// <summary>
@@ -456,14 +420,8 @@ namespace sttp
         /// </remarks>
         public bool UseMillisecondResolution
         {
-            get
-            {
-                return m_subscriptionInfo.UseMillisecondResolution;
-            }
-            set
-            {
-                m_subscriptionInfo.UseMillisecondResolution = value;
-            }
+            get => m_subscriptionInfo.UseMillisecondResolution;
+            set => m_subscriptionInfo.UseMillisecondResolution = value;
         }
 
         /// <summary>
@@ -490,14 +448,8 @@ namespace sttp
         /// </summary>
         public string ConstraintParameters
         {
-            get
-            {
-                return m_subscriptionInfo.ConstraintParameters;
-            }
-            set
-            {
-                m_subscriptionInfo.ConstraintParameters = value;
-            }
+            get => m_subscriptionInfo.ConstraintParameters;
+            set => m_subscriptionInfo.ConstraintParameters = value;
         }
 
         /// <summary>
@@ -505,16 +457,13 @@ namespace sttp
         /// </summary>
         public bool Enabled
         {
-            get
-            {
-                return m_enabled;
-            }
+            get => m_enabled;
             set
             {
                 m_enabled = value;
 
-                if ((object)m_dataGapLogProcessor != null)
-                    m_dataGapLogProcessor.Enabled = m_enabled;
+                if ((object)DataGapLogProcessor != null)
+                    DataGapLogProcessor.Enabled = m_enabled;
 
                 if ((object)m_temporalSubscription != null)
                     m_temporalSubscription.Enabled = m_enabled;
@@ -529,12 +478,12 @@ namespace sttp
         /// <summary>
         /// Gets reference to the data gap <see cref="OutageLog"/> for this <see cref="DataGapRecoverer"/>.
         /// </summary>
-        protected OutageLog DataGapLog => m_dataGapLog;
+        protected OutageLog DataGapLog { get; private set; }
 
         /// <summary>
         /// Gets reference to the data gap <see cref="OutageLogProcessor"/> for this <see cref="DataGapRecoverer"/>.
         /// </summary>
-        protected OutageLogProcessor DataGapLogProcessor => m_dataGapLogProcessor;
+        protected OutageLogProcessor DataGapLogProcessor { get; private set; }
 
         // Gets the name of the data gap recoverer.
         string IProvideStatus.Name
@@ -551,7 +500,7 @@ namespace sttp
         /// <summary>
         /// Gets the status of the temporal <see cref="DataSubscriber"/> used to query historical data.
         /// </summary>
-        public string TemporalSubscriptionStatus => (object)m_temporalSubscription != null ? m_temporalSubscription.Status : "undefined";
+        public string TemporalSubscriptionStatus => m_temporalSubscription?.Status ?? "undefined";
 
         /// <summary>
         /// Gets the status of this <see cref="DataGapRecoverer"/>.
@@ -572,7 +521,7 @@ namespace sttp
                 status.AppendLine();
                 status.AppendFormat("Recovery filter expression: {0}", FilterExpression.TruncateRight(51));
                 status.AppendLine();
-                status.AppendFormat(" Recovery processing speed: {0}", RecoveryProcessingInterval < 0 ? "Default" : (RecoveryProcessingInterval == 0 ? "As fast as possible" : RecoveryProcessingInterval.ToString("N0") + " milliseconds"));
+                status.AppendFormat(" Recovery processing speed: {0}", RecoveryProcessingInterval < 0 ? "Default" : RecoveryProcessingInterval == 0 ? "As fast as possible" : RecoveryProcessingInterval.ToString("N0") + " milliseconds");
                 status.AppendLine();
                 status.AppendFormat("Use millisecond resolution: {0}", UseMillisecondResolution);
                 status.AppendLine();
@@ -601,12 +550,12 @@ namespace sttp
                     status.AppendFormat(m_temporalSubscription.Status);
                 }
 
-                if ((object)m_dataGapLog != null)
+                if ((object)DataGapLog != null)
                 {
                     status.AppendLine();
                     status.AppendLine("Data Gap Log Status".CenterText(50));
                     status.AppendLine("-------------------".CenterText(50));
-                    status.AppendFormat(m_dataGapLog.Status);
+                    status.AppendFormat(DataGapLog.Status);
                 }
 
                 return status.ToString();
@@ -653,16 +602,16 @@ namespace sttp
                             m_dataStreamMonitor = null;
                         }
 
-                        if ((object)m_dataGapLogProcessor != null)
+                        if ((object)DataGapLogProcessor != null)
                         {
-                            m_dataGapLogProcessor.Dispose();
-                            m_dataGapLogProcessor = null;
+                            DataGapLogProcessor.Dispose();
+                            DataGapLogProcessor = null;
                         }
 
-                        if ((object)m_dataGapLog != null)
+                        if ((object)DataGapLog != null)
                         {
-                            m_dataGapLog.ProcessException -= Common_ProcessException;
-                            m_dataGapLog = null;
+                            DataGapLog.ProcessException -= Common_ProcessException;
+                            DataGapLog = null;
                         }
 
                         if ((object)m_temporalSubscription != null)
@@ -697,14 +646,11 @@ namespace sttp
                 throw new InvalidOperationException("Data gap recoverer has been disposed. Cannot initialize.");
 
             Dictionary<string, string> settings = m_connectionString.ToNonNullString().ParseKeyValuePairs();
-            string setting;
-            double timeInterval;
-            int processingInterval;
 
-            if (settings.TryGetValue("sourceConnectionName", out setting) && !string.IsNullOrWhiteSpace(setting))
+            if (settings.TryGetValue("sourceConnectionName", out string setting) && !string.IsNullOrWhiteSpace(setting))
                 m_sourceConnectionName = setting;
 
-            if (settings.TryGetValue("recoveryStartDelay", out setting) && double.TryParse(setting, out timeInterval))
+            if (settings.TryGetValue("recoveryStartDelay", out setting) && double.TryParse(setting, out double timeInterval))
                 RecoveryStartDelay = timeInterval;
 
             if (settings.TryGetValue("dataMonitoringInterval", out setting) && double.TryParse(setting, out timeInterval))
@@ -719,7 +665,7 @@ namespace sttp
             if (settings.TryGetValue("filterExpression", out setting) && !string.IsNullOrWhiteSpace(setting))
                 FilterExpression = setting;
 
-            if (settings.TryGetValue("recoveryProcessingInterval", out setting) && int.TryParse(setting, out processingInterval))
+            if (settings.TryGetValue("recoveryProcessingInterval", out setting) && int.TryParse(setting, out int processingInterval))
                 RecoveryProcessingInterval = processingInterval;
 
             if (settings.TryGetValue("useMillisecondResolution", out setting))
@@ -746,10 +692,13 @@ namespace sttp
                 throw new NullReferenceException("Source connection name must defined - it is used to create outage log file name.");
 
             // Setup a new temporal data subscriber that will be used to query historical data
-            m_temporalSubscription = new DataSubscriber();
-            m_temporalSubscription.Name = m_sourceConnectionName + "!" + GetType().Name;
-            m_temporalSubscription.DataSource = m_dataSource;
-            m_temporalSubscription.ConnectionString = $"{m_connectionString};BypassStatistics=true";
+            m_temporalSubscription = new DataSubscriber
+            {
+                Name = m_sourceConnectionName + "!" + GetType().Name,
+                DataSource = m_dataSource,
+                ConnectionString = $"{m_connectionString};BypassStatistics=true"
+            };
+
             m_temporalSubscription.StatusMessage += Common_StatusMessage;
             m_temporalSubscription.ProcessException += Common_ProcessException;
             m_temporalSubscription.ConnectionEstablished += TemporalSubscription_ConnectionEstablished;
@@ -759,13 +708,16 @@ namespace sttp
             m_temporalSubscription.Initialize();
 
             // Setup data gap outage log to persist unprocessed outages between class life-cycles
-            m_dataGapLog = new OutageLog();
-            m_dataGapLog.FileName = GetLoggingPath(m_sourceConnectionName + "_OutageLog.txt");
-            m_dataGapLog.ProcessException += Common_ProcessException;
-            m_dataGapLog.Initialize();
+            DataGapLog = new OutageLog
+            {
+                FileName = GetLoggingPath(m_sourceConnectionName + "_OutageLog.txt")
+            };
+
+            DataGapLog.ProcessException += Common_ProcessException;
+            DataGapLog.Initialize();
 
             // Setup data gap processor to process items one at a time, a 5-second minimum period is established between each gap processing
-            m_dataGapLogProcessor = new OutageLogProcessor(m_dataGapLog, ProcessDataGap, CanProcessDataGap, ex => OnProcessException(MessageLevel.Warning, ex), GSF.Common.Max(5000, (int)(m_recoveryStartDelay * 1000.0D)));
+            DataGapLogProcessor = new OutageLogProcessor(DataGapLog, ProcessDataGap, CanProcessDataGap, ex => OnProcessException(MessageLevel.Warning, ex), GSF.Common.Max(5000, (int)(m_recoveryStartDelay * 1000.0D)));
         }
 
         /// <summary>
@@ -784,7 +736,7 @@ namespace sttp
             if (m_disposed)
                 throw new InvalidOperationException("Data gap recoverer has been disposed. Cannot log data gap for processing.");
 
-            if ((object)m_dataGapLog == null)
+            if ((object)DataGapLog == null)
                 throw new InvalidOperationException("Data gap recoverer has not been initialized. Cannot log data gap for processing.");
 
             OnStatusMessage(MessageLevel.Info, $"Data gap recovery requested for period \"{startTime.ToString(OutageLog.DateTimeFormat, CultureInfo.InvariantCulture)}\" - \"{endTime.ToString(OutageLog.DateTimeFormat, CultureInfo.InvariantCulture)}\"...");
@@ -795,7 +747,7 @@ namespace sttp
             if (forceLog || dataGapSpan >= m_minimumRecoverySpan && dataGapSpan <= m_maximumRecoverySpan)
             {
                 // Since local clock may float we add some buffer around recovery window
-                m_dataGapLog.Add(new Outage(startTime.AddSeconds(StartRecoveryBuffer), endTime.AddSeconds(EndRecoveryBuffer)));
+                DataGapLog.Add(new Outage(startTime.AddSeconds(StartRecoveryBuffer), endTime.AddSeconds(EndRecoveryBuffer)));
                 return true;
             }
 
@@ -829,11 +781,11 @@ namespace sttp
             if (m_disposed)
                 throw new InvalidOperationException("Data gap recoverer has been disposed. Cannot log data gap for processing.");
 
-            if ((object)m_dataGapLog == null)
+            if ((object)DataGapLog == null)
                 throw new InvalidOperationException("Data gap recoverer has not been initialized. Cannot log data gap for processing.");
 
             // Since local clock may float we add some buffer around recovery window
-            return m_dataGapLog.Remove(new Outage(startTime, endTime));
+            return DataGapLog.Remove(new Outage(startTime, endTime));
         }
 
         /// <summary>
@@ -842,7 +794,7 @@ namespace sttp
         /// <returns>The contents of the outage log.</returns>
         public string DumpOutageLog()
         {
-            List<Outage> outages = m_dataGapLog.Outages;
+            List<Outage> outages = DataGapLog.Outages;
             StringBuilder dump = new StringBuilder();
 
             foreach (Outage outage in outages)
@@ -902,7 +854,7 @@ namespace sttp
                 dataGap = new Outage(new DateTime(GSF.Common.Max((Ticks)dataGap.Start.Ticks, m_mostRecentRecoveredTime - (m_subscriptionInfo.UseMillisecondResolution ? Ticks.PerMillisecond : 1L)), DateTimeKind.Utc), dataGap.End);
 
                 // Re-insert adjusted data gap at the top of the processing queue
-                m_dataGapLog.Add(dataGap);
+                DataGapLog.Add(dataGap);
 
                 if (m_measurementsRecoveredForDataGap == 0)
                     OnStatusMessage(MessageLevel.Warning, $"Failed to establish temporal session. Data recovery for period \"{m_subscriptionInfo.StartTime}\" - \"{m_subscriptionInfo.StopTime}\" will be re-attempted.");
@@ -1073,7 +1025,7 @@ namespace sttp
             {
                 // If we've received no measurements in the last time-span, we cancel current process...
                 m_dataStreamMonitor.Enabled = false;
-                OnStatusMessage(MessageLevel.Warning, $"\r\nNo data received in {(m_dataStreamMonitor.Interval / 1000.0D).ToString("0.0")} seconds, canceling current data recovery operation...\r\n");
+                OnStatusMessage(MessageLevel.Warning, $"\r\nNo data received in {m_dataStreamMonitor.Interval / 1000.0D:0.0} seconds, canceling current data recovery operation...\r\n");
                 m_dataGapRecoveryCompleted.Set();
             }
 
