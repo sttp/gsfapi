@@ -1574,7 +1574,7 @@ namespace sttp
                 }
                 else
                 {
-                    // Make sure setting exists to allow user to by-pass phasor data source validation at startup
+                    // Make sure setting exists to allow user to by-pass data gap recovery at a configuration level
                     ConfigurationFile configFile = ConfigurationFile.Current;
                     CategorizedSettingsElementCollection systemSettings = configFile.Settings["systemSettings"];
                     CategorizedSettingsElement dataGapRecoveryEnabledSetting = systemSettings["DataGapRecoveryEnabled"];
@@ -1595,6 +1595,7 @@ namespace sttp
                             connectionSettings.Remove("autoConnect");
                             connectionSettings.Remove("synchronizeMetadata");
                             connectionSettings.Remove("outputMeasurements");
+                            connectionSettings.Remove("BypassStatistics");
 
                             // Note that the data gap recoverer will connect on the same command channel port as
                             // the real-time subscriber (TCP only)
