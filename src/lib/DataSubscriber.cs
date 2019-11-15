@@ -4520,7 +4520,7 @@ namespace sttp
                     }
                     catch (Exception ex)
                     {
-                        OnProcessException(MessageLevel.Warning, new InvalidOperationException($"Failed to restart data publisher command channel: {ex.Message}", ex));
+                        OnProcessException(MessageLevel.Warning, new InvalidOperationException($"Failed to restart data subscriber server-based command channel: {ex.Message}", ex));
                     }
                 };
 
