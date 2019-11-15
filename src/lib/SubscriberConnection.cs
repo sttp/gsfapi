@@ -619,7 +619,7 @@ namespace sttp
                         return tcpProvider.Provider;
                 case TlsServer tlsServerCommandChannel
                     when tlsServerCommandChannel.TryGetClient(m_clientID, out TransportProvider<TlsServer.TlsSocket> tlsProvider):
-                        return tlsProvider.Provider.Socket;
+                        return tlsProvider.Provider?.Socket;
                 default:
                     return (m_clientCommandChannel as TcpClient)?.Client;
             }

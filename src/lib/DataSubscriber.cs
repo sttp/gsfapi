@@ -972,7 +972,7 @@ namespace sttp
                 if ((object)m_serverCommandChannel != null && string.IsNullOrWhiteSpace(m_connectionID))
                 {
                     Guid clientID = m_serverCommandChannel.ClientIDs.FirstOrDefault();
-                    IPEndPoint endPoint = GetCommandChannelSocket().RemoteEndPoint as IPEndPoint;
+                    IPEndPoint endPoint = GetCommandChannelSocket()?.RemoteEndPoint as IPEndPoint;
                     m_connectionID = SubscriberConnection.GetEndPointConnectionID(clientID, endPoint);
                 }
                 
@@ -1425,6 +1425,9 @@ namespace sttp
             else
                 commandChannelSettings = settings;
 
+            if (string.IsNullOrWhiteSpace(commandChannelConnectionString))
+                commandChannelConnectionString = ConnectionString;
+
             bool serverBasedConnection = !commandChannelSettings.TryGetValue("server", out string server) || string.IsNullOrWhiteSpace(server);
 
             if (m_securityMode == SecurityMode.TLS)
@@ -1484,7 +1487,7 @@ namespace sttp
                     TlsClient commandChannel = new TlsClient();
 
                     // Initialize default settings
-                    commandChannel.ConnectionString = commandChannelConnectionString ?? ConnectionString;
+                    commandChannel.ConnectionString = commandChannelConnectionString;
                     commandChannel.PayloadAware = true;
                     commandChannel.PayloadMarker = null;
                     commandChannel.PayloadEndianOrder = EndianOrder.BigEndian;
@@ -1528,7 +1531,7 @@ namespace sttp
                     TcpClient commandChannel = new TcpClient();
 
                     // Initialize default settings
-                    commandChannel.ConnectionString = commandChannelConnectionString ?? ConnectionString;
+                    commandChannel.ConnectionString = commandChannelConnectionString;
                     commandChannel.PayloadAware = true;
                     commandChannel.PayloadMarker = null;
                     commandChannel.PayloadEndianOrder = EndianOrder.BigEndian;
@@ -2226,8 +2229,8 @@ namespace sttp
 
             if (!PersistConnectionForMetadata)
             {
-                m_clientCommandChannel.ConnectAsync();
-                m_serverCommandChannel.Start();
+                m_clientCommandChannel?.ConnectAsync();
+                m_serverCommandChannel?.Start();
             }
             else
             {
@@ -2294,7 +2297,7 @@ namespace sttp
                 return "Subscriber is connected and receiving data points".CenterText(maxLength);
 
             if (m_serverCommandChannel?.CurrentState == ServerState.Running && m_activeClientID != Guid.Empty)
-                return "Subscriber has a client-based connection from publisher and is receiving data points".CenterText(maxLength);
+                return "Subscriber server-based connection is receiving data points".CenterText(maxLength);
 
             return "Subscriber is not connected.".CenterText(maxLength);
         }
@@ -2922,25 +2925,26 @@ namespace sttp
 
             if ((object)outputMeasurementKeys != null && outputMeasurementKeys.Length > 0)
             {
+                // TODO: Determine best way to handle reduced connection string size
+                //if (Settings.TryGetValue("outputMeasurements", out string setting))
+                //{
+                //    // Subscribing with original filter expression
+                //    filterExpression.Append(setting);
+                //}
+                //else
+                //{
+                //    OnStatusMessage(MessageLevel.Warning, "Cannot find \"outputMeasurements\" in connection string, executing subscription with Guid list");
 
-                if (Settings.TryGetValue("outputMeasurements", out string setting))
+                foreach (MeasurementKey measurementKey in outputMeasurementKeys)
                 {
-                    // Subscribing with original filter expression
-                    filterExpression.Append(setting);
-                }
-                else
-                {
-                    OnStatusMessage(MessageLevel.Warning, "Cannot find \"outputMeasurements\" in connection string, executing subscription with Guid list");
+                    if (filterExpression.Length > 0)
+                        filterExpression.Append(';');
 
-                    foreach (MeasurementKey measurementKey in outputMeasurementKeys)
-                    {
-                        if (filterExpression.Length > 0)
-                            filterExpression.Append(';');
-
-                        // Subscribe by associated Guid...
-                        filterExpression.Append(measurementKey.SignalID);
-                    }
+                    // Subscribe by associated Guid...
+                    filterExpression.Append(measurementKey.SignalID);
                 }
+
+                //}
 
                 // Start unsynchronized subscription
                 #pragma warning disable 0618
@@ -3780,7 +3784,7 @@ namespace sttp
                         return tcpProvider.Provider;
                 case TlsServer tlsServerCommandChannel
                     when tlsServerCommandChannel.TryGetClient(clientID, out TransportProvider<TlsServer.TlsSocket> tlsProvider):
-                        return tlsProvider.Provider.Socket;
+                        return tlsProvider.Provider?.Socket;
                 default:
                     return (m_clientCommandChannel as TcpClient)?.Client;
             }
@@ -4486,7 +4490,7 @@ namespace sttp
 
         private void ServerCommandChannelServerStarted(object sender, EventArgs e)
         {
-            OnStatusMessage(MessageLevel.Info, "Data subscriber command channel started.");
+            OnStatusMessage(MessageLevel.Info, "Data subscriber server-based command channel started.");
         }
 
         private void ServerCommandChannelServerStopped(object sender, EventArgs e)

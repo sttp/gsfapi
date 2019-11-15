@@ -1387,7 +1387,7 @@ namespace sttp
             if (settings.TryGetValue("commandChannel", out string commandChannelConnectionString))
                 commandChannelSettings = commandChannelConnectionString.ParseKeyValuePairs();
             else
-                commandChannelSettings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                commandChannelSettings = settings;
 
             if (commandChannelSettings.TryGetValue("server", out string server))
                 clientBasedConnection = !string.IsNullOrWhiteSpace(server);
@@ -1504,7 +1504,7 @@ namespace sttp
             if (clientBasedConnection)
             {
                 // Set client-based connection string
-                m_clientCommandChannel.ConnectionString = commandChannelConnectionString;
+                m_clientCommandChannel.ConnectionString = commandChannelConnectionString ?? ConnectionString;
             }
             else
             {
@@ -1600,7 +1600,10 @@ namespace sttp
                 return $"Publishing data to {m_serverCommandChannel.ClientIDs.Length} clients.".CenterText(maxLength);
 
             if ((object)m_clientCommandChannel != null)
-                return "Publishing data to a single client through a client-based connection.".CenterText(maxLength);
+            {
+                if (m_clientCommandChannel.CurrentState == ClientState.Connected)
+                    return "Publishing data to one client via client-based connection.".CenterText(maxLength);
+            }
 
             return "Currently not connected".CenterText(maxLength);
         }
@@ -3722,6 +3725,10 @@ namespace sttp
         private void ClientCommandChannelConnectionTerminated(object sender, EventArgs e)
         {
             ServerCommandChannelClientDisconnected(sender, new EventArgs<Guid>(m_proxyClientID));
+
+            // If user didn't initiate disconnect, restart the connection
+            if (Enabled)
+                m_clientCommandChannel?.ConnectAsync();
         }
 
         private void ClientCommandChannelConnectionException(object sender, EventArgs<Exception> e)
