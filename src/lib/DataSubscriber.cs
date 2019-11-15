@@ -4508,6 +4508,29 @@ namespace sttp
 
         private void ServerCommandChannelServerStopped(object sender, EventArgs e)
         {
+            if (Enabled)
+            {
+                OnStatusMessage(MessageLevel.Info, "Data subscriber server-based command channel was unexpectedly terminated, restarting...");
+
+                Action restartServerCommandChannel = () =>
+                {
+                    try
+                    {
+                        m_serverCommandChannel.Start();
+                    }
+                    catch (Exception ex)
+                    {
+                        OnProcessException(MessageLevel.Warning, new InvalidOperationException($"Failed to restart data publisher command channel: {ex.Message}", ex));
+                    }
+                };
+
+                // We must wait for command channel to completely shutdown before trying to restart...
+                restartServerCommandChannel.DelayAndExecute(2000);
+            }
+            else
+            {
+                OnStatusMessage(MessageLevel.Info, "Data subscriber server-based command channel stopped.");
+            }
         }
 
         private void ServerCommandChannelSendClientDataException(object sender, EventArgs<Guid, Exception> e)
@@ -4623,6 +4646,5 @@ namespace sttp
         }
 
         #endregion
-
     }
 }

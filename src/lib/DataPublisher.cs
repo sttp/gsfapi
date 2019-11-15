@@ -1063,7 +1063,8 @@ namespace sttp
             get => base.Name;
             set
             {
-                IPersistSettings commandChannel = m_serverCommandChannel as IPersistSettings ?? m_clientCommandChannel as IPersistSettings;
+                // Only server command channel settings are persisted to config file
+                IPersistSettings commandChannel = m_serverCommandChannel as IPersistSettings;
                 base.Name = value.ToUpper();
 
                 if (commandChannel != null)
