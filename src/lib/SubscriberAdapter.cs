@@ -43,7 +43,7 @@ namespace sttp
     /// <summary>
     /// Represents an unsynchronized client subscription to the <see cref="DataPublisher" />.
     /// </summary>
-    public class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
+    internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
     {
         #region [ Members ]
 

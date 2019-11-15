@@ -348,7 +348,7 @@ namespace sttp
         /// <summary>
         /// Gets or sets subscription associated with this <see cref="SubscriberConnection"/>.
         /// </summary>
-        public SubscriberAdapter Subscription
+        internal SubscriberAdapter Subscription
         {
             get => m_subscription;
             set
