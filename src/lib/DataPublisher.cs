@@ -2639,7 +2639,7 @@ namespace sttp
         // Gets specified property from client connection based on subscriber ID
         private TResult GetConnectionProperty<TResult>(Guid subscriberID, Func<SubscriberConnection, TResult> predicate)
         {
-            TResult result = default;
+            TResult result = default(TResult);
 
             // Lookup client connection by subscriber ID
             SubscriberConnection connection = m_clientConnections.Values.FirstOrDefault(cc => cc.SubscriberID == subscriberID);

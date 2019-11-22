@@ -423,7 +423,7 @@ namespace sttp
         private Ticks m_parsingExceptionWindow;
         private bool m_supportsRealTimeProcessing;
         private bool m_supportsTemporalProcessing;
-		//private Ticks m_lastMeasurementCheck;
+        //private Ticks m_lastMeasurementCheck;
         private volatile Dictionary<Guid, DeviceStatisticsHelper<SubscribedDevice>> m_subscribedDevicesLookup;
         private volatile List<DeviceStatisticsHelper<SubscribedDevice>> m_statisticsHelpers;
         private readonly LongSynchronizedOperation m_registerStatisticsOperation;
@@ -2039,7 +2039,7 @@ namespace sttp
         [AdapterCommand("Logs a data gap for data gap recovery.", "Administrator", "Editor")]
         public virtual void LogDataGap(string timeString)
         {
-            DateTimeOffset end = default;
+            DateTimeOffset end = default(DateTimeOffset);
             string[] split = timeString.Split(';');
 
             if (!m_dataGapRecoveryEnabled)
@@ -2068,7 +2068,7 @@ namespace sttp
         [AdapterCommand("Removes a data gap from data gap recovery.", "Administrator", "Editor")]
         public virtual string RemoveDataGap(string timeString)
         {
-            DateTimeOffset end = default;
+            DateTimeOffset end = default(DateTimeOffset);
             string[] split = timeString.Split(';');
 
             if (!m_dataGapRecoveryEnabled)
