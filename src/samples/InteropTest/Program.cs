@@ -77,13 +77,9 @@ namespace InteropTest
             subscriber.ConnectionTerminated += subscriber_ConnectionTerminated;
             subscriber.NewMeasurements += subscriber_NewMeasurements;
             subscriber.ConnectionString = $"server={hostname}:{port}";
+            subscriber.CompressionModes |= CompressionModes.TSSC;
             subscriber.Initialize();
             subscriber.Start();
-
-            subscriber.Subscribe(new SubscriptionInfo
-            {
-                FilterExpression = "FILTER TOP 1 ActiveMeasurements WHERE SignalType='VPHM' ORDER BY ID"
-            });
 
             Console.ReadLine();
 
@@ -124,7 +120,7 @@ namespace InteropTest
                     s_export.WriteLine("Timestamp,Value,Flags");
                 }
 
-                s_export.WriteLine($"{measurement.Timestamp:yyyy-MM-dd HH:mm:ss.ffffff},{measurement.Value:0.0000000000},{measurement.StateFlags}");
+                s_export.WriteLine($"{measurement.Timestamp:yyyy-MM-dd HH:mm:ss.ffffff},{measurement.Value:0.0000000000},{(int)measurement.StateFlags}");
 
                 s_processCount++;
 
@@ -138,8 +134,15 @@ namespace InteropTest
 
         private static void subscriber_ConnectionEstablished(object sender, EventArgs e)
         {
+            DataSubscriber subscriber = sender as DataSubscriber;
+
             StatusMessage("Connection established.");
             s_export = File.CreateText("InteropSubscriber-gsf.csv");
+
+            subscriber?.Subscribe(new SubscriptionInfo
+            {
+                FilterExpression = "FILTER ActiveMeasurements WHERE SignalType='VPHM' ORDER BY ID"
+            });
         }
 
         private static void subscriber_ConnectionTerminated(object sender, EventArgs e)
