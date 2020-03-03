@@ -402,6 +402,7 @@ namespace sttp
         private bool m_filterOutputMeasurements;
         private bool m_autoSynchronizeMetadata;
         private bool m_useTransactionForMetadata;
+        private bool m_useIdentityInsertsForMetadata;
         private bool m_useSourcePrefixNames;
         private bool m_useLocalClockAsRealTime;
         private bool m_metadataRefreshPending;
@@ -1354,6 +1355,10 @@ namespace sttp
             // Check if user has defined a flag for using a transaction during meta-data synchronization
             if (settings.TryGetValue("useTransactionForMetadata", out setting))
                 m_useTransactionForMetadata = setting.ParseBoolean();
+
+            // Check if user has defined a flag for using identity inserts during meta-data synchronization
+            if (settings.TryGetValue("useIdentityInsertsForMetadata", out setting))
+                m_useIdentityInsertsForMetadata = setting.ParseBoolean();
 
             // Check if user wants to request that publisher use millisecond resolution to conserve bandwidth
             if (settings.TryGetValue("useMillisecondResolution", out setting))
@@ -3245,9 +3250,16 @@ namespace sttp
                             // Define SQL statement to query if this measurement is already defined (this should always be based on the unique signal ID Guid)
                             string measurementExistsSql = database.ParameterizedQueryString("SELECT COUNT(*) FROM Measurement WHERE SignalID = {0}", "signalID");
 
+                            // Define SQL statement to query if this measurement is already defined (this will be used before identity insert)
+                            string identityMeasurementExistsSql = database.ParameterizedQueryString("SELECT COUNT(*) FROM Measurement WHERE PointID = {0}", "pointID");
+
                             // Define SQL statement to insert new measurement record
                             string insertMeasurementSql = database.ParameterizedQueryString("INSERT INTO Measurement(DeviceID, HistorianID, PointTag, AlternateTag, SignalTypeID, PhasorSourceIndex, SignalReference, Description, Internal, Subscribed, Enabled) " +
                                                                                             "VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, 0, 1)", "deviceID", "historianID", "pointTag", "alternateTag", "signalTypeID", "phasorSourceIndex", "signalReference", "description", "internal");
+
+                            // Define SQL statement to insert new measurement record
+                            string identityInsertMeasurementSql = database.ParameterizedQueryString("INSERT INTO Measurement(PointID, DeviceID, HistorianID, PointTag, AlternateTag, SignalTypeID, PhasorSourceIndex, SignalReference, Description, Internal, Subscribed, Enabled) " +
+                                                                                                    "VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, 0, 1)", "pointID", "deviceID", "historianID", "pointTag", "alternateTag", "signalTypeID", "phasorSourceIndex", "signalReference", "description", "internal");
 
                             // Define SQL statement to update measurement's signal ID after insert
                             string updateMeasurementSignalIDSql = database.ParameterizedQueryString("UPDATE Measurement SET SignalID = {0}, AlternateTag = NULL WHERE AlternateTag = {1}", "signalID", "alternateTag");
@@ -3255,6 +3267,10 @@ namespace sttp
                             // Define SQL statement to update existing measurement record
                             string updateMeasurementSql = database.ParameterizedQueryString("UPDATE Measurement SET HistorianID = {0}, PointTag = {1}, SignalTypeID = {2}, PhasorSourceIndex = {3}, SignalReference = {4}, Description = {5}, Internal = {6} WHERE SignalID = {7}",
                                                                                             "historianID", "pointTag", "signalTypeID", "phasorSourceIndex", "signalReference", "description", "internal", "signalID");
+
+                            // Define SQL statement to update existing measurement record
+                            string identityUpdateMeasurementSql = database.ParameterizedQueryString("UPDATE Measurement SET DeviceID = {0}, HistorianID = {1}, PointTag = {2}, AlternateTag = {3}, SignalTypeID = {4}, PhasorSourceIndex = {5}, SignalReference = {6}, Description = {7}, Internal = {8}, Subscribed = 0, Enabled = 1, SignalID = {9} WHERE PointID = {10}",
+                                                                                                    "deviceID", "historianID", "pointTag", "alternateTag", "signalTypeID", "phasorSourceIndex", "signalReference", "description", "internal", "signalID", "pointID");
 
                             // Define SQL statement to retrieve all measurement signal ID's for the current parent to check for mismatches - note that we use the ActiveMeasurements view
                             // since it associates measurements with their top-most parent runtime device ID, this allows us to easily query all measurements for the parent device
@@ -3312,80 +3328,104 @@ namespace sttp
 
                             object phasorSourceIndex = DBNull.Value;
 
-                            foreach (DataRow row in measurementRows)
+                            if (m_useIdentityInsertsForMetadata && database.IsSQLServer)
+                                command.ExecuteNonQuery("SET IDENTITY_INSERT Measurement ON");
+
+                            try
                             {
-                                bool recordNeedsUpdating;
 
-                                // Determine if record has changed since last synchronization
-                                if (updatedOnFieldExists)
+                                foreach (DataRow row in measurementRows)
                                 {
-                                    try
-                                    {
-                                        updateTime = Convert.ToDateTime(row["UpdatedOn"]);
-                                        recordNeedsUpdating = updateTime > m_lastMetaDataRefreshTime;
+                                    bool recordNeedsUpdating;
 
-                                        if (updateTime > latestUpdateTime)
-                                            latestUpdateTime = updateTime;
+                                    // Determine if record has changed since last synchronization
+                                    if (updatedOnFieldExists)
+                                    {
+                                        try
+                                        {
+                                            updateTime = Convert.ToDateTime(row["UpdatedOn"]);
+                                            recordNeedsUpdating = updateTime > m_lastMetaDataRefreshTime;
+
+                                            if (updateTime > latestUpdateTime)
+                                                latestUpdateTime = updateTime;
+                                        }
+                                        catch
+                                        {
+                                            recordNeedsUpdating = true;
+                                        }
                                     }
-                                    catch
+                                    else
                                     {
                                         recordNeedsUpdating = true;
                                     }
-                                }
-                                else
-                                {
-                                    recordNeedsUpdating = true;
-                                }
 
-                                // Get device and signal type acronyms
-                                deviceAcronym = row.Field<string>("DeviceAcronym") ?? string.Empty;
-                                signalTypeAcronym = row.Field<string>("SignalAcronym") ?? string.Empty;
+                                    // Get device and signal type acronyms
+                                    deviceAcronym = row.Field<string>("DeviceAcronym") ?? string.Empty;
+                                    signalTypeAcronym = row.Field<string>("SignalAcronym") ?? string.Empty;
 
-                                // Get phasor source index if field is defined
-                                if (phasorSourceIndexFieldExists)
-                                {
-                                    // Using ConvertNullableField extension since publisher could use SQLite database in which case
-                                    // all integers would arrive in data set as longs and need to be converted back to integers
-                                    int? index = row.ConvertNullableField<int>("PhasorSourceIndex");
-                                    phasorSourceIndex = index.HasValue ? (object)index.Value : (object)DBNull.Value;
-                                }
-
-                                // Make sure we have an associated device and signal type already defined for the measurement
-                                if (!string.IsNullOrWhiteSpace(deviceAcronym) && deviceIDs.ContainsKey(deviceAcronym) && !string.IsNullOrWhiteSpace(signalTypeAcronym) && signalTypeIDs.ContainsKey(signalTypeAcronym))
-                                {
-                                    Guid signalID = Guid.Parse(row.Field<object>("SignalID").ToString());
-
-                                    // Track unique measurement signal Guids in this meta-data session, we'll need to remove any old associated measurements that no longer exist
-                                    signalIDs.Add(signalID);
-
-
-                                    // Prefix the tag name with the "updated" device name
-                                    string pointTag = sourcePrefix + row.Field<string>("PointTag");
-
-                                    // Look up associated device ID (local DB auto-inc)
-                                    deviceID = deviceIDs[deviceAcronym];
-
-                                    // Determine if measurement record already exists
-                                    if (Convert.ToInt32(command.ExecuteScalar(measurementExistsSql, m_metadataSynchronizationTimeout, database.Guid(signalID))) == 0)
+                                    // Get phasor source index if field is defined
+                                    if (phasorSourceIndexFieldExists)
                                     {
-                                        string alternateTag = Guid.NewGuid().ToString();
-
-                                        // Insert new measurement record
-                                        command.ExecuteNonQuery(insertMeasurementSql, m_metadataSynchronizationTimeout, deviceID, historianID, pointTag, alternateTag, signalTypeIDs[signalTypeAcronym], phasorSourceIndex, sourcePrefix + row.Field<string>("SignalReference"), row.Field<string>("Description") ?? string.Empty, database.Bool(m_internal));
-
-                                        // Guids are normally auto-generated during insert - after insertion update the Guid so that it matches the source data. Most of the database
-                                        // scripts have triggers that support properly assigning the Guid during an insert, but this code ensures the Guid will always get assigned.
-                                        command.ExecuteNonQuery(updateMeasurementSignalIDSql, m_metadataSynchronizationTimeout, database.Guid(signalID), alternateTag);
+                                        // Using ConvertNullableField extension since publisher could use SQLite database in which case
+                                        // all integers would arrive in data set as longs and need to be converted back to integers
+                                        int? index = row.ConvertNullableField<int>("PhasorSourceIndex");
+                                        phasorSourceIndex = index.HasValue ? (object)index.Value : (object)DBNull.Value;
                                     }
-                                    else if (recordNeedsUpdating)
+
+                                    // Make sure we have an associated device and signal type already defined for the measurement
+                                    if (!string.IsNullOrWhiteSpace(deviceAcronym) && deviceIDs.ContainsKey(deviceAcronym) && !string.IsNullOrWhiteSpace(signalTypeAcronym) && signalTypeIDs.ContainsKey(signalTypeAcronym))
                                     {
-                                        // Update existing measurement record. Note that this update assumes that measurements will remain associated with a static source device.
-                                        command.ExecuteNonQuery(updateMeasurementSql, m_metadataSynchronizationTimeout, historianID, pointTag, signalTypeIDs[signalTypeAcronym], phasorSourceIndex, sourcePrefix + row.Field<string>("SignalReference"), row.Field<string>("Description") ?? string.Empty, database.Bool(m_internal), database.Guid(signalID));
-                                    }
-                                }
+                                        Guid signalID = Guid.Parse(row.Field<object>("SignalID").ToString());
 
-                                // Periodically notify user about synchronization progress
-                                UpdateSyncProgress();
+                                        // Track unique measurement signal Guids in this meta-data session, we'll need to remove any old associated measurements that no longer exist
+                                        signalIDs.Add(signalID);
+
+
+                                        // Prefix the tag name with the "updated" device name
+                                        string pointTag = sourcePrefix + row.Field<string>("PointTag");
+
+                                        // Look up associated device ID (local DB auto-inc)
+                                        deviceID = deviceIDs[deviceAcronym];
+
+                                        // Determine if measurement record already exists
+                                        if (Convert.ToInt32(command.ExecuteScalar(measurementExistsSql, m_metadataSynchronizationTimeout, database.Guid(signalID))) == 0)
+                                        {
+                                            string alternateTag = Guid.NewGuid().ToString();
+
+                                            // Insert new measurement record
+                                            if (m_useIdentityInsertsForMetadata && MeasurementKey.TryParse(row.Field<string>("ID"), out MeasurementKey measurementKey))
+                                            {
+                                                long pointID = (long)measurementKey.ID;
+
+                                                if (Convert.ToInt32(command.ExecuteScalar(identityMeasurementExistsSql, m_metadataSynchronizationTimeout, pointID)) == 0)
+                                                    command.ExecuteNonQuery(identityInsertMeasurementSql, m_metadataSynchronizationTimeout, pointID, deviceID, historianID, pointTag, alternateTag, signalTypeIDs[signalTypeAcronym], phasorSourceIndex, sourcePrefix + row.Field<string>("SignalReference"), row.Field<string>("Description") ?? string.Empty, database.Bool(m_internal));
+                                                else
+                                                    command.ExecuteNonQuery(identityUpdateMeasurementSql, m_metadataSynchronizationTimeout, deviceID, historianID, pointTag, alternateTag, signalTypeIDs[signalTypeAcronym], phasorSourceIndex, sourcePrefix + row.Field<string>("SignalReference"), row.Field<string>("Description") ?? string.Empty, database.Bool(m_internal), database.Guid(signalID), pointID);
+                                            }
+                                            else
+                                            {
+                                                command.ExecuteNonQuery(insertMeasurementSql, m_metadataSynchronizationTimeout, deviceID, historianID, pointTag, alternateTag, signalTypeIDs[signalTypeAcronym], phasorSourceIndex, sourcePrefix + row.Field<string>("SignalReference"), row.Field<string>("Description") ?? string.Empty, database.Bool(m_internal));
+                                            }
+
+                                            // Guids are normally auto-generated during insert - after insertion update the Guid so that it matches the source data. Most of the database
+                                            // scripts have triggers that support properly assigning the Guid during an insert, but this code ensures the Guid will always get assigned.
+                                            command.ExecuteNonQuery(updateMeasurementSignalIDSql, m_metadataSynchronizationTimeout, database.Guid(signalID), alternateTag);
+                                        }
+                                        else if (recordNeedsUpdating)
+                                        {
+                                            // Update existing measurement record. Note that this update assumes that measurements will remain associated with a static source device.
+                                            command.ExecuteNonQuery(updateMeasurementSql, m_metadataSynchronizationTimeout, historianID, pointTag, signalTypeIDs[signalTypeAcronym], phasorSourceIndex, sourcePrefix + row.Field<string>("SignalReference"), row.Field<string>("Description") ?? string.Empty, database.Bool(m_internal), database.Guid(signalID));
+                                        }
+                                    }
+
+                                    // Periodically notify user about synchronization progress
+                                    UpdateSyncProgress();
+                                }
+                            }
+                            finally
+                            {
+                                if (m_useIdentityInsertsForMetadata && database.IsSQLServer)
+                                    command.ExecuteNonQuery("SET IDENTITY_INSERT Measurement OFF");
                             }
 
                             // Remove any measurement records associated with existing devices in this session but no longer exist in the meta-data
