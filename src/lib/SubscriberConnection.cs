@@ -16,7 +16,7 @@
 //
 //  Code Modification History:
 //  ----------------------------------------------------------------------------------------------------
-//  06/24/2011 - Ritchie
+//  06/24/2011 - J. Ritchie Carroll
 //       Generated original version of source code.
 //  12/20/2012 - Starlynn Danyelle Gilliam
 //       Modified Header.
@@ -574,10 +574,6 @@ namespace sttp
                             // Get bytes from serialized buffer
                             bytes = buffer.ToArray();
                         }
-
-                        //// Encrypt keys using private keys known only to current client and server
-                        //if (m_authenticated && !string.IsNullOrWhiteSpace(m_sharedSecret))
-                        //    bytes = bytes.Encrypt(m_sharedSecret, CipherStrength.Aes256);
 
                         // Add serialized key response
                         response.Write(bytes, 0, bytes.Length);

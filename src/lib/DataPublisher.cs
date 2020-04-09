@@ -729,6 +729,16 @@ namespace sttp
         public const double DefaultCipherKeyRotationPeriod = 60000.0D;
 
         /// <summary>
+        /// Default value for <see cref="ValidateMeasurementRights"/>.
+        /// </summary>
+        public const bool DefaultValidateMeasurementRights = false;
+
+        /// <summary>
+        /// Default value for <see cref="ValidateClientIPAddress"/>.
+        /// </summary>
+        public const bool DefaultValidateClientIPAddress = false;
+
+        /// <summary>
         /// Default value for <see cref="MetadataTables"/>.
         /// </summary>
         public const string DefaultMetadataTables =
@@ -777,6 +787,8 @@ namespace sttp
         private bool m_forceNaNValueFilter;
         private bool m_useBaseTimeOffsets;
         private int m_measurementReportingInterval;
+        private bool m_validateMeasurementRights;
+        private bool m_validateClientIPAddress;
 
         private long m_totalBytesSent;
         private long m_lifetimeMeasurements;
@@ -1004,6 +1016,30 @@ namespace sttp
         {
             get => m_measurementReportingInterval;
             set => m_measurementReportingInterval = value;
+        }
+
+        /// <summary>
+        /// Gets or sets flag that determines whether measurement rights validation is enforced. Defaults to true for TLS connections.
+        /// </summary>
+        [ConnectionStringParameter,
+        DefaultValue(DefaultValidateMeasurementRights),
+        Description("Define the flag that determines whether measurement rights validation is enforced. Defaults to true for TLS connections.")]
+        public bool ValidateMeasurementRights
+        {
+            get => m_validateMeasurementRights;
+            set => m_validateMeasurementRights = value;
+        }
+
+        /// <summary>
+        /// Gets or sets flag that determines whether client subscriber IP address is validated. Defaults to true when measurement rights are validated.")]
+        /// </summary>
+        [ConnectionStringParameter,
+        DefaultValue(DefaultValidateClientIPAddress),
+        Description("Define the flag that determines whether client subscriber IP address is validated. Defaults to true when measurement rights are validated.")]
+        public bool ValidateClientIPAddress
+        {
+            get => m_validateClientIPAddress;
+            set => m_validateClientIPAddress = value;
         }
 
         /// <summary>
@@ -1353,6 +1389,18 @@ namespace sttp
             // Get security mode used for the command channel
             if (settings.TryGetValue("securityMode", out setting))
                 m_securityMode = (SecurityMode)Enum.Parse(typeof(SecurityMode), setting);
+
+            // Get any configured flag for measurement rights validation, otherwise set default value
+            if (settings.TryGetValue("validateMeasurementRights", out setting))
+                m_validateMeasurementRights = setting.ParseBoolean();
+            else
+                m_validateMeasurementRights = m_securityMode == SecurityMode.TLS;
+
+            // Gets any configured flag for client IP validation, otherwise set default value
+            if (settings.TryGetValue("m_validateClientIPAddress", out setting))
+                m_validateClientIPAddress = setting.ParseBoolean();
+            else
+                m_validateClientIPAddress = m_validateMeasurementRights;
 
             if (settings.TryGetValue("cachedMeasurementExpression", out m_cachedMeasurementExpression))
             {
@@ -1909,7 +1957,7 @@ namespace sttp
 
             if ((object)inputMeasurementKeys != null)
             {
-                Func<Guid, bool> hasRightsFunc = m_securityMode == SecurityMode.TLS ?
+                Func<Guid, bool> hasRightsFunc = m_validateMeasurementRights ?
                     new SubscriberRightsLookup(DataSource, signalIndexCache.SubscriberID).HasRightsFunc :
                     _ => true;
 
@@ -2351,7 +2399,7 @@ namespace sttp
                     requestedInputs = AdapterBase.ParseInputMeasurementKeys(DataSource, false, subscription.RequestedInputFilter);
                     authorizedSignals = new HashSet<MeasurementKey>();
 
-                    Func<Guid, bool> hasRightsFunc = m_securityMode == SecurityMode.TLS ?
+                    Func<Guid, bool> hasRightsFunc = m_validateMeasurementRights ?
                         new SubscriberRightsLookup(DataSource, subscription.SubscriberID).HasRightsFunc :
                         _ => true;
 
@@ -3038,7 +3086,7 @@ namespace sttp
                     }
 
                     // Determine whether we need to check subscriber for rights to the data
-                    bool checkSubscriberRights = m_securityMode == SecurityMode.TLS && table.Columns.Contains("SignalID");
+                    bool checkSubscriberRights = m_validateMeasurementRights && table.Columns.Contains("SignalID");
 
                     if (m_sharedDatabase || filters.Count == 0 && !checkSubscriberRights)
                     {
@@ -3617,10 +3665,14 @@ namespace sttp
             
             connection.ClientNotFoundExceptionOccurred = false;
 
-            if (m_securityMode == SecurityMode.TLS)
+            if (m_validateClientIPAddress)
             {
                 TryFindClientDetails(connection);
                 connection.Authenticated = connection.ValidIPAddresses.Contains(connection.IPAddress);
+            }
+            else if (m_validateMeasurementRights)
+            {
+                connection.Authenticated = true;
             }
 
             m_clientConnections[clientID] = connection;
@@ -3635,7 +3687,7 @@ namespace sttp
                     SendNotifications(connection);
                 }
             }
-            else if (m_securityMode == SecurityMode.TLS)
+            else if (m_validateClientIPAddress)
             {
                 string errorMessage = "Unable to authenticate client. Client connected using" + 
                     $" certificate of subscriber \"{connection.SubscriberName}\", however the IP address used ({connection.IPAddress}) was" + 
