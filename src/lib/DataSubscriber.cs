@@ -384,7 +384,6 @@ namespace sttp
         private volatile long[] m_baseTimeOffsets;
         private volatile int m_timeIndex;
         private volatile byte[][][] m_keyIVs;
-        private volatile bool m_authenticated;
         private volatile bool m_subscribed;
         private volatile int m_lastBytesReceived;
         private DateTime m_lastReceivedAt;
@@ -612,11 +611,6 @@ namespace sttp
         /// Gets flag that determines whether the command channel is connected.
         /// </summary>
         public bool CommandChannelConnected => m_clientCommandChannel?.Enabled ?? m_serverCommandChannel?.Enabled ?? false;
-
-        /// <summary>
-        /// Gets flag that determines if this <see cref="DataSubscriber"/> has successfully authenticated with the <see cref="DataPublisher"/>.
-        /// </summary>
-        public bool Authenticated => m_authenticated;
 
         /// <summary>
         /// Gets total data packet bytes received during this session.
@@ -1005,7 +999,7 @@ namespace sttp
             {
                 StringBuilder status = new StringBuilder();
 
-                status.AppendFormat("             Authenticated: {0}", m_authenticated);
+                status.AppendFormat("             Authenticated: {0}", m_securityMode == SecurityMode.TLS && CommandChannelConnected);
                 status.AppendLine();
                 status.AppendFormat("                Subscribed: {0}", m_subscribed);
                 status.AppendLine();
@@ -2225,7 +2219,6 @@ namespace sttp
             m_commandChannelConnectionAttempts = 0;
             m_dataChannelConnectionAttempts = 0;
 
-            m_authenticated = m_securityMode == SecurityMode.TLS;
             m_subscribed = false;
             m_keyIVs = null;
             m_totalBytesReceived = 0L;
