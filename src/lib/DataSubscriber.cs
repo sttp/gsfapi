@@ -846,6 +846,16 @@ namespace sttp
         }
 
         /// <summary>
+        /// Gets or sets the flag that determines whether to request that the subscription be throttled to certain publication interval, see <see cref="PublishInterval"/>.
+        /// </summary>
+        public bool Throttled { get; set; } = false;
+
+        /// <summary>
+        /// Gets or sets the interval, in seconds, at which data should be published when using a throttled subscription.
+        /// </summary>
+        public double PublishInterval { get; set; } = -1.0D;
+
+        /// <summary>
         /// Gets or sets the timeout used when executing database queries during meta-data synchronization.
         /// </summary>
         public int MetadataSynchronizationTimeout
@@ -1400,6 +1410,13 @@ namespace sttp
             if (settings.TryGetValue("useLocalClockAsRealTime", out setting))
                 m_useLocalClockAsRealTime = setting.ParseBoolean();
 
+            // Handle throttled subscription options
+            if (settings.TryGetValue("throttled", out setting))
+                Throttled = setting.ParseBoolean();
+
+            if (settings.TryGetValue("publishInterval", out setting) && double.TryParse(setting, out interval))
+                PublishInterval = interval;
+
             if (m_autoConnect)
             {
                 // Connect to local events when automatically engaging connection cycle
@@ -1806,6 +1823,7 @@ namespace sttp
         /// <param name="stopTime">Defines a relative or exact stop time for the temporal constraint to use for historical playback.</param>
         /// <param name="constraintParameters">Defines any temporal parameters related to the constraint to use for historical playback.</param>
         /// <param name="processingInterval">Defines the desired processing interval milliseconds, i.e., historical play back speed, to use when temporal constraints are defined.</param>
+        /// <param name="publishInterval">Defines the interval, in seconds, at which data should be published when using a throttled subscription.</param>
         /// <returns><c>true</c> if subscribe transmission was successful; otherwise <c>false</c>.</returns>
         /// <remarks>
         /// <para>
@@ -1854,7 +1872,7 @@ namespace sttp
         /// </para>
         /// </remarks>
         [Obsolete("Preferred method uses SubscriptionInfo object to subscribe.", false)]
-        public virtual bool Subscribe(bool compactFormat, bool throttled, string filterExpression, string dataChannel = null, bool includeTime = true, double lagTime = 10.0D, double leadTime = 5.0D, bool useLocalClockAsRealTime = false, string startTime = null, string stopTime = null, string constraintParameters = null, int processingInterval = -1)
+        public virtual bool Subscribe(bool compactFormat, bool throttled, string filterExpression, string dataChannel = null, bool includeTime = true, double lagTime = 10.0D, double leadTime = 5.0D, bool useLocalClockAsRealTime = false, string startTime = null, string stopTime = null, string constraintParameters = null, int processingInterval = -1, double publishInterval = -1.0D)
         {
             int port = 0;
 
@@ -1870,6 +1888,7 @@ namespace sttp
             {
                 UseCompactMeasurementFormat = compactFormat,
                 Throttled = throttled,
+                PublishInterval = publishInterval,
                 UdpDataChannel = port > 0,
                 DataChannelLocalPort = port,
                 FilterExpression = filterExpression,
@@ -2947,7 +2966,7 @@ namespace sttp
 
                 // Start unsynchronized subscription
                 #pragma warning disable 0618
-                Subscribe(true, false, filterExpression.ToString(), dataChannel, startTime: startTimeConstraint, stopTime: stopTimeConstraint, processingInterval: processingInterval);
+                Subscribe(true, Throttled, filterExpression.ToString(), dataChannel, startTime: startTimeConstraint, stopTime: stopTimeConstraint, processingInterval: processingInterval, publishInterval: PublishInterval);
             }
             else
             {
