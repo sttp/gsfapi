@@ -967,7 +967,7 @@ namespace sttp
         /// </summary>
         [ConnectionStringParameter]
         [Description("Gets or sets the maximm packet size to use for data publications. This number should be set as small as possible to reduce fragementation, but large enough to keep large data flows from falling behind.")]
-        [DefaultValue(DefaultUseBaseTimeOffsets)]
+        [DefaultValue(DefaultMaxPacketSize)]
         public int MaxPacketSize { get; set; } = DefaultMaxPacketSize;
 
         /// <summary>
