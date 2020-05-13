@@ -673,7 +673,7 @@ namespace sttp
 
                         // If the current measurement will not fit in the packet based on the max
                         // packet size, process the current packet and start a new packet.
-                        if (packetSize + binaryLength > DataPublisher.MaxPacketSize)
+                        if (packetSize + binaryLength > m_parent.MaxPacketSize)
                         {
                             ProcessBinaryMeasurements(packet, useCompactMeasurementFormat/*, usePayloadCompression*/);
                             packet.Clear();

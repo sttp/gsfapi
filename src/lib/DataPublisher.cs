@@ -748,9 +748,9 @@ namespace sttp
             "SELECT VersionNumber FROM SchemaVersion";
 
         /// <summary>
-        /// Maximum packet size before software fragmentation of payload.
+        /// Default maximum packet size before software fragmentation of payload.
         /// </summary>
-        public const int MaxPacketSize = ushort.MaxValue / 2;
+        public const int DefaultMaxPacketSize = ushort.MaxValue / 2;
 
         /// <summary>
         /// Size of client response header in bytes.
@@ -961,6 +961,14 @@ namespace sttp
             get => m_useBaseTimeOffsets;
             set => m_useBaseTimeOffsets = value;
         }
+
+        /// <summary>
+        /// Gets or sets the maximum packet size to use for data publication.
+        /// </summary>
+        [ConnectionStringParameter]
+        [Description("Gets or sets the maximm packet size to use for data publications. This number should be set as small as possible to reduce fragementation, but large enough to keep large data flows from falling behind.")]
+        [DefaultValue(DefaultUseBaseTimeOffsets)]
+        public int MaxPacketSize { get; set; } = DefaultMaxPacketSize;
 
         /// <summary>
         /// Gets or sets the cipher key rotation period.
@@ -1376,6 +1384,9 @@ namespace sttp
 
             if (settings.TryGetValue("useBaseTimeOffsets", out setting))
                 m_useBaseTimeOffsets = setting.ParseBoolean();
+
+            if (settings.TryGetValue(nameof(MaxPacketSize), out setting) && int.TryParse(setting, out int maxPacketSize))
+                MaxPacketSize = maxPacketSize;
 
             if (settings.TryGetValue("measurementReportingInterval", out setting))
                 MeasurementReportingInterval = int.Parse(setting);
