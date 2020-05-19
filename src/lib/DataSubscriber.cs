@@ -608,6 +608,11 @@ namespace sttp
         }
 
         /// <summary>
+        /// Gets or sets flag that determines if a <see cref="TcpSimpleClient"/> should be used for reverse connections.
+        /// </summary>
+        public bool UseSimpleTcpClient { get; set; } = false;
+
+        /// <summary>
         /// Gets flag that determines whether the command channel is connected.
         /// </summary>
         public bool CommandChannelConnected => m_clientCommandChannel?.Enabled ?? m_serverCommandChannel?.Enabled ?? false;
@@ -1062,6 +1067,9 @@ namespace sttp
                     status.AppendLine("Command Channel Status".CenterText(50));
                     status.AppendLine("----------------------".CenterText(50));
                     status.Append(m_clientCommandChannel.Status);
+
+                    status.AppendFormat("   Using simple TCP client: {0}", UseSimpleTcpClient);
+                    status.AppendLine();
                 }
 
                 if ((object)m_serverCommandChannel != null)
@@ -1446,6 +1454,9 @@ namespace sttp
 
             bool serverBasedConnection = !commandChannelSettings.TryGetValue("server", out string server) || string.IsNullOrWhiteSpace(server);
 
+            if (settings.TryGetValue(nameof(UseSimpleTcpClient), out setting))
+                UseSimpleTcpClient = setting.ParseBoolean();
+
             if (m_securityMode == SecurityMode.TLS)
             {
                 bool checkCertificateRevocation;
@@ -1543,22 +1554,44 @@ namespace sttp
                 }
                 else
                 {
-                    // Create a new TCP client
-                    TcpClient commandChannel = new TcpClient();
+                    if (UseSimpleTcpClient)
+                    {
+                        // Create a new simple TCP client
+                        TcpSimpleClient commandChannel = new TcpSimpleClient
+                        {
+                            ConnectionString = commandChannelConnectionString,
+                            PayloadAware = true,
+                            PayloadMarker = null,
+                            PayloadEndianOrder = EndianOrder.BigEndian,
+                            PersistSettings = false,
+                            MaxConnectionAttempts = 1,
+                            ReceiveBufferSize = bufferSize,
+                            SendBufferSize = bufferSize,
+                            NoDelay = true
+                        };
 
-                    // Initialize default settings
-                    commandChannel.ConnectionString = commandChannelConnectionString;
-                    commandChannel.PayloadAware = true;
-                    commandChannel.PayloadMarker = null;
-                    commandChannel.PayloadEndianOrder = EndianOrder.BigEndian;
-                    commandChannel.PersistSettings = false;
-                    commandChannel.MaxConnectionAttempts = 1;
-                    commandChannel.ReceiveBufferSize = bufferSize;
-                    commandChannel.SendBufferSize = bufferSize;
-                    commandChannel.NoDelay = true;
+                        // Assign command channel client reference and attach to needed events
+                        ClientCommandChannel = commandChannel;
+                    }
+                    else
+                    {
+                        // Create a new TCP client
+                        TcpClient commandChannel = new TcpClient();
 
-                    // Assign command channel client reference and attach to needed events
-                    ClientCommandChannel = commandChannel;
+                        // Initialize default settings
+                        commandChannel.ConnectionString = commandChannelConnectionString;
+                        commandChannel.PayloadAware = true;
+                        commandChannel.PayloadMarker = null;
+                        commandChannel.PayloadEndianOrder = EndianOrder.BigEndian;
+                        commandChannel.PersistSettings = false;
+                        commandChannel.MaxConnectionAttempts = 1;
+                        commandChannel.ReceiveBufferSize = bufferSize;
+                        commandChannel.SendBufferSize = bufferSize;
+                        commandChannel.NoDelay = true;
+
+                        // Assign command channel client reference and attach to needed events
+                        ClientCommandChannel = commandChannel;
+                    }
                 }
             }
 

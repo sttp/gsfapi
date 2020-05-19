@@ -739,6 +739,11 @@ namespace sttp
         public const bool DefaultValidateClientIPAddress = false;
 
         /// <summary>
+        /// Default value for <see cref="UseSimpleTcpClient"/>.
+        /// </summary>
+        public const bool DefaultUseSimpleTcpClient = false;
+
+        /// <summary>
         /// Default value for <see cref="MetadataTables"/>.
         /// </summary>
         public const string DefaultMetadataTables =
@@ -1051,6 +1056,14 @@ namespace sttp
         }
 
         /// <summary>
+        /// Gets or sets flag that determines if a <see cref="TcpSimpleClient"/> should be used for reverse connections.
+        /// </summary>
+        [ConnectionStringParameter]
+        [DefaultValue(DefaultUseSimpleTcpClient)]
+        [Description("Define the flag that determines whether a simple TCP client should be used for reverse connections.")]
+        public bool UseSimpleTcpClient { get; set; } = DefaultUseSimpleTcpClient;
+
+        /// <summary>
         /// Gets or sets <see cref="DataSet"/> based data source used to load each <see cref="IAdapter"/>.
         /// Updates to this property will cascade to all items in this <see cref="AdapterCollectionBase{T}"/>.
         /// </summary>
@@ -1086,6 +1099,13 @@ namespace sttp
 
                 status.Append(m_serverCommandChannel?.Status);
                 status.Append(m_clientCommandChannel?.Status);
+
+                if (m_clientCommandChannel != null)
+                {
+                    status.AppendFormat("   Using simple TCP client: {0}", UseSimpleTcpClient);
+                    status.AppendLine();
+                }
+
                 status.Append(base.Status);
                 status.AppendFormat("        Reporting interval: {0:N0} per subscriber", MeasurementReportingInterval);
                 status.AppendLine();
@@ -1454,6 +1474,9 @@ namespace sttp
             if (!commandChannelSettings.TryGetValue("bufferSize", out setting) || !int.TryParse(setting, out int bufferSize))
                 bufferSize = ClientBase.DefaultReceiveBufferSize;
 
+            if (settings.TryGetValue(nameof(UseSimpleTcpClient), out setting))
+                UseSimpleTcpClient = setting.ParseBoolean();
+
             if (m_securityMode == SecurityMode.TLS)
             {
                 // Create certificate checker for publisher
@@ -1525,21 +1548,42 @@ namespace sttp
             {
                 if (clientBasedConnection)
                 {
-                    // Create a new TCP client
-                    TcpClient commandChannel = new TcpClient();
+                    if (UseSimpleTcpClient)
+                    {
+                        // Create a new simple TCP client
+                        TcpSimpleClient commandChannel = new TcpSimpleClient
+                        {
+                            PayloadAware = true,
+                            PayloadMarker = null,
+                            PayloadEndianOrder = EndianOrder.BigEndian,
+                            PersistSettings = false,
+                            MaxConnectionAttempts = -1,
+                            ReceiveBufferSize = bufferSize,
+                            SendBufferSize = bufferSize,
+                            NoDelay = true
+                        };
 
-                    // Initialize default settings
-                    commandChannel.PayloadAware = true;
-                    commandChannel.PayloadMarker = null;
-                    commandChannel.PayloadEndianOrder = EndianOrder.BigEndian;
-                    commandChannel.PersistSettings = false;
-                    commandChannel.MaxConnectionAttempts = -1; // Reconnects not handled by base class
-                    commandChannel.ReceiveBufferSize = bufferSize;
-                    commandChannel.SendBufferSize = bufferSize;
-                    commandChannel.NoDelay = true;
+                        // Assign command channel client reference and attach to needed events
+                        ClientCommandChannel = commandChannel;
+                    }
+                    else
+                    {
+                        // Create a new TCP client
+                        TcpClient commandChannel = new TcpClient();
 
-                    // Assign command channel client reference and attach to needed events
-                    ClientCommandChannel = commandChannel;
+                        // Initialize default settings
+                        commandChannel.PayloadAware = true;
+                        commandChannel.PayloadMarker = null;
+                        commandChannel.PayloadEndianOrder = EndianOrder.BigEndian;
+                        commandChannel.PersistSettings = false;
+                        commandChannel.MaxConnectionAttempts = -1; // Reconnects not handled by base class
+                        commandChannel.ReceiveBufferSize = bufferSize;
+                        commandChannel.SendBufferSize = bufferSize;
+                        commandChannel.NoDelay = true;
+
+                        // Assign command channel client reference and attach to needed events
+                        ClientCommandChannel = commandChannel;
+                    }
                 }
                 else
                 {
