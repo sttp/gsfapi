@@ -617,7 +617,7 @@ namespace sttp
                     when tlsServerCommandChannel.TryGetClient(m_clientID, out TransportProvider<TlsServer.TlsSocket> tlsProvider):
                         return tlsProvider.Provider?.Socket;
                 default:
-                    return (m_clientCommandChannel as TcpClient)?.Client;
+                    return (m_clientCommandChannel as TcpClient)?.Client ?? (m_clientCommandChannel as TcpSimpleClient)?.Client;
             }
         }
 
