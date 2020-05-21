@@ -971,7 +971,7 @@ namespace sttp
         /// Gets or sets the maximum packet size to use for data publication.
         /// </summary>
         [ConnectionStringParameter]
-        [Description("Gets or sets the maximm packet size to use for data publications. This number should be set as small as possible to reduce fragementation, but large enough to keep large data flows from falling behind.")]
+        [Description("Gets or sets the maximum packet size to use for data publications. This number should be set as small as possible to reduce fragmentation, but large enough to keep large data flows from falling behind.")]
         [DefaultValue(DefaultMaxPacketSize)]
         public int MaxPacketSize { get; set; } = DefaultMaxPacketSize;
 
@@ -1128,10 +1128,9 @@ namespace sttp
             set
             {
                 // Only server command channel settings are persisted to config file
-                IPersistSettings commandChannel = m_serverCommandChannel as IPersistSettings;
                 base.Name = value.ToUpper();
 
-                if (commandChannel != null)
+                if (m_serverCommandChannel is IPersistSettings commandChannel)
                     commandChannel.SettingsCategory = value.Replace("!", "").ToLower();
             }
         }
@@ -2315,15 +2314,12 @@ namespace sttp
         // Attempts to get the subscriber for the given client based on that client's X.509 certificate.
         private void TryFindClientDetails(SubscriberConnection connection)
         {
-            TlsServer serverCommandChannel = m_serverCommandChannel as TlsServer;
             X509Certificate remoteCertificate;
 
             // If connection is not TLS, there is no X.509 certificate
-            if ((object)serverCommandChannel == null)
+            if (!(m_serverCommandChannel is TlsServer serverCommandChannel))
             {
-                TlsClient clientCommandChannel = m_clientCommandChannel as TlsClient;
-
-                if ((object)clientCommandChannel == null)
+                if (!(m_clientCommandChannel is TlsClient clientCommandChannel))
                     return;
 
                 // Get remote certificate and corresponding trusted certificate
@@ -2628,9 +2624,7 @@ namespace sttp
         // Socket exception handler
         private bool HandleSocketException(Guid clientID, Exception ex)
         {
-            SocketException socketException = ex as SocketException;
-
-            if ((object)socketException != null)
+            if (ex is SocketException socketException)
             {
                 // WSAECONNABORTED and WSAECONNRESET are common errors after a client disconnect,
                 // if they happen for other reasons, make sure disconnect procedure is handled
@@ -2731,12 +2725,7 @@ namespace sttp
 
         private bool GetClientSubscription(IActionAdapter item, Guid value)
         {
-            SubscriberAdapter subscription = item as SubscriberAdapter;
-
-            if ((object)subscription != null)
-                return subscription.ClientID == value;
-
-            return false;
+            return item is SubscriberAdapter subscription && subscription.ClientID == value;
         }
 
         // Gets specified property from client connection based on subscriber ID
@@ -2992,9 +2981,7 @@ namespace sttp
                         // If client has subscribed to any cached measurements, queue them up for the client
                         if (TryGetAdapterByName("LatestMeasurementCache", out IActionAdapter cacheAdapter))
                         {
-                            LatestMeasurementCache cache = cacheAdapter as LatestMeasurementCache;
-
-                            if ((object)cache != null)
+                            if (cacheAdapter is LatestMeasurementCache cache)
                             {
                                 IEnumerable<IMeasurement> cachedMeasurements = cache.LatestMeasurements.Where(measurement => subscription.InputMeasurementKeys.Any(key => key.SignalID == measurement.ID));
                                 subscription.QueueMeasurementsForProcessing(cachedMeasurements);

@@ -185,8 +185,7 @@ namespace sttp
 
             public override bool Equals(object obj)
             {
-                SubscribedDevice subscribedDevice = obj as SubscribedDevice;
-                return (object)subscribedDevice != null && Name.Equals(subscribedDevice.Name);
+                return obj is SubscribedDevice subscribedDevice && Name.Equals(subscribedDevice.Name);
             }
 
             public override int GetHashCode() => Name.GetHashCode();
@@ -610,7 +609,7 @@ namespace sttp
         /// <summary>
         /// Gets or sets flag that determines if a <see cref="TcpSimpleClient"/> should be used for reverse connections.
         /// </summary>
-        public bool UseSimpleTcpClient { get; set; } = false;
+        public bool UseSimpleTcpClient { get; set; }
 
         /// <summary>
         /// Gets flag that determines whether the command channel is connected.
@@ -853,7 +852,7 @@ namespace sttp
         /// <summary>
         /// Gets or sets the flag that determines whether to request that the subscription be throttled to certain publication interval, see <see cref="PublishInterval"/>.
         /// </summary>
-        public bool Throttled { get; set; } = false;
+        public bool Throttled { get; set; }
 
         /// <summary>
         /// Gets or sets the interval, in seconds, at which data should be published when using a throttled subscription.
@@ -2784,7 +2783,7 @@ namespace sttp
 
                             // Read even key size
                             bufferLen = BigEndian.ToInt32(bytes, index);
-                            index += 4;
+                            index = 4;
 
                             // Read even key
                             keyIVs[EvenKey][KeyIndex] = new byte[bufferLen];
@@ -3808,9 +3807,7 @@ namespace sttp
         // Socket exception handler
         private bool HandleSocketException(Exception ex)
         {
-            SocketException socketException = ex as SocketException;
-
-            if ((object)socketException != null)
+            if (ex is SocketException socketException)
             {
                 // WSAECONNABORTED and WSAECONNRESET are common errors after a client disconnect,
                 // if they happen for other reasons, make sure disconnect procedure is handled
