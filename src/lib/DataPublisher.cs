@@ -758,6 +758,11 @@ namespace sttp
         public const int DefaultMaxPacketSize = ushort.MaxValue / 2;
 
         /// <summary>
+        /// Default value for <see cref="MaxPublishInterval"/>.
+        /// </summary>
+        public const long DefaultMaxPublishInterval = 0L;
+
+        /// <summary>
         /// Size of client response header in bytes.
         /// </summary>
         /// <remarks>
@@ -777,6 +782,7 @@ namespace sttp
         private readonly ConcurrentDictionary<Guid, IServer> m_clientPublicationChannels;
         private readonly Dictionary<Guid, Dictionary<int, string>> m_clientNotifications;
         private readonly object m_clientNotificationsLock;
+        private readonly BlockAllocatedMemoryStream m_publishBuffer;
         private SharedTimer m_cipherKeyRotationTimer;
         private long m_commandChannelConnectionAttempts;
         private Guid m_proxyClientID;
@@ -826,6 +832,7 @@ namespace sttp
             m_clientPublicationChannels = new ConcurrentDictionary<Guid, IServer>();
             m_clientNotifications = new Dictionary<Guid, Dictionary<int, string>>();
             m_clientNotificationsLock = new object();
+            m_publishBuffer = new BlockAllocatedMemoryStream();
             m_securityMode = DefaultSecurityMode;
             m_encryptPayload = DefaultEncryptPayload;
             m_sharedDatabase = DefaultSharedDatabase;
@@ -889,7 +896,7 @@ namespace sttp
                 m_encryptPayload = value;
 
                 // Start cipher key rotation timer when encrypting payload
-                if ((object)m_cipherKeyRotationTimer != null)
+                if (m_cipherKeyRotationTimer != null)
                     m_cipherKeyRotationTimer.Enabled = value;
             }
         }
@@ -985,7 +992,7 @@ namespace sttp
         {
             get
             {
-                if ((object)m_cipherKeyRotationTimer != null)
+                if (m_cipherKeyRotationTimer != null)
                     return m_cipherKeyRotationTimer.Interval;
 
                 return double.NaN;
@@ -995,7 +1002,7 @@ namespace sttp
                 if (value < 1000.0D)
                     throw new ArgumentOutOfRangeException(nameof(value), "Cipher key rotation period should not be set to less than 1000 milliseconds.");
 
-                if ((object)m_cipherKeyRotationTimer != null)
+                if (m_cipherKeyRotationTimer != null)
                     m_cipherKeyRotationTimer.Interval = (int)value;
 
                 throw new ArgumentException("Cannot assign new cipher rotation period, timer is not defined.");
@@ -1030,6 +1037,11 @@ namespace sttp
             get => m_measurementReportingInterval;
             set => m_measurementReportingInterval = value;
         }
+
+        [ConnectionStringParameter,
+        DefaultValue(DefaultMaxPublishInterval),
+        Description("Defines the maximum publication interval in milliseconds for data publications. Set to zero for no defined maximum.")]
+        public long MaxPublishInterval { get; set; } = DefaultMaxPublishInterval;
 
         /// <summary>
         /// Gets or sets flag that determines whether measurement rights validation is enforced. Defaults to true for TLS connections.
@@ -1111,6 +1123,10 @@ namespace sttp
                 status.AppendLine();
                 status.AppendFormat("  Buffer block retransmits: {0:N0}", m_bufferBlockRetransmissions);
                 status.AppendLine();
+                status.AppendFormat("  Max publication interval: {0:N0}ms", MaxPublishInterval);
+                status.AppendLine();
+                status.AppendFormat("    Pending publish buffer: {0}", SI2.ToScaledString(m_publishBuffer.Length, 3, "B"));
+                status.AppendLine();
 
                 return status.ToString();
             }
@@ -1166,7 +1182,7 @@ namespace sttp
             get => m_serverCommandChannel;
             set
             {
-                if ((object)m_serverCommandChannel != null)
+                if (m_serverCommandChannel != null)
                 {
                     // Detach from events on existing command channel reference
                     m_serverCommandChannel.ClientConnected -= ServerCommandChannelClientConnected;
@@ -1185,7 +1201,7 @@ namespace sttp
                 // Assign new command channel reference
                 m_serverCommandChannel = value;
 
-                if ((object)m_serverCommandChannel != null)
+                if (m_serverCommandChannel != null)
                 {
                     // Attach to desired events on new command channel reference
                     m_serverCommandChannel.ClientConnected += ServerCommandChannelClientConnected;
@@ -1211,7 +1227,7 @@ namespace sttp
             get => m_clientCommandChannel;
             set
             {
-                if ((object)m_clientCommandChannel != null)
+                if (m_clientCommandChannel != null)
                 {
                     // Detach from events on existing command channel reference
                     m_clientCommandChannel.ConnectionAttempt -= ClientCommandChannelConnectionAttempt;
@@ -1229,7 +1245,7 @@ namespace sttp
                 // Assign new command channel reference
                 m_clientCommandChannel = value;
 
-                if ((object)m_clientCommandChannel != null)
+                if (m_clientCommandChannel != null)
                 {
                     // Attach to desired events on new command channel reference
                     m_clientCommandChannel.ConnectionAttempt += ClientCommandChannelConnectionAttempt;
@@ -1329,12 +1345,12 @@ namespace sttp
                     {
                         ServerCommandChannel = null;
 
-                        if ((object)m_clientConnections != null)
+                        if (m_clientConnections != null)
                             m_clientConnections.Values.AsParallel().ForAll(cc => cc.Dispose());
 
                         m_clientConnections = null;
 
-                        if ((object)m_routingTables != null)
+                        if (m_routingTables != null)
                         {
                             m_routingTables.StatusMessage -= m_routingTables_StatusMessage;
                             m_routingTables.ProcessException -= m_routingTables_ProcessException;
@@ -1343,7 +1359,7 @@ namespace sttp
                         m_routingTables = null;
 
                         // Dispose the cipher key rotation timer
-                        if ((object)m_cipherKeyRotationTimer != null)
+                        if (m_cipherKeyRotationTimer != null)
                         {
                             m_cipherKeyRotationTimer.Elapsed -= m_cipherKeyRotationTimer_Elapsed;
                             m_cipherKeyRotationTimer.Dispose();
@@ -1411,6 +1427,12 @@ namespace sttp
                 MeasurementReportingInterval = int.Parse(setting);
             else
                 MeasurementReportingInterval = AdapterBase.DefaultMeasurementReportingInterval;
+
+            if (settings.TryGetValue(nameof(MaxPublishInterval), out setting) && long.TryParse(setting, out long maxPublishInterval))
+                MaxPublishInterval = maxPublishInterval;
+
+            if (MaxPublishInterval < 0L)
+                MaxPublishInterval = 0L;
 
             // Get user specified period for cipher key rotation
             if (settings.TryGetValue("cipherKeyRotationPeriod", out setting) && double.TryParse(setting, out double period))
@@ -1619,7 +1641,7 @@ namespace sttp
             }
 
             // Start cipher key rotation timer when encrypting payload
-            if (m_encryptPayload && (object)m_cipherKeyRotationTimer != null)
+            if (m_encryptPayload && m_cipherKeyRotationTimer != null)
                 m_cipherKeyRotationTimer.Start();
 
             // Register publisher with the statistics engine
@@ -1698,10 +1720,10 @@ namespace sttp
         /// <returns>A short one-line summary of the current status of the <see cref="DataPublisher"/>.</returns>
         public override string GetShortStatus(int maxLength)
         {
-            if ((object)m_serverCommandChannel != null)
+            if (m_serverCommandChannel != null)
                 return $"Publishing data to {m_serverCommandChannel.ClientIDs.Length} clients.".CenterText(maxLength);
 
-            if ((object)m_clientCommandChannel != null)
+            if (m_clientCommandChannel != null)
             {
                 if (m_clientCommandChannel.CurrentState == ClientState.Connected)
                     return "Publishing data to one client via client-based connection.".CenterText(maxLength);
@@ -1741,7 +1763,7 @@ namespace sttp
 
             for (int i = 0; i < clientIDs.Length; i++)
             {
-                if (m_clientConnections.TryGetValue(clientIDs[i], out SubscriberConnection connection) && (object)connection != null && (object)connection.Subscription != null)
+                if (m_clientConnections.TryGetValue(clientIDs[i], out SubscriberConnection connection) && connection != null && connection.Subscription != null)
                 {
                     hasActiveTemporalSession = connection.Subscription.TemporalConstraintIsDefined();
 
@@ -1882,7 +1904,7 @@ namespace sttp
                 {
                     string temporalStatus = null;
 
-                    if ((object)connection.Subscription != null)
+                    if (connection.Subscription != null)
                     {
                         if (connection.Subscription.TemporalConstraintIsDefined())
                             temporalStatus = connection.Subscription.TemporalSessionStatus;
@@ -1913,7 +1935,7 @@ namespace sttp
 
             commandChannel = m_serverCommandChannel as TlsServer;
 
-            if ((object)commandChannel == null)
+            if (commandChannel == null)
                 throw new InvalidOperationException("Certificates can only be exported in TLS security mode with a server-based command channel.");
 
             return File.ReadAllBytes(FilePath.GetAbsolutePath(commandChannel.CertificateFile));
@@ -1934,7 +1956,7 @@ namespace sttp
 
             commandChannel = m_serverCommandChannel as TlsServer;
 
-            if ((object)commandChannel == null)
+            if (commandChannel == null)
                 throw new InvalidOperationException("Certificates can only be imported in TLS security mode with a server-based command channel.");
 
             trustedCertificatesPath = FilePath.GetAbsolutePath(commandChannel.TrustedCertificatesPath);
@@ -2009,7 +2031,7 @@ namespace sttp
 
             byte[] serializedSignalIndexCache;
 
-            if ((object)inputMeasurementKeys != null)
+            if (inputMeasurementKeys != null)
             {
                 Func<Guid, bool> hasRightsFunc = m_validateMeasurementRights ?
                     new SubscriberRightsLookup(DataSource, signalIndexCache.SubscriberID).HasRightsFunc :
@@ -2205,7 +2227,7 @@ namespace sttp
             {
                 Encoding clientEncoding = connection.Encoding;
 
-                if ((object)clientEncoding != null)
+                if (clientEncoding != null)
                     return clientEncoding;
             }
 
@@ -2335,7 +2357,7 @@ namespace sttp
                 remoteCertificate = client.Provider.SslStream.RemoteCertificate;
             }
 
-            if ((object)remoteCertificate == null)
+            if (remoteCertificate == null)
                 return;
 
             if (m_subscriberIdentities.TryGetValue(m_certificateChecker.GetTrustedCertificate(remoteCertificate), out DataRow subscriber))
@@ -2387,7 +2409,7 @@ namespace sttp
                 string remoteCertificateFile;
                 X509Certificate certificate;
 
-                if ((object)m_certificateChecker == null || (object)m_subscriberIdentities == null || m_securityMode != SecurityMode.TLS)
+                if (m_certificateChecker == null || m_subscriberIdentities == null || m_securityMode != SecurityMode.TLS)
                     return;
 
                 m_certificateChecker.DistrustAll();
@@ -2428,7 +2450,7 @@ namespace sttp
         // Update rights for the given subscription.
         private void UpdateRights(SubscriberConnection connection)
         {
-            if ((object)connection == null)
+            if (connection == null)
                 return;
 
             try
@@ -2439,11 +2461,11 @@ namespace sttp
                 string message;
 
                 // Determine if the connection has been disabled or removed - make sure to set authenticated to false if necessary
-                if ((object)DataSource != null && DataSource.Tables.Contains("Subscribers") &&
+                if (DataSource != null && DataSource.Tables.Contains("Subscribers") &&
                     !DataSource.Tables["Subscribers"].Select($"ID = '{connection.SubscriberID}' AND Enabled <> 0").Any())
                     connection.Authenticated = false;
 
-                if ((object)subscription != null)
+                if (subscription != null)
                 {
                     // It is important here that "SELECT" not be allowed in parsing the input measurement keys expression since this key comes
                     // from the remote subscription - this will prevent possible SQL injection attacks.
@@ -2481,140 +2503,164 @@ namespace sttp
         // Send binary response packet to client
         private bool SendClientResponse(Guid clientID, byte responseCode, byte commandCode, byte[] data)
         {
+            // Attempt to lookup associated client connection
+            if (!m_clientConnections.TryGetValue(clientID, out SubscriberConnection connection) || connection == null || connection.ClientNotFoundExceptionOccurred)
+                return false;
+
+            BlockAllocatedMemoryStream workingBuffer = null;
+            bool locked = false;
             bool success = false;
 
-            // Attempt to lookup associated client connection
-            if (m_clientConnections.TryGetValue(clientID, out SubscriberConnection connection) && (object)connection != null && !connection.ClientNotFoundExceptionOccurred)
+            try
             {
-                try
+                if (MaxPublishInterval > 0L)
+                    Monitor.Enter(m_publishBuffer, ref locked);
+
+                // Create a new working buffer
+                bool dataPacketResponse = responseCode == (byte)ServerResponse.DataPacket;
+                bool useDataChannel = dataPacketResponse || responseCode == (byte)ServerResponse.BufferBlock;
+
+                // Initialize target working buffer
+                workingBuffer = MaxPublishInterval == 0L ? new BlockAllocatedMemoryStream() : m_publishBuffer;
+
+                // Add response code
+                workingBuffer.WriteByte(responseCode);
+
+                // Add original in response to command code
+                workingBuffer.WriteByte(commandCode);
+
+                if (data == null || data.Length == 0)
                 {
-                    // Create a new working buffer
-                    using (BlockAllocatedMemoryStream workingBuffer = new BlockAllocatedMemoryStream())
+                    // Add zero sized data buffer to response packet
+                    workingBuffer.Write(ZeroLengthBytes, 0, 4);
+                }
+                else
+                {
+                    // If response is for a data packet and a connection key is defined, encrypt the data packet payload
+                    if (dataPacketResponse && connection.KeyIVs != null)
                     {
-                        bool dataPacketResponse = responseCode == (byte)ServerResponse.DataPacket;
-                        bool useDataChannel = dataPacketResponse || responseCode == (byte)ServerResponse.BufferBlock;
+                        // Get a local copy of volatile keyIVs and cipher index since these can change at any time
+                        byte[][][] keyIVs = connection.KeyIVs;
+                        int cipherIndex = connection.CipherIndex;
 
-                        // Add response code
-                        workingBuffer.WriteByte(responseCode);
+                        // Reserve space for size of data buffer to go into response packet
+                        workingBuffer.Write(ZeroLengthBytes, 0, 4);
 
-                        // Add original in response to command code
-                        workingBuffer.WriteByte(commandCode);
+                        // Get data packet flags
+                        DataPacketFlags flags = (DataPacketFlags)data[0];
 
-                        if ((object)data == null || data.Length == 0)
-                        {
-                            // Add zero sized data buffer to response packet
-                            workingBuffer.Write(ZeroLengthBytes, 0, 4);
-                        }
-                        else
-                        {
-                            // If response is for a data packet and a connection key is defined, encrypt the data packet payload
-                            if (dataPacketResponse && (object)connection.KeyIVs != null)
-                            {
-                                // Get a local copy of volatile keyIVs and cipher index since these can change at any time
-                                byte[][][] keyIVs = connection.KeyIVs;
-                                int cipherIndex = connection.CipherIndex;
+                        // Encode current cipher index into data packet flags
+                        if (cipherIndex > 0)
+                            flags |= DataPacketFlags.CipherIndex;
 
-                                // Reserve space for size of data buffer to go into response packet
-                                workingBuffer.Write(ZeroLengthBytes, 0, 4);
+                        // Write data packet flags into response packet
+                        workingBuffer.WriteByte((byte)flags);
 
-                                // Get data packet flags
-                                DataPacketFlags flags = (DataPacketFlags)data[0];
+                        // Copy source data payload into a memory stream
+                        MemoryStream sourceData = new MemoryStream(data, 1, data.Length - 1);
 
-                                // Encode current cipher index into data packet flags
-                                if (cipherIndex > 0)
-                                    flags |= DataPacketFlags.CipherIndex;
+                        // Encrypt payload portion of data packet and copy into the response packet
+                        Common.SymmetricAlgorithm.Encrypt(sourceData, workingBuffer, keyIVs[cipherIndex][0], keyIVs[cipherIndex][1]);
 
-                                // Write data packet flags into response packet
-                                workingBuffer.WriteByte((byte)flags);
+                        // Calculate length of encrypted data payload
+                        int payloadLength = (int)workingBuffer.Length - 6;
 
-                                // Copy source data payload into a memory stream
-                                MemoryStream sourceData = new MemoryStream(data, 1, data.Length - 1);
+                        // Move the response packet position back to the packet size reservation
+                        workingBuffer.Seek(2, SeekOrigin.Begin);
 
-                                // Encrypt payload portion of data packet and copy into the response packet
-                                Common.SymmetricAlgorithm.Encrypt(sourceData, workingBuffer, keyIVs[cipherIndex][0], keyIVs[cipherIndex][1]);
+                        // Add the actual size of payload length to response packet
+                        workingBuffer.Write(BigEndian.GetBytes(payloadLength), 0, 4);
+                    }
+                    else
+                    {
+                        // Add size of data buffer to response packet
+                        workingBuffer.Write(BigEndian.GetBytes(data.Length), 0, 4);
 
-                                // Calculate length of encrypted data payload
-                                int payloadLength = (int)workingBuffer.Length - 6;
-
-                                // Move the response packet position back to the packet size reservation
-                                workingBuffer.Seek(2, SeekOrigin.Begin);
-
-                                // Add the actual size of payload length to response packet
-                                workingBuffer.Write(BigEndian.GetBytes(payloadLength), 0, 4);
-                            }
-                            else
-                            {
-                                // Add size of data buffer to response packet
-                                workingBuffer.Write(BigEndian.GetBytes(data.Length), 0, 4);
-
-                                // Add data buffer
-                                workingBuffer.Write(data, 0, data.Length);
-                            }
-                        }
-
-                        if (m_clientCommandChannel == null)
-                        {
-                            IServer publishChannel;
-
-                            // Data packets and buffer blocks can be published on a UDP data channel, so check for this...
-                            if (useDataChannel)
-                                publishChannel = m_clientPublicationChannels.GetOrAdd(clientID, id => connection.ServerPublishChannel);
-                            else
-                                publishChannel = m_serverCommandChannel;
-
-                            // Send response packet
-                            if (publishChannel?.CurrentState == ServerState.Running)
-                            {
-                                byte[] responseData = workingBuffer.ToArray();
-
-                                if (publishChannel is UdpServer)
-                                    publishChannel.MulticastAsync(responseData, 0, responseData.Length);
-                                else
-                                    publishChannel.SendToAsync(clientID, responseData, 0, responseData.Length);
-
-                                m_totalBytesSent += responseData.Length;
-                                success = true;
-                            }
-                        }
-                        else
-                        {
-                            // Send client-based response packet
-                            if (m_clientCommandChannel.CurrentState == ClientState.Connected)
-                            {
-                                byte[] responseData = workingBuffer.ToArray();
-
-                                m_clientCommandChannel.SendAsync(responseData, 0, responseData.Length);
-
-                                m_totalBytesSent += responseData.Length;
-                                success = true;
-                            }
-                        }
+                        // Add data buffer
+                        workingBuffer.Write(data, 0, data.Length);
                     }
                 }
-                catch (ObjectDisposedException)
+
+                // If a publication interval has been defined, do not send packets until timeout has expired
+                if (MaxPublishInterval > 0L && (long)(DateTime.UtcNow.Ticks - connection.LastPublishTime).ToMilliseconds() < MaxPublishInterval)
+                    return true;
+
+                if (m_clientCommandChannel == null)
                 {
-                    // This happens when there is still data to be sent to a disconnected client - we can safely ignore this exception
+                    // Data packets and buffer blocks can be published on a UDP data channel, so check for this...
+                    IServer publishChannel = useDataChannel ? 
+                        m_clientPublicationChannels.GetOrAdd(clientID, id => connection.ServerPublishChannel) : 
+                        m_serverCommandChannel;
+
+                    // Send response packet
+                    if (publishChannel?.CurrentState == ServerState.Running)
+                    {
+                        byte[] responseData = workingBuffer.ToArray();
+
+                        if (publishChannel is UdpServer)
+                            publishChannel.MulticastAsync(responseData, 0, responseData.Length);
+                        else
+                            publishChannel.SendToAsync(clientID, responseData, 0, responseData.Length);
+
+                        m_totalBytesSent += responseData.Length;
+                        success = true;
+                    }
                 }
-                catch (NullReferenceException)
+                else
                 {
-                    // This happens when there is still data to be sent to a disconnected client - we can safely ignore this exception
+                    // Send client-based response packet
+                    if (m_clientCommandChannel.CurrentState == ClientState.Connected)
+                    {
+                        byte[] responseData = workingBuffer.ToArray();
+
+                        m_clientCommandChannel.SendAsync(responseData, 0, responseData.Length);
+
+                        m_totalBytesSent += responseData.Length;
+                        success = true;
+                    }
                 }
-                catch (SocketException ex)
-                {
-                    if (!HandleSocketException(clientID, ex))
-                        OnProcessException(MessageLevel.Info, new InvalidOperationException($"Failed to send response packet to client due to exception: {ex.Message}", ex));
-                }
-                catch (InvalidOperationException ex)
-                {
-                    // Could still be processing threads with client data after client has been disconnected, this can be safely ignored
-                    if (ex.Message.StartsWith("No client found") && !connection.IsConnected)
-                        connection.ClientNotFoundExceptionOccurred = true;
-                    else
-                        OnProcessException(MessageLevel.Info, new InvalidOperationException($"Failed to send response packet to client due to exception: {ex.Message}", ex));
-                }
-                catch (Exception ex)
-                {
+            }
+            catch (ObjectDisposedException)
+            {
+                // This happens when there is still data to be sent to a disconnected client - we can safely ignore this exception
+            }
+            catch (NullReferenceException)
+            {
+                // This happens when there is still data to be sent to a disconnected client - we can safely ignore this exception
+            }
+            catch (SocketException ex)
+            {
+                if (!HandleSocketException(clientID, ex))
                     OnProcessException(MessageLevel.Info, new InvalidOperationException($"Failed to send response packet to client due to exception: {ex.Message}", ex));
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Could still be processing threads with client data after client has been disconnected, this can be safely ignored
+                if (ex.Message.StartsWith("No client found") && !connection.IsConnected)
+                    connection.ClientNotFoundExceptionOccurred = true;
+                else
+                    OnProcessException(MessageLevel.Info, new InvalidOperationException($"Failed to send response packet to client due to exception: {ex.Message}", ex));
+            }
+            catch (Exception ex)
+            {
+                OnProcessException(MessageLevel.Info, new InvalidOperationException($"Failed to send response packet to client due to exception: {ex.Message}", ex));
+            }
+            finally
+            {
+                if (MaxPublishInterval == 0L)
+                {
+                    workingBuffer?.Dispose();
+                }
+                else
+                {
+                    if (success)
+                    {
+                        connection.LastPublishTime = DateTime.UtcNow.Ticks;
+                        m_publishBuffer.Clear();
+                    }
+
+                    if (locked)
+                        Monitor.Exit(m_publishBuffer);
                 }
             }
 
@@ -2644,7 +2690,7 @@ namespace sttp
                 }
             }
 
-            if ((object)ex != null)
+            if (ex != null)
                 HandleSocketException(clientID, ex.InnerException);
 
             return false;
@@ -2737,7 +2783,7 @@ namespace sttp
             SubscriberConnection connection = m_clientConnections.Values.FirstOrDefault(cc => cc.SubscriberID == subscriberID);
 
             // Extract desired property from client connection using given predicate function
-            if ((object)connection != null)
+            if (connection != null)
                 result = predicate(connection);
 
             return result;
@@ -2797,11 +2843,11 @@ namespace sttp
         // Cipher key rotation timer handler
         private void m_cipherKeyRotationTimer_Elapsed(object sender, EventArgs<DateTime> e)
         {
-            if ((object)m_clientConnections != null)
+            if (m_clientConnections != null)
             {
                 foreach (SubscriberConnection connection in m_clientConnections.Values)
                 {
-                    if ((object)connection != null && connection.Authenticated)
+                    if (connection != null && connection.Authenticated)
                         connection.RotateCipherKeys();
                 }
             }
@@ -2854,12 +2900,12 @@ namespace sttp
                         //startIndex += byteLength;
 
                         // Get client subscription
-                        if ((object)connection.Subscription == null)
+                        if (connection.Subscription == null)
                             TryGetClientSubscription(clientID, out subscription);
                         else
                             subscription = connection.Subscription;
 
-                        if ((object)subscription == null)
+                        if (subscription == null)
                         {
                             // Client subscription not established yet, so we create a new one
                             subscription = new SubscriberAdapter(this, clientID, connection.SubscriberID, compressionModes);
@@ -2896,10 +2942,10 @@ namespace sttp
                             string networkInterface = "::0";
 
                             // Make sure return interface matches incoming client connection
-                            if ((object)clientSocket != null)
+                            if (clientSocket != null)
                                 localEndPoint = clientSocket.LocalEndPoint as IPEndPoint;
 
-                            if ((object)localEndPoint != null)
+                            if (localEndPoint != null)
                             {
                                 networkInterface = localEndPoint.Address.ToString();
 
@@ -3012,7 +3058,7 @@ namespace sttp
                         }
                         else
                         {
-                            if ((object)subscription.InputMeasurementKeys != null)
+                            if (subscription.InputMeasurementKeys != null)
                                 message = $"Client subscribed as {(useCompactMeasurementFormat ? "" : "non-")}compact with {subscription.InputMeasurementKeys.Length} signals.";
                             else
                                 message = $"Client subscribed as {(useCompactMeasurementFormat ? "" : "non-")}compact, but no signals were specified. Make sure \"inputMeasurementKeys\" setting is properly defined.";
@@ -3056,7 +3102,7 @@ namespace sttp
             RemoveClientSubscription(clientID); // This does not disconnect client command channel - nor should it...
 
             // Detach from processing completed notification
-            if ((object)connection.Subscription != null)
+            if (connection.Subscription != null)
             {
                 connection.Subscription.BufferBlockRetransmission -= subscription_BufferBlockRetransmission;
                 connection.Subscription.ProcessingComplete -= subscription_ProcessingComplete;
@@ -3314,7 +3360,7 @@ namespace sttp
 
                 SubscriberAdapter subscription = connection.Subscription;
 
-                if ((object)subscription != null)
+                if (subscription != null)
                 {
                     subscription.ProcessingInterval = processingInterval;
                     SendClientResponse(clientID, ServerResponse.Succeeded, ServerCommand.UpdateProcessingInterval, "New processing interval of {0} assigned.", processingInterval);
@@ -3478,7 +3524,7 @@ namespace sttp
                     }
                     finally
                     {
-                        if ((object)deflater != null)
+                        if (deflater != null)
                             deflater.Close();
                     }
                 }
@@ -3528,7 +3574,7 @@ namespace sttp
                 }
                 finally
                 {
-                    if ((object)deflater != null)
+                    if (deflater != null)
                         deflater.Close();
                 }
             }
@@ -3580,10 +3626,10 @@ namespace sttp
             ProcessingComplete?.Invoke(sender, e.Argument2);
 
             IClientSubscription subscription = e.Argument1;
-            string senderType = (object)sender == null ? "N/A" : sender.GetType().Name;
+            string senderType = sender == null ? "N/A" : sender.GetType().Name;
 
             // Send direct notification to associated client
-            if ((object)subscription != null)
+            if (subscription != null)
                 SendClientResponse(subscription.ClientID, ServerResponse.ProcessingComplete, ServerCommand.Subscribe, senderType);
         }
 
@@ -3600,7 +3646,7 @@ namespace sttp
                 int length = e.Argument3;
                 int index = 0;
 
-                if (length > 0 && (object)buffer != null)
+                if (length > 0 && buffer != null)
                 {
                     string message;
                     byte commandByte = buffer[index];
@@ -3703,9 +3749,11 @@ namespace sttp
         private void ServerCommandChannelClientConnected(object sender, EventArgs<Guid> e)
         {
             Guid clientID = e.Argument;
-            SubscriberConnection connection = new SubscriberConnection(this, clientID, m_serverCommandChannel, m_clientCommandChannel);
             
-            connection.ClientNotFoundExceptionOccurred = false;
+            SubscriberConnection connection = new SubscriberConnection(this, clientID, m_serverCommandChannel, m_clientCommandChannel)
+            {
+                ClientNotFoundExceptionOccurred = false
+            };
 
             if (m_validateClientIPAddress)
             {

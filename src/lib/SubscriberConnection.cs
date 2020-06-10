@@ -140,9 +140,9 @@ namespace sttp
             get => m_dataChannel;
             set
             {
-                m_connectionEstablished = (object)value != null;
+                m_connectionEstablished = value != null;
 
-                if ((object)m_dataChannel != null)
+                if (m_dataChannel != null)
                 {
                     // Detach from events on existing data channel reference
                     m_dataChannel.ClientConnectingException -= m_dataChannel_ClientConnectingException;
@@ -157,7 +157,7 @@ namespace sttp
                 // Assign new data channel reference
                 m_dataChannel = value;
 
-                if ((object)m_dataChannel != null)
+                if (m_dataChannel != null)
                 {
                     // Save UDP settings so channel can be reestablished if needed
                     m_configurationString = m_dataChannel.ConfigurationString;
@@ -184,7 +184,12 @@ namespace sttp
         /// <summary>
         /// Gets <see cref="IServer"/> publication channel - that is, data channel if defined otherwise command channel.
         /// </summary>
-        public IServer ServerPublishChannel => (object)m_dataChannel == null ? m_serverCommandChannel : m_dataChannel;
+        public IServer ServerPublishChannel => m_dataChannel ?? m_serverCommandChannel;
+
+        /// <summary>
+        /// Gets or sets last publish time for subscriber connection.
+        /// </summary>
+        public Ticks LastPublishTime { get; set; } = DateTime.UtcNow.Ticks;
 
         /// <summary>
         /// Gets connected state of the associated client socket.
@@ -200,7 +205,7 @@ namespace sttp
                 {
                     commandChannelSocket = GetCommandChannelSocket();
 
-                    if ((object)commandChannelSocket != null)
+                    if (commandChannelSocket != null)
                         isConnected = commandChannelSocket.Connected;
                 }
                 catch
@@ -355,7 +360,7 @@ namespace sttp
             {
                 m_subscription = value;
 
-                if ((object)m_subscription != null)
+                if (m_subscription != null)
                     m_subscription.Name = m_hostName;
             }
         }
@@ -406,21 +411,21 @@ namespace sttp
             get
             {
                 StringBuilder status = new StringBuilder();
-                const string formatString = "{0,26}: {1}";
+                const string FormatString = "{0,26}: {1}";
 
                 status.AppendLine();
-                status.AppendFormat(formatString, "Subscriber ID", m_connectionID);
+                status.AppendFormat(FormatString, "Subscriber ID", m_connectionID);
                 status.AppendLine();
-                status.AppendFormat(formatString, "Subscriber name", SubscriberName);
+                status.AppendFormat(FormatString, "Subscriber name", SubscriberName);
                 status.AppendLine();
-                status.AppendFormat(formatString, "Subscriber acronym", SubscriberAcronym);
+                status.AppendFormat(FormatString, "Subscriber acronym", SubscriberAcronym);
                 status.AppendLine();
-                status.AppendFormat(formatString, "Publish channel protocol", ServerPublishChannel.TransportProtocol);
+                status.AppendFormat(FormatString, "Publish channel protocol", ServerPublishChannel.TransportProtocol);
                 status.AppendLine();
-                status.AppendFormat(formatString, "Data packet security", (object)m_keyIVs == null ? "unencrypted" : "encrypted");
+                status.AppendFormat(FormatString, "Data packet security", (object)m_keyIVs == null ? "unencrypted" : "encrypted");
                 status.AppendLine();
 
-                if ((object)m_dataChannel != null)
+                if (m_dataChannel != null)
                 {
                     status.AppendLine();
                     status.Append(m_dataChannel.Status);
@@ -455,14 +460,14 @@ namespace sttp
                 {
                     if (disposing)
                     {
-                        if ((object)m_pingTimer != null)
+                        if (m_pingTimer != null)
                         {
                             m_pingTimer.Elapsed -= m_pingTimer_Elapsed;
                             m_pingTimer.Dispose();
                             m_pingTimer = null;
                         }
 
-                        if ((object)m_reconnectTimer != null)
+                        if (m_reconnectTimer != null)
                         {
                             m_reconnectTimer.Elapsed -= m_reconnectTimer_Elapsed;
                             m_reconnectTimer.Dispose();
@@ -494,7 +499,7 @@ namespace sttp
                 symmetricAlgorithm.GenerateKey();
                 symmetricAlgorithm.GenerateIV();
 
-                if ((object)m_keyIVs == null)
+                if (m_keyIVs == null)
                 {
                     // Initialize new key set
                     m_keyIVs = new byte[2][][];
@@ -713,7 +718,7 @@ namespace sttp
             // Attempt to lookup remote connection identification for logging purposes
             try
             {
-                if ((object)remoteEndPoint != null)
+                if (remoteEndPoint != null)
                 {
                     ipAddress = remoteEndPoint.Address;
 
@@ -763,13 +768,13 @@ namespace sttp
 
             if (string.IsNullOrWhiteSpace(hostName))
             {
-                if ((object)ipAddress != null)
+                if (ipAddress != null)
                     hostName = ipAddress.ToString();
                 else
                     hostName = connectionID;
             }
 
-            if ((object)ipAddress == null)
+            if (ipAddress == null)
                 ipAddress = IPAddress.None;
         }
 
