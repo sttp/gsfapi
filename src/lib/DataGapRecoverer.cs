@@ -238,7 +238,7 @@ namespace sttp
             {
                 m_dataSource = value;
 
-                if ((object)m_temporalSubscription != null)
+                if (m_temporalSubscription != null)
                     m_temporalSubscription.DataSource = m_dataSource;
             }
         }
@@ -308,7 +308,7 @@ namespace sttp
             get => m_dataStreamMonitor.Interval / 1000.0D;
             set
             {
-                if ((object)m_dataStreamMonitor == null)
+                if (m_dataStreamMonitor == null)
                     throw new ArgumentNullException();
 
                 if (value <= 0.0D)
@@ -462,10 +462,10 @@ namespace sttp
             {
                 m_enabled = value;
 
-                if ((object)DataGapLogProcessor != null)
+                if (DataGapLogProcessor != null)
                     DataGapLogProcessor.Enabled = m_enabled;
 
-                if ((object)m_temporalSubscription != null)
+                if (m_temporalSubscription != null)
                     m_temporalSubscription.Enabled = m_enabled;
             }
         }
@@ -490,7 +490,7 @@ namespace sttp
         {
             get
             {
-                if ((object)m_temporalSubscription != null)
+                if (m_temporalSubscription != null)
                     return m_temporalSubscription.Name;
 
                 return GetType().Name;
@@ -536,13 +536,13 @@ namespace sttp
 
                 Outage currentDataGap = m_currentDataGap;
 
-                if ((object)currentDataGap != null)
+                if (currentDataGap != null)
                 {
                     status.AppendFormat("      Currently recovering: {0};{1}", currentDataGap.Start.ToString(OutageLog.DateTimeFormat), currentDataGap.End.ToString(OutageLog.DateTimeFormat));
                     status.AppendLine();
                 }
 
-                if ((object)m_temporalSubscription != null)
+                if (m_temporalSubscription != null)
                 {
                     status.AppendLine();
                     status.AppendLine("Data Gap Temporal Subscription Status".CenterText(50));
@@ -550,7 +550,7 @@ namespace sttp
                     status.AppendFormat(m_temporalSubscription.Status);
                 }
 
-                if ((object)DataGapLog != null)
+                if (DataGapLog != null)
                 {
                     status.AppendLine();
                     status.AppendLine("Data Gap Log Status".CenterText(50));
@@ -587,7 +587,7 @@ namespace sttp
                 {
                     if (disposing)
                     {
-                        if ((object)m_dataGapRecoveryCompleted != null)
+                        if (m_dataGapRecoveryCompleted != null)
                         {
                             // Signal any waiting threads
                             m_abnormalTermination = true;
@@ -595,26 +595,26 @@ namespace sttp
                             m_dataGapRecoveryCompleted.Dispose();
                         }
 
-                        if ((object)m_dataStreamMonitor != null)
+                        if (m_dataStreamMonitor != null)
                         {
                             m_dataStreamMonitor.Elapsed -= DataStreamMonitor_Elapsed;
                             m_dataStreamMonitor.Dispose();
                             m_dataStreamMonitor = null;
                         }
 
-                        if ((object)DataGapLogProcessor != null)
+                        if (DataGapLogProcessor != null)
                         {
                             DataGapLogProcessor.Dispose();
                             DataGapLogProcessor = null;
                         }
 
-                        if ((object)DataGapLog != null)
+                        if (DataGapLog != null)
                         {
                             DataGapLog.ProcessException -= Common_ProcessException;
                             DataGapLog = null;
                         }
 
-                        if ((object)m_temporalSubscription != null)
+                        if (m_temporalSubscription != null)
                         {
                             m_temporalSubscription.StatusMessage -= Common_StatusMessage;
                             m_temporalSubscription.ProcessException -= Common_ProcessException;
@@ -736,7 +736,7 @@ namespace sttp
             if (m_disposed)
                 throw new InvalidOperationException("Data gap recoverer has been disposed. Cannot log data gap for processing.");
 
-            if ((object)DataGapLog == null)
+            if (DataGapLog == null)
                 throw new InvalidOperationException("Data gap recoverer has not been initialized. Cannot log data gap for processing.");
 
             OnStatusMessage(MessageLevel.Info, $"Data gap recovery requested for period \"{startTime.ToString(OutageLog.DateTimeFormat, CultureInfo.InvariantCulture)}\" - \"{endTime.ToString(OutageLog.DateTimeFormat, CultureInfo.InvariantCulture)}\"...");
@@ -781,7 +781,7 @@ namespace sttp
             if (m_disposed)
                 throw new InvalidOperationException("Data gap recoverer has been disposed. Cannot log data gap for processing.");
 
-            if ((object)DataGapLog == null)
+            if (DataGapLog == null)
                 throw new InvalidOperationException("Data gap recoverer has not been initialized. Cannot log data gap for processing.");
 
             // Since local clock may float we add some buffer around recovery window
@@ -966,7 +966,7 @@ namespace sttp
                 m_dataStreamMonitor.Enabled = false;
 
                 // If temporal subscription is currently enabled - connection termination was not expected
-                if ((object)m_temporalSubscription != null)
+                if (m_temporalSubscription != null)
                     m_abnormalTermination = m_temporalSubscription.Enabled;
             }
             finally

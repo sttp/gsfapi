@@ -97,7 +97,7 @@ namespace sttp
             // they no longer have rights to any signals
             subscriber = dataSource.Tables["Subscribers"].Select($"ID = '{subscriberID}' AND Enabled <> 0").FirstOrDefault();
 
-            if ((object)subscriber == null)
+            if (subscriber == null)
                 return id => false;
 
             //=================================================================

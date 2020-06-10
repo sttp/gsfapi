@@ -223,7 +223,7 @@ namespace sttp
                 base.ProcessingInterval = value;
 
                 // Update processing interval in private temporal session, if defined
-                if ((object)m_iaonSession != null && m_iaonSession.AllAdapters != null)
+                if (m_iaonSession != null && m_iaonSession.AllAdapters != null)
                     m_iaonSession.AllAdapters.ProcessingInterval = value;
             }
         }
@@ -243,11 +243,11 @@ namespace sttp
                 lock (this)
                 {
                     // Update signal index cache unless "detaching" from real-time
-                    if ((object)value != null && !(value.Length == 1 && value[0] == MeasurementKey.Undefined))
+                    if (value != null && !(value.Length == 1 && value[0] == MeasurementKey.Undefined))
                     {
                         m_parent.UpdateSignalIndexCache(m_clientID, m_signalIndexCache, value);
 
-                        if ((object)DataSource != null && (object)m_signalIndexCache != null)
+                        if (DataSource != null && m_signalIndexCache != null)
                             value = ParseInputMeasurementKeys(DataSource, false, string.Join("; ", m_signalIndexCache.AuthorizedSignalIDs));
                     }
 
@@ -283,7 +283,7 @@ namespace sttp
 
                 status.Append(base.Status);
 
-                if ((object)m_iaonSession != null)
+                if (m_iaonSession != null)
                     status.Append(m_iaonSession.Status);
 
                 return status.ToString();
@@ -318,7 +318,7 @@ namespace sttp
                         m_parent = null;
 
                         // Dispose base time rotation timer
-                        if ((object)m_baseTimeRotationTimer != null)
+                        if (m_baseTimeRotationTimer != null)
                         {
                             m_baseTimeRotationTimer.Dispose();
                             m_baseTimeRotationTimer = null;
@@ -421,7 +421,7 @@ namespace sttp
 
             base.Start();
 
-            if ((object)m_baseTimeRotationTimer != null && m_includeTime)
+            if (m_baseTimeRotationTimer != null && m_includeTime)
                 m_baseTimeRotationTimer.Start();
         }
 
@@ -432,7 +432,7 @@ namespace sttp
         {
             base.Stop();
 
-            if ((object)m_baseTimeRotationTimer != null)
+            if (m_baseTimeRotationTimer != null)
             {
                 m_baseTimeRotationTimer.Stop();
                 m_baseTimeOffsets = null;
@@ -448,10 +448,10 @@ namespace sttp
         {
             int inputCount = 0, outputCount = 0;
 
-            if ((object)InputMeasurementKeys != null)
+            if (InputMeasurementKeys != null)
                 inputCount = InputMeasurementKeys.Length;
 
-            if ((object)OutputMeasurements != null)
+            if (OutputMeasurements != null)
                 outputCount = OutputMeasurements.Length;
 
             return $"Total input measurements: {inputCount}, total output measurements: {outputCount}".PadLeft(maxLength);
@@ -469,7 +469,7 @@ namespace sttp
         // calls to this function can cause TSSC parsing to get out of sequence and fail
         public override void QueueMeasurementsForProcessing(IEnumerable<IMeasurement> measurements)
         {
-            if ((object)measurements == null)
+            if (measurements == null)
                 return;
 
             if (!m_startTimeSent && measurements.Any())
@@ -479,7 +479,7 @@ namespace sttp
                 IMeasurement measurement = measurements.FirstOrDefault(m => (object)m != null);
                 Ticks timestamp = 0;
 
-                if ((object)measurement != null)
+                if (measurement != null)
                     timestamp = measurement.Timestamp;
 
                 m_parent.SendDataStartTime(m_clientID, timestamp);
@@ -552,7 +552,7 @@ namespace sttp
                 // Find the buffer block's location in the cache
                 sequenceIndex = (int)(sequenceNumber - m_expectedBufferBlockConfirmationNumber);
 
-                if (sequenceIndex >= 0 && sequenceIndex < m_bufferBlockCache.Count && (object)m_bufferBlockCache[sequenceIndex] != null)
+                if (sequenceIndex >= 0 && sequenceIndex < m_bufferBlockCache.Count && m_bufferBlockCache[sequenceIndex] != null)
                 {
                     // Remove the confirmed block from the cache
                     m_bufferBlockCache[sequenceIndex] = null;
@@ -573,7 +573,7 @@ namespace sttp
                         // Retransmit if confirmations are received out of order
                         for (int i = 0; i < sequenceIndex; i++)
                         {
-                            if ((object)m_bufferBlockCache[i] != null)
+                            if (m_bufferBlockCache[i] != null)
                             {
                                 parent?.SendClientResponse(m_clientID, ServerResponse.BufferBlock, ServerCommand.Subscribe, m_bufferBlockCache[i]);
                                 OnBufferBlockRetransmission();
@@ -737,7 +737,7 @@ namespace sttp
                 //}
 
                 // Publish data packet to client
-                if ((object)m_parent != null)
+                if (m_parent != null)
                     m_parent.SendClientResponse(m_clientID, ServerResponse.DataPacket, ServerCommand.Subscribe, workingBuffer.ToArray());
 
                 // Track last publication time
@@ -754,7 +754,7 @@ namespace sttp
                     if (!Enabled)
                         return;
 
-                    if ((object)m_tsscEncoder == null || m_resetTsscEncoder)
+                    if (m_tsscEncoder == null || m_resetTsscEncoder)
                     {
                         m_resetTsscEncoder = false;
                         m_tsscEncoder = new TsscEncoder();
@@ -820,7 +820,7 @@ namespace sttp
             }
             Array.Copy(m_tsscWorkingBuffer, 0, packet, 8, length);
 
-            if ((object)m_parent != null)
+            if (m_parent != null)
                 m_parent.SendClientResponse(m_clientID, ServerResponse.DataPacket, ServerCommand.Subscribe, packet);
 
             // Track last publication time
@@ -834,7 +834,7 @@ namespace sttp
             {
                 foreach (byte[] bufferBlock in m_bufferBlockCache)
                 {
-                    if ((object)bufferBlock != null)
+                    if (bufferBlock != null)
                     {
                         m_parent.SendClientResponse(m_clientID, ServerResponse.BufferBlock, ServerCommand.Subscribe, bufferBlock);
                         OnBufferBlockRetransmission();
@@ -849,13 +849,13 @@ namespace sttp
         // Rotates base time offsets
         private void RotateBaseTimes()
         {
-            if ((object)m_parent != null && (object)m_baseTimeRotationTimer != null)
+            if (m_parent != null && m_baseTimeRotationTimer != null)
             {
-                if ((object)m_baseTimeOffsets == null)
+                if (m_baseTimeOffsets == null)
                 {
                     m_baseTimeOffsets = new long[2];
                     m_baseTimeOffsets[0] = RealTime;
-                    m_baseTimeOffsets[1] = RealTime + (long)m_baseTimeRotationTimer.Interval * Ticks.PerMillisecond;
+                    m_baseTimeOffsets[1] = RealTime + m_baseTimeRotationTimer.Interval * Ticks.PerMillisecond;
                     m_timeIndex = 0;
                 }
                 else
@@ -866,7 +866,7 @@ namespace sttp
                     m_timeIndex ^= 1;
 
                     // Now make older timestamp the newer timestamp
-                    m_baseTimeOffsets[oldIndex] = RealTime + (long)m_baseTimeRotationTimer.Interval * Ticks.PerMillisecond;
+                    m_baseTimeOffsets[oldIndex] = RealTime + m_baseTimeRotationTimer.Interval * Ticks.PerMillisecond;
                 }
 
                 // Since this function will only be called periodically, there is no real benefit

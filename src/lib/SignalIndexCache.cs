@@ -185,7 +185,7 @@ namespace sttp
                 if (m_reference.Count == 0)
                     return 0;
 
-                return (int)(m_reference.Max(kvp => kvp.Key) + 1);
+                return m_reference.Max(kvp => kvp.Key) + 1;
             }
         }
 
@@ -207,7 +207,7 @@ namespace sttp
             {
                 int binaryLength = 0;
 
-                if ((object)m_encoding == null)
+                if (m_encoding == null)
                     throw new InvalidOperationException("Attempt to get binary length of signal index cache without setting a character encoding.");
 
                 // Byte size of cache
@@ -266,7 +266,7 @@ namespace sttp
             byte[] bigEndianBuffer;
             byte[] unicodeBuffer;
 
-            if ((object)m_encoding == null)
+            if (m_encoding == null)
                 throw new InvalidOperationException("Attempt to generate binary image of signal index cache without setting a character encoding.");
 
             buffer.ValidateParameters(startIndex, binaryLength);
@@ -349,7 +349,7 @@ namespace sttp
 
             int unauthorizedIDCount;
 
-            if ((object)m_encoding == null)
+            if (m_encoding == null)
                 throw new InvalidOperationException("Attempt to parse binary image of signal index cache without setting a character encoding.");
 
             buffer.ValidateParameters(startIndex, length);
