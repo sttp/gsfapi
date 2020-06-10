@@ -978,7 +978,7 @@ namespace sttp
         /// Gets or sets the maximum packet size to use for data publication.
         /// </summary>
         [ConnectionStringParameter]
-        [Description("Gets or sets the maximum packet size to use for data publications. This number should be set as small as possible to reduce fragmentation, but large enough to keep large data flows from falling behind.")]
+        [Description("Defines the maximum packet size to use for data publications. This number should be set as small as possible to reduce fragmentation, but large enough to keep large data flows from falling behind.")]
         [DefaultValue(DefaultMaxPacketSize)]
         public int MaxPacketSize { get; set; } = DefaultMaxPacketSize;
 
@@ -1038,6 +1038,9 @@ namespace sttp
             set => m_measurementReportingInterval = value;
         }
 
+        /// <summary>
+        /// Gets or sets the maximum publication interval in milliseconds for data publications. Set to zero for no defined maximum.
+        /// </summary>
         [ConnectionStringParameter,
         DefaultValue(DefaultMaxPublishInterval),
         Description("Defines the maximum publication interval in milliseconds for data publications. Set to zero for no defined maximum.")]
