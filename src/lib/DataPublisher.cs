@@ -801,6 +801,7 @@ namespace sttp
         private bool m_validateMeasurementRights;
         private bool m_validateClientIPAddress;
 
+        private long m_lastPublishBufferSize;
         private long m_totalBytesSent;
         private long m_lifetimeMeasurements;
         private long m_minimumMeasurementsPerSecond;
@@ -1126,10 +1127,17 @@ namespace sttp
                 status.AppendLine();
                 status.AppendFormat("  Buffer block retransmits: {0:N0}", m_bufferBlockRetransmissions);
                 status.AppendLine();
-                status.AppendFormat("  Max publication interval: {0:N0}ms", MaxPublishInterval);
+                status.AppendFormat("  Max publication interval: {0}", Time.ToElapsedTimeString(MaxPublishInterval / 1000.0D, 3));
                 status.AppendLine();
-                status.AppendFormat("    Pending publish buffer: {0}", SI2.ToScaledString(m_publishBuffer.Length, 3, "B"));
-                status.AppendLine();
+
+                if (MaxPublishInterval > 0L)
+                {
+                    status.AppendFormat("       Last publish buffer: {0}", SI2.ToScaledString(m_lastPublishBufferSize, 3, "B"));
+                    status.AppendLine();
+                    status.AppendFormat("    Pending publish buffer: {0}", SI2.ToScaledString(m_publishBuffer.Length, 3, "B"));
+                    status.AppendLine();
+
+                }
 
                 return status.ToString();
             }
@@ -2659,6 +2667,7 @@ namespace sttp
                     if (success)
                     {
                         connection.LastPublishTime = DateTime.UtcNow.Ticks;
+                        m_lastPublishBufferSize = m_publishBuffer.Length;
                         m_publishBuffer.Clear();
                     }
 
