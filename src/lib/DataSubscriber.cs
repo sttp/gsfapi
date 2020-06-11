@@ -2381,18 +2381,25 @@ namespace sttp
         {
             // Currently this work is done on the async socket completion thread, make sure work to be done is timely and if the response processing
             // is coming in via the command channel and needs to send a command back to the server, it should be done on a separate thread...
-            if (buffer != null && length > 0)
+            if (buffer == null || length <= 0)
+                return;
+
+            int startIndex = 0;
+
+            while (startIndex < length)
             {
                 try
                 {
                     Dictionary<Guid, DeviceStatisticsHelper<SubscribedDevice>> subscribedDevicesLookup;
                     DeviceStatisticsHelper<SubscribedDevice> statisticsHelper;
 
-                    ServerResponse responseCode = (ServerResponse)buffer[0];
-                    ServerCommand commandCode = (ServerCommand)buffer[1];
-                    int responseLength = BigEndian.ToInt32(buffer, 2);
-                    int responseIndex = DataPublisher.ClientResponseHeaderSize;
+                    ServerResponse responseCode = (ServerResponse)buffer[startIndex];
+                    ServerCommand commandCode = (ServerCommand)buffer[startIndex + 1];
+                    int responseLength = BigEndian.ToInt32(buffer, startIndex + 2);
+                    int responseIndex = startIndex + DataPublisher.ClientResponseHeaderSize;
                     byte[][][] keyIVs;
+
+                    startIndex = responseIndex + responseLength;
 
                     // Disconnect any established UDP data channel upon successful unsubscribe
                     if (commandCode == ServerCommand.Unsubscribe && responseCode == ServerResponse.Succeeded)
@@ -2401,7 +2408,7 @@ namespace sttp
                     if (!IsUserCommand(commandCode))
                         OnReceivedServerResponse(responseCode, commandCode);
                     else
-                        OnReceivedUserCommandResponse(commandCode, responseCode, buffer, responseIndex, length);
+                        OnReceivedUserCommandResponse(commandCode, responseCode, buffer, responseIndex, responseLength);
 
                     switch (responseCode)
                     {
@@ -2485,6 +2492,8 @@ namespace sttp
                             bool compactMeasurementFormat = (byte)(flags & DataPacketFlags.Compact) > 0;
                             bool compressedPayload = (byte)(flags & DataPacketFlags.Compressed) > 0;
                             int cipherIndex = (flags & DataPacketFlags.CipherIndex) > 0 ? 1 : 0;
+                            byte[] packet = buffer;
+                            int packetLength = responseLength - 1;
 
                             // Decrypt data packet payload if keys are available
                             if (m_keyIVs != null)
@@ -2493,14 +2502,15 @@ namespace sttp
                                 keyIVs = m_keyIVs;
 
                                 // Decrypt payload portion of data packet
-                                buffer = Common.SymmetricAlgorithm.Decrypt(buffer, responseIndex, responseLength - 1, keyIVs[cipherIndex][0], keyIVs[cipherIndex][1]);
+                                packet = Common.SymmetricAlgorithm.Decrypt(packet, responseIndex, packetLength, keyIVs[cipherIndex][0], keyIVs[cipherIndex][1]);
                                 responseIndex = 0;
-                                responseLength = buffer.Length;
+                                packetLength = packet.Length;
                             }
 
                             // Deserialize number of measurements that follow
-                            count = BigEndian.ToInt32(buffer, responseIndex);
+                            count = BigEndian.ToInt32(packet, responseIndex);
                             responseIndex += 4;
+                            packetLength -= 4;
 
                             if (compressedPayload)
                             {
@@ -2509,7 +2519,7 @@ namespace sttp
                                     try
                                     {
                                         // Decompress TSSC serialized measurements from payload
-                                        ParseTSSCMeasurements(buffer, responseLength, ref responseIndex, measurements);
+                                        ParseTSSCMeasurements(packet, packetLength, ref responseIndex, measurements);
                                     }
                                     catch (Exception ex)
                                     {
@@ -2530,14 +2540,14 @@ namespace sttp
                                     {
                                         // Deserialize full measurement format
                                         SerializableMeasurement measurement = new SerializableMeasurement(m_encoding);
-                                        responseIndex += measurement.ParseBinaryImage(buffer, responseIndex, responseLength - responseIndex);
+                                        responseIndex += measurement.ParseBinaryImage(packet, responseIndex, length - responseIndex);
                                         measurements.Add(measurement);
                                     }
                                     else if (m_signalIndexCache != null)
                                     {
                                         // Deserialize compact measurement format
                                         CompactMeasurement measurement = new CompactMeasurement(m_signalIndexCache, m_includeTime, m_baseTimeOffsets, m_timeIndex, m_useMillisecondResolution);
-                                        responseIndex += measurement.ParseBinaryImage(buffer, responseIndex, responseLength - responseIndex);
+                                        responseIndex += measurement.ParseBinaryImage(packet, responseIndex, length - responseIndex);
 
                                         // Apply timestamp from frame if not included in transmission
                                         if (!measurement.IncludeTime)
@@ -2853,7 +2863,7 @@ namespace sttp
             }
         }
 
-        private void ParseTSSCMeasurements(byte[] buffer, int responseLength, ref int responseIndex, List<IMeasurement> measurements)
+        private void ParseTSSCMeasurements(byte[] buffer, int packetLength, ref int responseIndex, List<IMeasurement> measurements)
         {
             // Use TSSC compression to decompress measurements                                            
             if (m_tsscDecoder == null)
@@ -2890,7 +2900,7 @@ namespace sttp
                 return;
             }
 
-            m_tsscDecoder.SetBuffer(buffer, responseIndex, responseLength + DataPublisher.ClientResponseHeaderSize - responseIndex);
+            m_tsscDecoder.SetBuffer(buffer, responseIndex, packetLength - 3);
 
             Measurement measurement;
             MeasurementKey key = null;
