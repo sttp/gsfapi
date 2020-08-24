@@ -3165,7 +3165,7 @@ namespace sttp
                             int accessID = 0;
 
                             List<Guid> uniqueIDs = deviceRows
-                                .Select(deviceRow => database.Guid(deviceRow, "UniqueID"))
+                                .Select(deviceRow => Guid.Parse(deviceRow.Field<object>("UniqueID").ToString()))
                                 .ToList();
 
                             // Remove any device records associated with this subscriber that no longer exist in the meta-data
