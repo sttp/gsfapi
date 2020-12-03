@@ -41,7 +41,6 @@ namespace sttp
         #region [ Members ]
 
         // Fields
-        private readonly Func<Guid, bool> m_hasRightsFunc;
 
         #endregion
 
@@ -54,7 +53,7 @@ namespace sttp
         /// <param name="subscriberID">The ID of the subscriber whose rights are being looked up.</param>
         public SubscriberRightsLookup(DataSet dataSource, Guid subscriberID)
         {
-            m_hasRightsFunc = BuildLookup(dataSource, subscriberID);
+            HasRightsFunc = BuildLookup(dataSource, subscriberID);
         }
 
         #endregion
@@ -64,7 +63,7 @@ namespace sttp
         /// <summary>
         /// Gets the function that determines whether the subscriber has rights to a given signal.
         /// </summary>
-        public Func<Guid, bool> HasRightsFunc => m_hasRightsFunc;
+        public Func<Guid, bool> HasRightsFunc { get; }
 
         #endregion
 
@@ -77,17 +76,14 @@ namespace sttp
         /// <returns>True if the subscriber has rights; false otherwise.</returns>
         public bool HasRights(Guid signalID)
         {
-            return m_hasRightsFunc(signalID);
+            return HasRightsFunc(signalID);
         }
 
         private Func<Guid, bool> BuildLookup(DataSet dataSource, Guid subscriberID)
         {
             HashSet<Guid> authorizedSignals = new HashSet<Guid>();
 
-            const string filterRegex = @"(ALLOW|DENY)\s+WHERE\s+([^;]*)";
-
-            DataRow subscriber;
-            DataRow[] subscriberMeasurementGroups;
+            const string FilterRegex = @"(ALLOW|DENY)\s+WHERE\s+([^;]*)";
 
             //==================================================================
             //Check if subscriber is disabled or removed
@@ -95,15 +91,15 @@ namespace sttp
             // If subscriber has been disabled or removed
             // from the list of valid subscribers,
             // they no longer have rights to any signals
-            subscriber = dataSource.Tables["Subscribers"].Select($"ID = '{subscriberID}' AND Enabled <> 0").FirstOrDefault();
+            DataRow subscriber = dataSource.Tables["Subscribers"].Select($"ID = '{subscriberID}' AND Enabled <> 0").FirstOrDefault();
 
-            if (subscriber == null)
+            if (subscriber is null)
                 return id => false;
 
             //=================================================================
             // Check group implicitly authorized signals
 
-            subscriberMeasurementGroups = dataSource.Tables["SubscriberMeasurementGroups"].Select($"SubscriberID = '{subscriberID}'");
+            DataRow[] subscriberMeasurementGroups = dataSource.Tables["SubscriberMeasurementGroups"].Select($"SubscriberID = '{subscriberID}'");
 
             subscriberMeasurementGroups
                 .Join(dataSource.Tables["MeasurementGroups"].Select(),
@@ -124,9 +120,9 @@ namespace sttp
                 .ForEach(grouping => authorizedSignals.Add(grouping.Key));
 
             //=================================================================
-            //Check implicitly authorized signals
+            // Check implicitly authorized signals
 
-            List<Match> matches = Regex.Matches(subscriber["AccessControlFilter"].ToNonNullString().ReplaceControlCharacters(), filterRegex, RegexOptions.IgnoreCase)
+            List<Match> matches = Regex.Matches(subscriber["AccessControlFilter"].ToNonNullString().ReplaceControlCharacters(), FilterRegex, RegexOptions.IgnoreCase)
                 .Cast<Match>()
                 .ToList();
 
@@ -153,7 +149,7 @@ namespace sttp
             }
 
             //==================================================================
-            //Check explicit group authorizations
+            // Check explicit group authorizations
 
             subscriberMeasurementGroups
                 .Join(dataSource.Tables["MeasurementGroupMeasurements"].Select(),

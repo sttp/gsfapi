@@ -32,7 +32,6 @@ namespace sttp.tssc
     internal class TsscPointMetadata
     {
         public int PrevNextPointId1;
-
         public uint PrevQuality1;
         public uint PrevQuality2;
         public uint PrevValue1;
@@ -42,19 +41,16 @@ namespace sttp.tssc
         private readonly byte[] m_commandStats;
         private int m_commandsSentSinceLastChange;
 
-        //Bit codes for the 4 modes of encoding. 
+        // Bit codes for the 4 modes of encoding. 
         private byte m_mode;
 
-        //(Mode 1 means no prefix.)
+        // Mode 1 means no prefix.
         private byte m_mode21;
-
         private byte m_mode31;
         private byte m_mode301;
-
         private byte m_mode41;
         private byte m_mode401;
         private byte m_mode4001;
-
         private int m_startupMode;
 
         private readonly Action<int, int> m_writeBits;
@@ -77,15 +73,9 @@ namespace sttp.tssc
             m_readBits5 = readBits5 ?? NotImplementedMethod1;
         }
 
-        private int NotImplementedMethod1()
-        {
-            throw new NotImplementedException();
-        }
+        private int NotImplementedMethod1() => throw new NotImplementedException();
 
-        private void NotImplementedMethod2(int a, int b)
-        {
-            throw new NotImplementedException();
-        }
+        private void NotImplementedMethod2(int a, int b) => throw new NotImplementedException();
 
         public void WriteCode(int code)
         {
@@ -96,45 +86,27 @@ namespace sttp.tssc
                     break;
                 case 2:
                     if (code == m_mode21)
-                    {
                         m_writeBits(1, 1);
-                    }
                     else
-                    {
                         m_writeBits(code, 6);
-                    }
                     break;
                 case 3:
                     if (code == m_mode31)
-                    {
                         m_writeBits(1, 1);
-                    }
                     else if (code == m_mode301)
-                    {
                         m_writeBits(1, 2);
-                    }
                     else
-                    {
                         m_writeBits(code, 7);
-                    }
                     break;
                 case 4:
                     if (code == m_mode41)
-                    {
                         m_writeBits(1, 1);
-                    }
                     else if (code == m_mode401)
-                    {
                         m_writeBits(1, 2);
-                    }
                     else if (code == m_mode4001)
-                    {
                         m_writeBits(1, 3);
-                    }
                     else
-                    {
                         m_writeBits(code, 8);
-                    }
                     break;
                 default:
                     throw new Exception("Coding Error");
@@ -154,45 +126,27 @@ namespace sttp.tssc
                     break;
                 case 2:
                     if (m_readBit() == 1)
-                    {
                         code = m_mode21;
-                    }
                     else
-                    {
                         code = m_readBits5();
-                    }
                     break;
                 case 3:
                     if (m_readBit() == 1)
-                    {
                         code = m_mode31;
-                    }
                     else if (m_readBit() == 1)
-                    {
                         code = m_mode301;
-                    }
                     else
-                    {
                         code = m_readBits5();
-                    }
                     break;
                 case 4:
                     if (m_readBit() == 1)
-                    {
                         code = m_mode41;
-                    }
                     else if (m_readBit() == 1)
-                    {
                         code = m_mode401;
-                    }
                     else if (m_readBit() == 1)
-                    {
                         code = m_mode4001;
-                    }
                     else
-                    {
                         code = m_readBits5();
-                    }
                     break;
                 default:
                     throw new Exception("Unsupported compression mode");
@@ -207,19 +161,19 @@ namespace sttp.tssc
             m_commandsSentSinceLastChange++;
             m_commandStats[code]++;
 
-            if (m_startupMode == 0 && m_commandsSentSinceLastChange > 5)
+            switch (m_startupMode)
             {
-                m_startupMode++;
-                AdaptCommands();
-            }
-            else if (m_startupMode == 1 && m_commandsSentSinceLastChange > 20)
-            {
-                m_startupMode++;
-                AdaptCommands();
-            }
-            else if (m_startupMode == 2 && m_commandsSentSinceLastChange > 100)
-            {
-                AdaptCommands();
+                case 0 when m_commandsSentSinceLastChange > 5:
+                    m_startupMode++;
+                    AdaptCommands();
+                    break;
+                case 1 when m_commandsSentSinceLastChange > 20:
+                    m_startupMode++;
+                    AdaptCommands();
+                    break;
+                case 2 when m_commandsSentSinceLastChange > 100:
+                    AdaptCommands();
+                    break;
             }
         }
 
@@ -243,32 +197,32 @@ namespace sttp.tssc
 
                 total += cnt;
 
-                if (cnt > count3)
+                if (cnt <= count3)
+                    continue;
+
+                if (cnt > count1)
                 {
-                    if (cnt > count1)
-                    {
-                        code3 = code2;
-                        count3 = count2;
+                    code3 = code2;
+                    count3 = count2;
 
-                        code2 = code1;
-                        count2 = count1;
+                    code2 = code1;
+                    count2 = count1;
 
-                        code1 = (byte)x;
-                        count1 = cnt;
-                    }
-                    else if (cnt > count2)
-                    {
-                        code3 = code2;
-                        count3 = count2;
+                    code1 = (byte)x;
+                    count1 = cnt;
+                }
+                else if (cnt > count2)
+                {
+                    code3 = code2;
+                    count3 = count2;
 
-                        code2 = (byte)x;
-                        count2 = cnt;
-                    }
-                    else
-                    {
-                        code3 = (byte)x;
-                        count3 = cnt;
-                    }
+                    code2 = (byte)x;
+                    count2 = cnt;
+                }
+                else
+                {
+                    code3 = (byte)x;
+                    count3 = cnt;
                 }
             }
 

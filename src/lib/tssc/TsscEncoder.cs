@@ -132,10 +132,10 @@ namespace sttp.tssc
                 return false;
 
             TsscPointMetadata point = m_points[id];
-            if (point == null)
+
+            if (point is null)
             {
-                point = new TsscPointMetadata(WriteBits, null, null);
-                point.PrevNextPointId1 = id + 1;
+                point = new TsscPointMetadata(WriteBits, null, null) { PrevNextPointId1 = id + 1 };
                 m_points[id] = point;
             }
 
@@ -146,21 +146,16 @@ namespace sttp.tssc
             //      this still ends up being a good enough assumption.
 
             if (m_lastPoint.PrevNextPointId1 != id)
-            {
                 WritePointIdChange(id);
-            }
 
             if (m_prevTimestamp1 != timestamp)
-            {
                 WriteTimestampChange(timestamp);
-            }
 
             if (point.PrevQuality1 != quality)
-            {
                 WriteQualityChange(quality, point);
-            }
 
             uint valueRaw = *(uint*)&value;
+
             if (point.PrevValue1 == valueRaw)
             {
                 m_lastPoint.WriteCode(TsscCodeWords.Value1);
@@ -214,7 +209,7 @@ namespace sttp.tssc
                     m_lastPoint.WriteCode(TsscCodeWords.ValueXOR16);
                     m_data[m_position] = (byte)bitsChanged;
                     m_data[m_position + 1] = (byte)(bitsChanged >> 8);
-                    m_position = m_position + 2;
+                    m_position += 2;
                 }
                 else if (bitsChanged <= Bits20)
                 {
@@ -223,7 +218,7 @@ namespace sttp.tssc
 
                     m_data[m_position] = (byte)(bitsChanged >> 4);
                     m_data[m_position + 1] = (byte)(bitsChanged >> 12);
-                    m_position = m_position + 2;
+                    m_position += 2;
                 }
                 else if (bitsChanged <= Bits24)
                 {
@@ -232,7 +227,7 @@ namespace sttp.tssc
                     m_data[m_position] = (byte)bitsChanged;
                     m_data[m_position + 1] = (byte)(bitsChanged >> 8);
                     m_data[m_position + 2] = (byte)(bitsChanged >> 16);
-                    m_position = m_position + 3;
+                    m_position += 3;
                 }
                 else if (bitsChanged <= Bits28)
                 {
@@ -242,7 +237,7 @@ namespace sttp.tssc
                     m_data[m_position] = (byte)(bitsChanged >> 4);
                     m_data[m_position + 1] = (byte)(bitsChanged >> 12);
                     m_data[m_position + 2] = (byte)(bitsChanged >> 20);
-                    m_position = m_position + 3;
+                    m_position += 3;
                 }
                 else
                 {
@@ -252,7 +247,7 @@ namespace sttp.tssc
                     m_data[m_position + 1] = (byte)(bitsChanged >> 8);
                     m_data[m_position + 2] = (byte)(bitsChanged >> 16);
                     m_data[m_position + 3] = (byte)(bitsChanged >> 24);
-                    m_position = m_position + 4;
+                    m_position += 4;
                 }
 
                 point.PrevValue3 = point.PrevValue2;
@@ -302,7 +297,7 @@ namespace sttp.tssc
 
                 m_data[m_position] = (byte)(bitsChanged >> 4);
                 m_data[m_position + 1] = (byte)(bitsChanged >> 12);
-                m_position = m_position + 2;
+                m_position += 2;
             }
             else if (bitsChanged <= Bits24)
             {
@@ -311,7 +306,7 @@ namespace sttp.tssc
                 m_data[m_position] = (byte)bitsChanged;
                 m_data[m_position + 1] = (byte)(bitsChanged >> 8);
                 m_data[m_position + 2] = (byte)(bitsChanged >> 16);
-                m_position = m_position + 3;
+                m_position += 3;
             }
             else
             {
@@ -321,7 +316,7 @@ namespace sttp.tssc
                 m_data[m_position + 1] = (byte)(bitsChanged >> 8);
                 m_data[m_position + 2] = (byte)(bitsChanged >> 16);
                 m_data[m_position + 3] = (byte)(bitsChanged >> 24);
-                m_position = m_position + 4;
+                m_position += 4;
             }
 
             m_lastPoint.PrevNextPointId1 = id;
@@ -413,6 +408,7 @@ namespace sttp.tssc
                     m_prevTimeDelta4 = minDelta;
                 }
             }
+
             m_prevTimestamp2 = m_prevTimestamp1;
             m_prevTimestamp1 = timestamp;
         }
@@ -428,29 +424,24 @@ namespace sttp.tssc
                 m_lastPoint.WriteCode(TsscCodeWords.Quality7Bit32);
                 Encoding7Bit.Write(m_data, ref m_position, quality);
             }
+
             point.PrevQuality2 = point.PrevQuality1;
             point.PrevQuality1 = quality;
         }
 
         #region [ Bit Stream ]
 
-        /// <summary>
-        /// The position in m_buffer where the bit stream should be flushed
-        /// -1 means no bit stream position has been assigned. 
-        /// </summary>
+        // The position in m_buffer where the bit stream should be flushed
+        // -1 means no bit stream position has been assigned. 
         private int m_bitStreamBufferIndex;
-        /// <summary>
-        /// The number of bits in m_bitStreamCache that are valid. 0 Means the bitstream is empty.
-        /// </summary>
+
+        // The number of bits in m_bitStreamCache that are valid. 0 Means the bitstream is empty.
         private int m_bitStreamCacheBitCount;
-        /// <summary>
-        /// A cache of bits that need to be flushed to m_buffer when full. Bits filled starting from the right moving left.
-        /// </summary>
+        
+        // A cache of bits that need to be flushed to m_buffer when full. Bits filled starting from the right moving left.
         private int m_bitStreamCache;
 
-        /// <summary>
-        /// Resets the stream so it can be reused. All measurements must be registered again.
-        /// </summary>
+        // Resets the stream so it can be reused. All measurements must be registered again.
         private void ClearBitStream()
         {
             m_bitStreamBufferIndex = -1;
@@ -461,45 +452,37 @@ namespace sttp.tssc
         private void WriteBits(int code, int len)
         {
             if (m_bitStreamBufferIndex < 0)
-            {
                 m_bitStreamBufferIndex = m_position++;
-            }
 
             m_bitStreamCache = (m_bitStreamCache << len) | code;
             m_bitStreamCacheBitCount += len;
 
             if (m_bitStreamCacheBitCount > 7)
-            {
                 BitStreamEnd();
-            }
         }
 
         private void BitStreamFlush()
         {
-            if (m_bitStreamCacheBitCount > 0)
-            {
-                if (m_bitStreamBufferIndex < 0)
-                {
-                    m_bitStreamBufferIndex = m_position++;
-                }
+            if (m_bitStreamCacheBitCount <= 0)
+                return;
 
-                m_lastPoint.WriteCode(TsscCodeWords.EndOfStream);
+            if (m_bitStreamBufferIndex < 0)
+                m_bitStreamBufferIndex = m_position++;
 
-                if (m_bitStreamCacheBitCount > 7)
-                {
-                    BitStreamEnd();
-                }
+            m_lastPoint.WriteCode(TsscCodeWords.EndOfStream);
 
-                if (m_bitStreamCacheBitCount > 0)
-                {
-                    //Make up 8 bits by padding.
-                    m_bitStreamCache <<= 8 - m_bitStreamCacheBitCount;
-                    m_data[m_bitStreamBufferIndex] = (byte)m_bitStreamCache;
-                    m_bitStreamCache = 0;
-                    m_bitStreamBufferIndex = -1;
-                    m_bitStreamCacheBitCount = 0;
-                }
-            }
+            if (m_bitStreamCacheBitCount > 7)
+                BitStreamEnd();
+
+            if (m_bitStreamCacheBitCount <= 0)
+                return;
+
+            // Make up 8 bits by padding.
+            m_bitStreamCache <<= 8 - m_bitStreamCacheBitCount;
+            m_data[m_bitStreamBufferIndex] = (byte)m_bitStreamCache;
+            m_bitStreamCache = 0;
+            m_bitStreamBufferIndex = -1;
+            m_bitStreamCacheBitCount = 0;
         }
 
         private void BitStreamEnd()
@@ -510,17 +493,12 @@ namespace sttp.tssc
                 m_bitStreamCacheBitCount -= 8;
 
                 if (m_bitStreamCacheBitCount > 0)
-                {
                     m_bitStreamBufferIndex = m_position++;
-                }
                 else
-                {
                     m_bitStreamBufferIndex = -1;
-                }
             }
         }
 
         #endregion
-
     }
 }

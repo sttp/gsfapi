@@ -53,32 +53,23 @@ namespace sttp
 
         // Fields
         private DataPublisher m_parent;
-        private readonly Guid m_clientID;
         private Guid m_subscriberID;
         private string m_connectionID;
         private readonly string m_hostName;
         private readonly IPAddress m_ipAddress;
-        private string m_subscriberAcronym;
-        private string m_subscriberName;
         private string m_subscriberInfo;
         private SubscriberAdapter m_subscription;
         private volatile bool m_authenticated;
         private volatile byte[][][] m_keyIVs;
         private volatile int m_cipherIndex;
-        private List<IPAddress> m_validIPAddresses;
-        private IServer m_serverCommandChannel;
-        private IClient m_clientCommandChannel;
         private UdpServer m_dataChannel;
         private string m_configurationString;
         private bool m_connectionEstablished;
-        private bool m_isSubscribed;
-        private Ticks m_lastCipherKeyUpdateTime;
         private SharedTimer m_pingTimer;
         private SharedTimer m_reconnectTimer;
         private OperationalModes m_operationalModes;
         private Encoding m_encoding;
         private bool m_disposed;
-        private bool m_clientNotFoundExceptionExceptionOccurred;
 
         #endregion
 
@@ -94,9 +85,9 @@ namespace sttp
         public SubscriberConnection(DataPublisher parent, Guid clientID, IServer serverCommandChannel, IClient clientCommandChannel)
         {
             m_parent = parent;
-            m_clientID = clientID;
-            m_serverCommandChannel = serverCommandChannel;
-            m_clientCommandChannel = clientCommandChannel;
+            ClientID = clientID;
+            ServerCommandChannel = serverCommandChannel;
+            ClientCommandChannel = clientCommandChannel;
             m_subscriberID = clientID;
             m_keyIVs = null;
             m_cipherIndex = 0;
@@ -104,13 +95,13 @@ namespace sttp
             // Setup ping timer
             m_pingTimer = Common.TimerScheduler.CreateTimer(5000);
             m_pingTimer.AutoReset = true;
-            m_pingTimer.Elapsed += m_pingTimer_Elapsed;
+            m_pingTimer.Elapsed += PingTimer_Elapsed;
             m_pingTimer.Start();
 
             // Setup reconnect timer
             m_reconnectTimer = Common.TimerScheduler.CreateTimer(1000);
             m_reconnectTimer.AutoReset = false;
-            m_reconnectTimer.Elapsed += m_reconnectTimer_Elapsed;
+            m_reconnectTimer.Elapsed += ReconnectTimer_Elapsed;
 
             LookupEndPointInfo(clientID, GetCommandChannelSocket().RemoteEndPoint as IPEndPoint, ref m_ipAddress, ref m_hostName, ref m_connectionID);
         }
@@ -130,7 +121,7 @@ namespace sttp
         /// <summary>
         /// Gets client ID of this <see cref="SubscriberConnection"/>.
         /// </summary>
-        public Guid ClientID => m_clientID;
+        public Guid ClientID { get; }
 
         /// <summary>
         /// Gets or sets reference to <see cref="UdpServer"/> data channel, attaching to or detaching from events as needed, associated with this <see cref="SubscriberConnection"/>.
@@ -140,15 +131,15 @@ namespace sttp
             get => m_dataChannel;
             set
             {
-                m_connectionEstablished = value != null;
+                m_connectionEstablished = !(value is null);
 
-                if (m_dataChannel != null)
+                if (!(m_dataChannel is null))
                 {
                     // Detach from events on existing data channel reference
-                    m_dataChannel.ClientConnectingException -= m_dataChannel_ClientConnectingException;
-                    m_dataChannel.SendClientDataException -= m_dataChannel_SendClientDataException;
-                    m_dataChannel.ServerStarted -= m_dataChannel_ServerStarted;
-                    m_dataChannel.ServerStopped -= m_dataChannel_ServerStopped;
+                    m_dataChannel.ClientConnectingException -= DataChannel_ClientConnectingException;
+                    m_dataChannel.SendClientDataException -= DataChannel_SendClientDataException;
+                    m_dataChannel.ServerStarted -= DataChannel_ServerStarted;
+                    m_dataChannel.ServerStopped -= DataChannel_ServerStopped;
 
                     if (m_dataChannel != value)
                         m_dataChannel.Dispose();
@@ -157,16 +148,16 @@ namespace sttp
                 // Assign new data channel reference
                 m_dataChannel = value;
 
-                if (m_dataChannel != null)
+                if (!(m_dataChannel is null))
                 {
                     // Save UDP settings so channel can be reestablished if needed
                     m_configurationString = m_dataChannel.ConfigurationString;
 
                     // Attach to events on new data channel reference
-                    m_dataChannel.ClientConnectingException += m_dataChannel_ClientConnectingException;
-                    m_dataChannel.SendClientDataException += m_dataChannel_SendClientDataException;
-                    m_dataChannel.ServerStarted += m_dataChannel_ServerStarted;
-                    m_dataChannel.ServerStopped += m_dataChannel_ServerStopped;
+                    m_dataChannel.ClientConnectingException += DataChannel_ClientConnectingException;
+                    m_dataChannel.SendClientDataException += DataChannel_SendClientDataException;
+                    m_dataChannel.ServerStarted += DataChannel_ServerStarted;
+                    m_dataChannel.ServerStopped += DataChannel_ServerStopped;
                 }
             }
         }
@@ -174,17 +165,17 @@ namespace sttp
         /// <summary>
         /// Gets <see cref="IServer"/> command channel.
         /// </summary>
-        public IServer ServerCommandChannel => m_serverCommandChannel;
+        public IServer ServerCommandChannel { get; private set; }
 
         /// <summary>
         /// Gets <see cref="IClient"/> command channel.
         /// </summary>
-        public IClient ClientCommandChannel => m_clientCommandChannel;
+        public IClient ClientCommandChannel { get; private set; }
 
         /// <summary>
         /// Gets <see cref="IServer"/> publication channel - that is, data channel if defined otherwise command channel.
         /// </summary>
-        public IServer ServerPublishChannel => m_dataChannel ?? m_serverCommandChannel;
+        public IServer ServerPublishChannel => m_dataChannel ?? ServerCommandChannel;
 
         /// <summary>
         /// Gets or sets last publish time for subscriber connection.
@@ -198,14 +189,13 @@ namespace sttp
         {
             get
             {
-                Socket commandChannelSocket;
                 bool isConnected = false;
 
                 try
                 {
-                    commandChannelSocket = GetCommandChannelSocket();
+                    Socket commandChannelSocket = GetCommandChannelSocket();
 
-                    if (commandChannelSocket != null)
+                    if (!(commandChannelSocket is null))
                         isConnected = commandChannelSocket.Connected;
                 }
                 catch
@@ -220,11 +210,7 @@ namespace sttp
         /// <summary>
         /// Gets or sets IsSubscribed state.
         /// </summary>
-        public bool IsSubscribed
-        {
-            get => m_isSubscribed;
-            set => m_isSubscribed = value;
-        }
+        public bool IsSubscribed { get; set; }
 
         /// <summary>
         /// Gets or sets flag that indicates if the socket exception for "No client found for ID [Guid]" has been thrown.
@@ -233,14 +219,10 @@ namespace sttp
         /// Since this message might be thrown many times before the communications channel has had a chance to disconnect
         /// the socket, it is best to stop attempting to send data when this error has been encountered.
         /// </returns>
-        public bool ClientNotFoundExceptionOccurred
-        {
-            // Users have encountered issues when a client disconnects where many thousands of exceptions get thrown, every 3ms.
-            // This can cause the entire system to become unresponsive and causes all devices to reset (no data).
-            // System only recovers when the client disconnect process finally executes as this can take some time to occur.
-            get => m_clientNotFoundExceptionExceptionOccurred;
-            set => m_clientNotFoundExceptionExceptionOccurred = value;
-        }
+        // Users have encountered issues when a client disconnects where many thousands of exceptions get thrown, every 3ms.
+        // This can cause the entire system to become unresponsive and causes all devices to reset (no data).
+        // System only recovers when the client disconnect process finally executes as this can take some time to occur.
+        public bool ClientNotFoundExceptionOccurred { get; set; }
 
         /// <summary>
         /// Gets or sets the <see cref="Guid"/> based subscriber ID of this <see cref="SubscriberConnection"/>.
@@ -253,7 +235,7 @@ namespace sttp
                 m_subscriberID = value;
 
                 // When connection ID is just a Guid, prefer subscriber ID over client ID when available
-                if (m_connectionID.Equals(m_clientID.ToString(), StringComparison.OrdinalIgnoreCase) && m_subscriberID != Guid.Empty)
+                if (m_connectionID.Equals(ClientID.ToString(), StringComparison.OrdinalIgnoreCase) && m_subscriberID != Guid.Empty)
                     m_connectionID =  m_subscriberID.ToString();
             }
         }
@@ -261,33 +243,19 @@ namespace sttp
         /// <summary>
         /// Gets or sets the subscriber acronym of this <see cref="SubscriberConnection"/>.
         /// </summary>
-        public string SubscriberAcronym
-        {
-            get => m_subscriberAcronym;
-            set => m_subscriberAcronym = value;
-        }
+        public string SubscriberAcronym { get; set; }
 
         /// <summary>
         /// Gets or sets the subscriber name of this <see cref="SubscriberConnection"/>.
         /// </summary>
-        public string SubscriberName
-        {
-            get => m_subscriberName;
-            set => m_subscriberName = value;
-        }
+        public string SubscriberName { get; set; }
 
         /// <summary>
         /// Gets or sets subscriber info for this <see cref="SubscriberConnection"/>.
         /// </summary>
         public string SubscriberInfo
         {
-            get
-            {
-                if (string.IsNullOrWhiteSpace(m_subscriberInfo))
-                    return m_subscriberName;
-
-                return m_subscriberInfo;
-            }
+            get => string.IsNullOrWhiteSpace(m_subscriberInfo) ? SubscriberName : m_subscriberInfo;
             set
             {
                 if (string.IsNullOrWhiteSpace(value))
@@ -334,16 +302,12 @@ namespace sttp
         /// <summary>
         /// Gets time of last cipher key update.
         /// </summary>
-        public Ticks LastCipherKeyUpdateTime => m_lastCipherKeyUpdateTime;
+        public Ticks LastCipherKeyUpdateTime { get; private set; }
 
         /// <summary>
         /// Gets or sets the list of valid IP addresses that this client can connect from.
         /// </summary>
-        public List<IPAddress> ValidIPAddresses
-        {
-            get => m_validIPAddresses;
-            set => m_validIPAddresses = value;
-        }
+        public List<IPAddress> ValidIPAddresses { get; set; }
 
         /// <summary>
         /// Gets the IP address of the remote client connection.
@@ -360,7 +324,7 @@ namespace sttp
             {
                 m_subscription = value;
 
-                if (m_subscription != null)
+                if (!(m_subscription is null))
                     m_subscription.Name = m_hostName;
             }
         }
@@ -381,20 +345,13 @@ namespace sttp
             {
                 m_operationalModes = value;
 
-                switch ((OperationalEncoding)(value & OperationalModes.EncodingMask))
+                m_encoding = (OperationalEncoding)(value & OperationalModes.EncodingMask) switch
                 {
-                    case OperationalEncoding.UTF16LE:
-                        m_encoding = Encoding.Unicode;
-                        break;
-                    case OperationalEncoding.UTF16BE:
-                        m_encoding = Encoding.BigEndianUnicode;
-                        break;
-                    case OperationalEncoding.UTF8:
-                        m_encoding = Encoding.UTF8;
-                        break;
-                    default:
-                        throw new InvalidOperationException($"Unsupported encoding detected: {value}");
-                }
+                    OperationalEncoding.UTF16LE => Encoding.Unicode,
+                    OperationalEncoding.UTF16BE => Encoding.BigEndianUnicode,
+                    OperationalEncoding.UTF8 => Encoding.UTF8,
+                    _ => throw new InvalidOperationException($"Unsupported encoding detected: {value}")
+                };
             }
         }
 
@@ -422,10 +379,10 @@ namespace sttp
                 status.AppendLine();
                 status.AppendFormat(FormatString, "Publish channel protocol", ServerPublishChannel.TransportProtocol);
                 status.AppendLine();
-                status.AppendFormat(FormatString, "Data packet security", (object)m_keyIVs == null ? "unencrypted" : "encrypted");
+                status.AppendFormat(FormatString, "Data packet security", m_keyIVs is null ? "unencrypted" : "encrypted");
                 status.AppendLine();
 
-                if (m_dataChannel != null)
+                if (!(m_dataChannel is null))
                 {
                     status.AppendLine();
                     status.Append(m_dataChannel.Status);
@@ -454,37 +411,37 @@ namespace sttp
         /// <param name="disposing">true to release both managed and unmanaged resources; false to release only unmanaged resources.</param>
         protected virtual void Dispose(bool disposing)
         {
-            if (!m_disposed)
+            if (m_disposed)
+                return;
+
+            try
             {
-                try
-                {
-                    if (disposing)
-                    {
-                        if (m_pingTimer != null)
-                        {
-                            m_pingTimer.Elapsed -= m_pingTimer_Elapsed;
-                            m_pingTimer.Dispose();
-                            m_pingTimer = null;
-                        }
+                if (!disposing)
+                    return;
 
-                        if (m_reconnectTimer != null)
-                        {
-                            m_reconnectTimer.Elapsed -= m_reconnectTimer_Elapsed;
-                            m_reconnectTimer.Dispose();
-                            m_reconnectTimer = null;
-                        }
-
-                        DataChannel = null;
-                        m_serverCommandChannel = null;
-                        m_clientCommandChannel = null;
-                        m_subscription = null;
-                        m_parent = null;
-                    }
-                }
-                finally
+                if (!(m_pingTimer is null))
                 {
-                    m_disposed = true;  // Prevent duplicate dispose.
+                    m_pingTimer.Elapsed -= PingTimer_Elapsed;
+                    m_pingTimer.Dispose();
+                    m_pingTimer = null;
                 }
+
+                if (!(m_reconnectTimer is null))
+                {
+                    m_reconnectTimer.Elapsed -= ReconnectTimer_Elapsed;
+                    m_reconnectTimer.Dispose();
+                    m_reconnectTimer = null;
+                }
+
+                DataChannel = null;
+                ServerCommandChannel = null;
+                ClientCommandChannel = null;
+                m_subscription = null;
+                m_parent = null;
+            }
+            finally
+            {
+                m_disposed = true;  // Prevent duplicate dispose.
             }
         }
 
@@ -499,7 +456,7 @@ namespace sttp
                 symmetricAlgorithm.GenerateKey();
                 symmetricAlgorithm.GenerateIV();
 
-                if (m_keyIVs == null)
+                if (m_keyIVs is null)
                 {
                     // Initialize new key set
                     m_keyIVs = new byte[2][][];
@@ -528,7 +485,7 @@ namespace sttp
                 }
             }
 
-            m_lastCipherKeyUpdateTime = DateTime.UtcNow.Ticks;
+            LastCipherKeyUpdateTime = DateTime.UtcNow.Ticks;
         }
 
         /// <summary>
@@ -537,7 +494,7 @@ namespace sttp
         public bool RotateCipherKeys()
         {
             // Make sure at least a second has passed before next key rotation
-            if ((DateTime.UtcNow.Ticks - m_lastCipherKeyUpdateTime).ToMilliseconds() >= 1000.0D)
+            if ((DateTime.UtcNow.Ticks - LastCipherKeyUpdateTime).ToMilliseconds() >= 1000.0D)
             {
                 try
                 {
@@ -545,7 +502,7 @@ namespace sttp
                     // is no real benefit to maintaining these memory streams at a member level
                     using (BlockAllocatedMemoryStream response = new BlockAllocatedMemoryStream())
                     {
-                        byte[] bytes, bufferLen;
+                        byte[] bytes;
 
                         // Create or update cipher keys and initialization vectors 
                         UpdateKeyIVs();
@@ -557,7 +514,7 @@ namespace sttp
                         using (BlockAllocatedMemoryStream buffer = new BlockAllocatedMemoryStream())
                         {
                             // Write even key
-                            bufferLen = BigEndian.GetBytes(m_keyIVs[EvenKey][KeyIndex].Length);
+                            byte[] bufferLen = BigEndian.GetBytes(m_keyIVs[EvenKey][KeyIndex].Length);
                             buffer.Write(bufferLen, 0, bufferLen.Length);
                             buffer.Write(m_keyIVs[EvenKey][KeyIndex], 0, m_keyIVs[EvenKey][KeyIndex].Length);
 
@@ -584,25 +541,28 @@ namespace sttp
                         response.Write(bytes, 0, bytes.Length);
 
                         // Send cipher key updates
-                        m_parent.SendClientResponse(m_clientID, ServerResponse.UpdateCipherKeys, ServerCommand.Subscribe, response.ToArray());
+                        m_parent.SendClientResponse(ClientID, ServerResponse.UpdateCipherKeys, ServerCommand.Subscribe, response.ToArray());
                     }
 
                     // Send success message
-                    m_parent.SendClientResponse(m_clientID, ServerResponse.Succeeded, ServerCommand.RotateCipherKeys, "New cipher keys established.");
+                    m_parent.SendClientResponse(ClientID, ServerResponse.Succeeded, ServerCommand.RotateCipherKeys, "New cipher keys established.");
                     m_parent.OnStatusMessage(MessageLevel.Info, $"{ConnectionID} cipher keys rotated.");
+
                     return true;
                 }
                 catch (Exception ex)
                 {
                     // Send failure message
-                    m_parent.SendClientResponse(m_clientID, ServerResponse.Failed, ServerCommand.RotateCipherKeys, $"Failed to establish new cipher keys: {ex.Message}");
+                    m_parent.SendClientResponse(ClientID, ServerResponse.Failed, ServerCommand.RotateCipherKeys, $"Failed to establish new cipher keys: {ex.Message}");
                     m_parent.OnStatusMessage(MessageLevel.Warning, $"Failed to establish new cipher keys for {ConnectionID}: {ex.Message}");
+
                     return false;
                 }
             }
 
-            m_parent.SendClientResponse(m_clientID, ServerResponse.Failed, ServerCommand.RotateCipherKeys, "Cipher key rotation skipped, keys were already rotated within last second.");
+            m_parent.SendClientResponse(ClientID, ServerResponse.Failed, ServerCommand.RotateCipherKeys, "Cipher key rotation skipped, keys were already rotated within last second.");
             m_parent.OnStatusMessage(MessageLevel.Warning, $"Cipher key rotation skipped for {ConnectionID}, keys were already rotated within last second.");
+
             return false;
         }
 
@@ -613,43 +573,38 @@ namespace sttp
         /// <returns>The socket instance used by the client to send and receive data over the command channel.</returns>
         public Socket GetCommandChannelSocket()
         {
-            switch (m_serverCommandChannel)
+            return ServerCommandChannel switch
             {
-                case TcpServer tcpServerCommandChannel
-                    when tcpServerCommandChannel.TryGetClient(m_clientID, out TransportProvider<Socket> tcpProvider):
-                        return tcpProvider.Provider;
-                case TlsServer tlsServerCommandChannel
-                    when tlsServerCommandChannel.TryGetClient(m_clientID, out TransportProvider<TlsServer.TlsSocket> tlsProvider):
-                        return tlsProvider.Provider?.Socket;
-                default:
-                    return (m_clientCommandChannel as TcpClient)?.Client ?? (m_clientCommandChannel as TcpSimpleClient)?.Client;
-            }
+                TcpServer tcpServerCommandChannel when tcpServerCommandChannel.TryGetClient(ClientID, out TransportProvider<Socket> tcpProvider) => tcpProvider.Provider,
+                TlsServer tlsServerCommandChannel when tlsServerCommandChannel.TryGetClient(ClientID, out TransportProvider<TlsServer.TlsSocket> tlsProvider) => tlsProvider.Provider?.Socket,
+                _ => (ClientCommandChannel as TcpClient)?.Client ?? (ClientCommandChannel as TcpSimpleClient)?.Client
+            };
         }
 
-        private void m_pingTimer_Elapsed(object sender, EventArgs<DateTime> e)
+        private void PingTimer_Elapsed(object sender, EventArgs<DateTime> e)
         {
             // Send a no-op keep-alive ping to make sure the client is still connected
-            m_parent.SendClientResponse(m_clientID, ServerResponse.NoOP, ServerCommand.Subscribe);
+            m_parent.SendClientResponse(ClientID, ServerResponse.NoOP, ServerCommand.Subscribe);
         }
 
-        private void m_dataChannel_ClientConnectingException(object sender, EventArgs<Exception> e)
+        private void DataChannel_ClientConnectingException(object sender, EventArgs<Exception> e)
         {
             Exception ex = e.Argument;
             m_parent.OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data channel exception occurred while sending client data to \"{m_connectionID}\": {ex.Message}", ex));
         }
 
-        private void m_dataChannel_SendClientDataException(object sender, EventArgs<Guid, Exception> e)
+        private void DataChannel_SendClientDataException(object sender, EventArgs<Guid, Exception> e)
         {
             Exception ex = e.Argument2;
             m_parent.OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data channel exception occurred while sending client data to \"{m_connectionID}\": {ex.Message}", ex));
         }
 
-        private void m_dataChannel_ServerStarted(object sender, EventArgs e)
+        private void DataChannel_ServerStarted(object sender, EventArgs e)
         {
             m_parent.OnStatusMessage(MessageLevel.Info, "Data channel started.");
         }
 
-        private void m_dataChannel_ServerStopped(object sender, EventArgs e)
+        private void DataChannel_ServerStopped(object sender, EventArgs e)
         {
             if (m_connectionEstablished)
             {
@@ -662,7 +617,7 @@ namespace sttp
             }
         }
 
-        private void m_reconnectTimer_Elapsed(object sender, EventArgs<DateTime> e)
+        private void ReconnectTimer_Elapsed(object sender, EventArgs<DateTime> e)
         {
             try
             {
@@ -718,14 +673,13 @@ namespace sttp
             // Attempt to lookup remote connection identification for logging purposes
             try
             {
-                if (remoteEndPoint != null)
+                if (!(remoteEndPoint is null))
                 {
                     ipAddress = remoteEndPoint.Address;
 
-                    if (remoteEndPoint.AddressFamily == AddressFamily.InterNetworkV6)
-                        connectionID = $"[{ipAddress}]:{remoteEndPoint.Port}";
-                    else
-                        connectionID = $"{ipAddress}:{remoteEndPoint.Port}";
+                    connectionID = remoteEndPoint.AddressFamily == AddressFamily.InterNetworkV6 ?
+                        $"[{ipAddress}]:{remoteEndPoint.Port}" :
+                        $"{ipAddress}:{remoteEndPoint.Port}";
 
                     try
                     {
@@ -767,18 +721,11 @@ namespace sttp
                 connectionID = "unavailable";
 
             if (string.IsNullOrWhiteSpace(hostName))
-            {
-                if (ipAddress != null)
-                    hostName = ipAddress.ToString();
-                else
-                    hostName = connectionID;
-            }
+                hostName = ipAddress is null ? connectionID : ipAddress.ToString();
 
-            if (ipAddress == null)
-                ipAddress = IPAddress.None;
+            ipAddress ??= IPAddress.None;
         }
 
         #endregion
-
     }
 }

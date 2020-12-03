@@ -107,8 +107,6 @@ namespace sttp.tssc
         /// <returns>true if successful, false otherwise.</returns>
         public unsafe bool TryGetMeasurement(out int id, out long timestamp, out uint quality, out float value)
         {
-            TsscPointMetadata nextPoint;
-
             if (m_position == m_lastPosition && BitStreamIsEmpty)
             {
                 ClearBitStream();
@@ -116,14 +114,15 @@ namespace sttp.tssc
                 timestamp = 0;
                 quality = 0;
                 value = 0;
+                
                 return false;
             }
 
-            //Note: since I will not know the incoming pointID. The most recent
-            //      measurement received will be the one that contains the 
-            //      coding algorithm for this measurement. Since for the more part
-            //      measurements generally have some sort of sequence to them, 
-            //      this still ends up being a good enough assumption.
+            // Note: since I will not know the incoming pointID. The most recent
+            //       measurement received will be the one that contains the 
+            //       coding algorithm for this measurement. Since for the more part
+            //       measurements generally have some sort of sequence to them, 
+            //       this still ends up being a good enough assumption.
 
             int code = m_lastPoint.ReadCode();
 
@@ -134,6 +133,7 @@ namespace sttp.tssc
                 timestamp = 0;
                 quality = 0;
                 value = 0;
+                
                 return false;
             }
 
@@ -141,14 +141,16 @@ namespace sttp.tssc
             {
                 DecodePointID(code, m_lastPoint);
                 code = m_lastPoint.ReadCode();
+                
                 if (code < TsscCodeWords.TimeDelta1Forward)
                     throw new Exception($"Expecting code >= {TsscCodeWords.TimeDelta1Forward} Received {code} at position {m_position} with last position { m_lastPosition}");
             }
 
             id = m_lastPoint.PrevNextPointId1;
-            nextPoint = m_points[m_lastPoint.PrevNextPointId1];
+            
+            TsscPointMetadata nextPoint = m_points[m_lastPoint.PrevNextPointId1];
 
-            if (nextPoint == null)
+            if (nextPoint is null)
             {
                 nextPoint = new TsscPointMetadata(null, ReadBit, ReadBits5);
                 m_points[id] = nextPoint;
@@ -159,6 +161,7 @@ namespace sttp.tssc
             {
                 timestamp = DecodeTimestamp(code);
                 code = m_lastPoint.ReadCode();
+                
                 if (code < TsscCodeWords.Quality2)
                     throw new Exception($"Expecting code >= {TsscCodeWords.Quality2} Received {code} at position {m_position} with last position { m_lastPosition}");
             }
@@ -171,6 +174,7 @@ namespace sttp.tssc
             {
                 quality = DecodeQuality(code, nextPoint);
                 code = m_lastPoint.ReadCode();
+                
                 if (code < TsscCodeWords.Value1)
                     throw new Exception($"Expecting code >= {TsscCodeWords.Value1} Received {code} at position {m_position} with last position { m_lastPosition}");
             }
@@ -179,80 +183,79 @@ namespace sttp.tssc
                 quality = nextPoint.PrevQuality1;
             }
 
-            //Since value will almost always change, 
-            //This is not put inside a function call.
+            // Since value will almost always change, 
+            // This is not put inside a function call.
             uint valueRaw;
 
-            if (code == TsscCodeWords.Value1)
+            switch (code)
             {
-                valueRaw = nextPoint.PrevValue1;
-            }
-            else if (code == TsscCodeWords.Value2)
-            {
-                valueRaw = nextPoint.PrevValue2;
-                nextPoint.PrevValue2 = nextPoint.PrevValue1;
-                nextPoint.PrevValue1 = valueRaw;
-            }
-            else if (code == TsscCodeWords.Value3)
-            {
-                valueRaw = nextPoint.PrevValue3;
-                nextPoint.PrevValue3 = nextPoint.PrevValue2;
-                nextPoint.PrevValue2 = nextPoint.PrevValue1;
-                nextPoint.PrevValue1 = valueRaw;
-            }
-            else if (code == TsscCodeWords.ValueZero)
-            {
-                valueRaw = 0;
-                nextPoint.PrevValue3 = nextPoint.PrevValue2;
-                nextPoint.PrevValue2 = nextPoint.PrevValue1;
-                nextPoint.PrevValue1 = valueRaw;
-            }
-            else
-            {
-                switch (code)
-                {
-                    case TsscCodeWords.ValueXOR4:
-                        valueRaw = (uint)ReadBits4() ^ nextPoint.PrevValue1;
-                        break;
-                    case TsscCodeWords.ValueXOR8:
-                        valueRaw = m_data[m_position] ^ nextPoint.PrevValue1;
-                        m_position = m_position + 1;
-                        break;
-                    case TsscCodeWords.ValueXOR12:
-                        valueRaw = (uint)ReadBits4() ^ (uint)(m_data[m_position] << 4) ^ nextPoint.PrevValue1;
-                        m_position = m_position + 1;
-                        break;
-                    case TsscCodeWords.ValueXOR16:
-                        valueRaw = m_data[m_position] ^ (uint)(m_data[m_position + 1] << 8) ^ nextPoint.PrevValue1;
-                        m_position = m_position + 2;
-                        break;
-                    case TsscCodeWords.ValueXOR20:
-                        valueRaw = (uint)ReadBits4() ^ (uint)(m_data[m_position] << 4) ^ (uint)(m_data[m_position + 1] << 12) ^ nextPoint.PrevValue1;
-                        m_position = m_position + 2;
-                        break;
-                    case TsscCodeWords.ValueXOR24:
-                        valueRaw = m_data[m_position] ^ (uint)(m_data[m_position + 1] << 8) ^ (uint)(m_data[m_position + 2] << 16) ^ nextPoint.PrevValue1;
-                        m_position = m_position + 3;
-                        break;
-                    case TsscCodeWords.ValueXOR28:
-                        valueRaw = (uint)ReadBits4() ^ (uint)(m_data[m_position] << 4) ^ (uint)(m_data[m_position + 1] << 12) ^ (uint)(m_data[m_position + 2] << 20) ^ nextPoint.PrevValue1;
-                        m_position = m_position + 3;
-                        break;
-                    case TsscCodeWords.ValueXOR32:
-                        valueRaw = m_data[m_position] ^ (uint)(m_data[m_position + 1] << 8) ^ (uint)(m_data[m_position + 2] << 16) ^ (uint)(m_data[m_position + 3] << 24) ^ nextPoint.PrevValue1;
-                        m_position = m_position + 4;
-                        break;
-                    default:
-                        throw new Exception($"Invalid code received {code} at position {m_position} with last position { m_lastPosition}");
-                }
+                case TsscCodeWords.Value1:
+                    valueRaw = nextPoint.PrevValue1;
+                    break;
+                case TsscCodeWords.Value2:
+                    valueRaw = nextPoint.PrevValue2;
+                    nextPoint.PrevValue2 = nextPoint.PrevValue1;
+                    nextPoint.PrevValue1 = valueRaw;
+                    break;
+                case TsscCodeWords.Value3:
+                    valueRaw = nextPoint.PrevValue3;
+                    nextPoint.PrevValue3 = nextPoint.PrevValue2;
+                    nextPoint.PrevValue2 = nextPoint.PrevValue1;
+                    nextPoint.PrevValue1 = valueRaw;
+                    break;
+                case TsscCodeWords.ValueZero:
+                    valueRaw = 0;
+                    nextPoint.PrevValue3 = nextPoint.PrevValue2;
+                    nextPoint.PrevValue2 = nextPoint.PrevValue1;
+                    nextPoint.PrevValue1 = valueRaw;
+                    break;
+                default:
+                    switch (code)
+                    {
+                        case TsscCodeWords.ValueXOR4:
+                            valueRaw = (uint)ReadBits4() ^ nextPoint.PrevValue1;
+                            break;
+                        case TsscCodeWords.ValueXOR8:
+                            valueRaw = m_data[m_position] ^ nextPoint.PrevValue1;
+                            m_position += 1;
+                            break;
+                        case TsscCodeWords.ValueXOR12:
+                            valueRaw = (uint)ReadBits4() ^ (uint)(m_data[m_position] << 4) ^ nextPoint.PrevValue1;
+                            m_position += 1;
+                            break;
+                        case TsscCodeWords.ValueXOR16:
+                            valueRaw = m_data[m_position] ^ (uint)(m_data[m_position + 1] << 8) ^ nextPoint.PrevValue1;
+                            m_position += 2;
+                            break;
+                        case TsscCodeWords.ValueXOR20:
+                            valueRaw = (uint)ReadBits4() ^ (uint)(m_data[m_position] << 4) ^ (uint)(m_data[m_position + 1] << 12) ^ nextPoint.PrevValue1;
+                            m_position += 2;
+                            break;
+                        case TsscCodeWords.ValueXOR24:
+                            valueRaw = m_data[m_position] ^ (uint)(m_data[m_position + 1] << 8) ^ (uint)(m_data[m_position + 2] << 16) ^ nextPoint.PrevValue1;
+                            m_position += 3;
+                            break;
+                        case TsscCodeWords.ValueXOR28:
+                            valueRaw = (uint)ReadBits4() ^ (uint)(m_data[m_position] << 4) ^ (uint)(m_data[m_position + 1] << 12) ^ (uint)(m_data[m_position + 2] << 20) ^ nextPoint.PrevValue1;
+                            m_position += 3;
+                            break;
+                        case TsscCodeWords.ValueXOR32:
+                            valueRaw = m_data[m_position] ^ (uint)(m_data[m_position + 1] << 8) ^ (uint)(m_data[m_position + 2] << 16) ^ (uint)(m_data[m_position + 3] << 24) ^ nextPoint.PrevValue1;
+                            m_position += 4;
+                            break;
+                        default:
+                            throw new Exception($"Invalid code received {code} at position {m_position} with last position { m_lastPosition}");
+                    }
 
-                nextPoint.PrevValue3 = nextPoint.PrevValue2;
-                nextPoint.PrevValue2 = nextPoint.PrevValue1;
-                nextPoint.PrevValue1 = valueRaw;
+                    nextPoint.PrevValue3 = nextPoint.PrevValue2;
+                    nextPoint.PrevValue2 = nextPoint.PrevValue1;
+                    nextPoint.PrevValue1 = valueRaw;
+                    break;
             }
 
             value = *(float*)&valueRaw;
             m_lastPoint = nextPoint;
+
             return true;
         }
 
@@ -265,27 +268,27 @@ namespace sttp.tssc
                     break;
                 case TsscCodeWords.PointIDXOR8:
                     lastPoint.PrevNextPointId1 = m_data[m_position] ^ lastPoint.PrevNextPointId1;
-                    m_position = m_position + 1;
+                    m_position += 1;
                     break;
                 case TsscCodeWords.PointIDXOR12:
                     lastPoint.PrevNextPointId1 = ReadBits4() ^ (m_data[m_position] << 4) ^ lastPoint.PrevNextPointId1;
-                    m_position = m_position + 1;
+                    m_position += 1;
                     break;
                 case TsscCodeWords.PointIDXOR16:
                     lastPoint.PrevNextPointId1 = m_data[m_position] ^ (m_data[m_position + 1] << 8) ^ lastPoint.PrevNextPointId1;
-                    m_position = m_position + 2;
+                    m_position += 2;
                     break;
                 case TsscCodeWords.PointIDXOR20:
                     lastPoint.PrevNextPointId1 = ReadBits4() ^ (m_data[m_position] << 4) ^ (m_data[m_position + 1] << 12) ^ lastPoint.PrevNextPointId1;
-                    m_position = m_position + 2;
+                    m_position += 2;
                     break;
                 case TsscCodeWords.PointIDXOR24:
                     lastPoint.PrevNextPointId1 = m_data[m_position] ^ (m_data[m_position + 1] << 8) ^ (m_data[m_position + 2] << 16) ^ lastPoint.PrevNextPointId1;
-                    m_position = m_position + 3;
+                    m_position += 3;
                     break;
                 case TsscCodeWords.PointIDXOR32:
                     lastPoint.PrevNextPointId1 = m_data[m_position] ^ (m_data[m_position + 1] << 8) ^ (m_data[m_position + 2] << 16) ^ (m_data[m_position + 3] << 24) ^ lastPoint.PrevNextPointId1;
-                    m_position = m_position + 4;
+                    m_position += 4;
                     break;
                 default:
                     throw new Exception($"Invalid code received {code} at position {m_position} with last position {m_lastPosition}");
@@ -294,47 +297,19 @@ namespace sttp.tssc
 
         private long DecodeTimestamp(int code)
         {
-            long timestamp;
-            if (code == TsscCodeWords.TimeDelta1Forward)
+            long timestamp = code switch
             {
-                timestamp = m_prevTimestamp1 + m_prevTimeDelta1;
-            }
-            else if (code == TsscCodeWords.TimeDelta2Forward)
-            {
-                timestamp = m_prevTimestamp1 + m_prevTimeDelta2;
-            }
-            else if (code == TsscCodeWords.TimeDelta3Forward)
-            {
-                timestamp = m_prevTimestamp1 + m_prevTimeDelta3;
-            }
-            else if (code == TsscCodeWords.TimeDelta4Forward)
-            {
-                timestamp = m_prevTimestamp1 + m_prevTimeDelta4;
-            }
-            else if (code == TsscCodeWords.TimeDelta1Reverse)
-            {
-                timestamp = m_prevTimestamp1 - m_prevTimeDelta1;
-            }
-            else if (code == TsscCodeWords.TimeDelta2Reverse)
-            {
-                timestamp = m_prevTimestamp1 - m_prevTimeDelta2;
-            }
-            else if (code == TsscCodeWords.TimeDelta3Reverse)
-            {
-                timestamp = m_prevTimestamp1 - m_prevTimeDelta3;
-            }
-            else if (code == TsscCodeWords.TimeDelta4Reverse)
-            {
-                timestamp = m_prevTimestamp1 - m_prevTimeDelta4;
-            }
-            else if (code == TsscCodeWords.Timestamp2)
-            {
-                timestamp = m_prevTimestamp2;
-            }
-            else
-            {
-                timestamp = m_prevTimestamp1 ^ (long)Encoding7Bit.ReadUInt64(m_data, ref m_position);
-            }
+                TsscCodeWords.TimeDelta1Forward => m_prevTimestamp1 + m_prevTimeDelta1,
+                TsscCodeWords.TimeDelta2Forward => m_prevTimestamp1 + m_prevTimeDelta2,
+                TsscCodeWords.TimeDelta3Forward => m_prevTimestamp1 + m_prevTimeDelta3,
+                TsscCodeWords.TimeDelta4Forward => m_prevTimestamp1 + m_prevTimeDelta4,
+                TsscCodeWords.TimeDelta1Reverse => m_prevTimestamp1 - m_prevTimeDelta1,
+                TsscCodeWords.TimeDelta2Reverse => m_prevTimestamp1 - m_prevTimeDelta2,
+                TsscCodeWords.TimeDelta3Reverse => m_prevTimestamp1 - m_prevTimeDelta3,
+                TsscCodeWords.TimeDelta4Reverse => m_prevTimestamp1 - m_prevTimeDelta4,
+                TsscCodeWords.Timestamp2 => m_prevTimestamp2,
+                _ => m_prevTimestamp1 ^ (long)Encoding7Bit.ReadUInt64(m_data, ref m_position)
+            };
 
             //Save the smallest delta time
             long minDelta = Math.Abs(m_prevTimestamp1 - timestamp);
@@ -367,41 +342,33 @@ namespace sttp.tssc
 
             m_prevTimestamp2 = m_prevTimestamp1;
             m_prevTimestamp1 = timestamp;
+
             return timestamp;
         }
 
         private uint DecodeQuality(int code, TsscPointMetadata nextPoint)
         {
-            uint quality;
-            if (code == TsscCodeWords.Quality2)
-            {
-                quality = nextPoint.PrevQuality2;
-            }
-            else
-            {
-                quality = Encoding7Bit.ReadUInt32(m_data, ref m_position);
-            }
+            uint quality = code == TsscCodeWords.Quality2 ?
+                nextPoint.PrevQuality2 :
+                Encoding7Bit.ReadUInt32(m_data, ref m_position);
+
             nextPoint.PrevQuality2 = nextPoint.PrevQuality1;
             nextPoint.PrevQuality1 = quality;
+            
             return quality;
         }
 
         #region [ BitStream ]
 
-        /// <summary>
-        /// The number of bits in m_bitStreamCache that are valid. 0 Means the bitstream is empty.
-        /// </summary>
+        // The number of bits in m_bitStreamCache that are valid. 0 Means the bitstream is empty.
         private int m_bitStreamCount;
-        /// <summary>
-        /// A cache of bits that need to be flushed to m_buffer when full. Bits filled starting from the right moving left.
-        /// </summary>
+
+        // A cache of bits that need to be flushed to m_buffer when full. Bits filled starting from the right moving left.
         private int m_bitStreamCache;
 
         private bool BitStreamIsEmpty => m_bitStreamCount == 0;
 
-        /// <summary>
-        /// Resets the stream so it can be reused. All measurements must be registered again.
-        /// </summary>
+        // Resets the stream so it can be reused. All measurements must be registered again.
         private void ClearBitStream()
         {
             m_bitStreamCount = 0;
@@ -415,13 +382,16 @@ namespace sttp.tssc
                 m_bitStreamCount = 8;
                 m_bitStreamCache = m_data[m_position++];
             }
+
             m_bitStreamCount--;
+
             return (m_bitStreamCache >> m_bitStreamCount) & 1;
         }
 
         private int ReadBits4()
         {
             return ReadBit() << 3 | ReadBit() << 2 | ReadBit() << 1 | ReadBit();
+
             //if (m_bitCount < 4)
             //{
             //    m_bitCount += 8;
@@ -434,6 +404,7 @@ namespace sttp.tssc
         private int ReadBits5()
         {
             return ReadBit() << 4 | ReadBit() << 3 | ReadBit() << 2 | ReadBit() << 1 | ReadBit();
+
             //if (m_bitCount < 5)
             //{
             //    m_bitCount += 8;
@@ -445,5 +416,4 @@ namespace sttp.tssc
 
         #endregion
     }
-
 }

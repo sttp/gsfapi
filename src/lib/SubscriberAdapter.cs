@@ -34,6 +34,7 @@ using GSF.TimeSeries.Transport;
 using sttp.tssc;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 
@@ -65,9 +66,6 @@ namespace sttp
         public event EventHandler<EventArgs<IClientSubscription, EventArgs>> ProcessingComplete;
 
         // Fields
-        private readonly SignalIndexCache m_signalIndexCache;
-        private readonly Guid m_clientID;
-        private readonly Guid m_subscriberID;
         private DataPublisher m_parent;
         private volatile bool m_usePayloadCompression;
         private volatile bool m_useCompactMeasurementFormat;
@@ -78,7 +76,6 @@ namespace sttp
         private byte[] m_tsscWorkingBuffer;
         private ushort m_tsscSequenceNumber;
         private long m_lastPublishTime;
-        private string m_requestedInputFilter;
         private double m_publishInterval;
         private bool m_includeTime;
         private bool m_useMillisecondResolution;
@@ -112,16 +109,12 @@ namespace sttp
         public SubscriberAdapter(DataPublisher parent, Guid clientID, Guid subscriberID, CompressionModes compressionModes)
         {
             m_parent = parent;
-            m_clientID = clientID;
-            m_subscriberID = subscriberID;
+            ClientID = clientID;
+            SubscriberID = subscriberID;
             m_compressionModes = compressionModes;
-
-            m_signalIndexCache = new SignalIndexCache();
-            m_signalIndexCache.SubscriberID = subscriberID;
-
+            SignalIndexCache = new SignalIndexCache { SubscriberID = subscriberID };
             m_bufferBlockCache = new List<byte[]>();
             m_bufferBlockCacheLock = new object();
-
             m_tsscSyncLock = new object();
         }
 
@@ -146,22 +139,22 @@ namespace sttp
         /// <summary>
         /// Gets the <see cref="Guid"/> client TCP connection identifier of this <see cref="SubscriberAdapter"/>.
         /// </summary>
-        public Guid ClientID => m_clientID;
+        public Guid ClientID { get; }
 
         /// <summary>
         /// Gets the <see cref="Guid"/> based subscriber ID of this <see cref="SubscriberAdapter"/>.
         /// </summary>
-        public Guid SubscriberID => m_subscriberID;
+        public Guid SubscriberID { get; }
 
         /// <summary>
         /// Gets the current signal index cache of this <see cref="SubscriberAdapter"/>.
         /// </summary>
-        public SignalIndexCache SignalIndexCache => m_signalIndexCache;
+        public SignalIndexCache SignalIndexCache { get; }
 
         /// <summary>
         /// Gets the input filter requested by the subscriber when establishing this <see cref="SubscriberAdapter"/>.
         /// </summary>
-        public string RequestedInputFilter => m_requestedInputFilter;
+        public string RequestedInputFilter { get; private set; }
 
         /// <summary>
         /// Gets or sets flag that determines if payload compression should be enabled in data packets of this <see cref="SubscriberAdapter"/>.
@@ -223,7 +216,7 @@ namespace sttp
                 base.ProcessingInterval = value;
 
                 // Update processing interval in private temporal session, if defined
-                if (m_iaonSession != null && m_iaonSession.AllAdapters != null)
+                if (!(m_iaonSession?.AllAdapters is null))
                     m_iaonSession.AllAdapters.ProcessingInterval = value;
             }
         }
@@ -243,12 +236,12 @@ namespace sttp
                 lock (this)
                 {
                     // Update signal index cache unless "detaching" from real-time
-                    if (value != null && !(value.Length == 1 && value[0] == MeasurementKey.Undefined))
+                    if (!(value is null) && !(value.Length == 1 && value[0] == MeasurementKey.Undefined))
                     {
-                        m_parent.UpdateSignalIndexCache(m_clientID, m_signalIndexCache, value);
+                        m_parent.UpdateSignalIndexCache(ClientID, SignalIndexCache, value);
 
-                        if (DataSource != null && m_signalIndexCache != null)
-                            value = ParseInputMeasurementKeys(DataSource, false, string.Join("; ", m_signalIndexCache.AuthorizedSignalIDs));
+                        if (!(DataSource is null) && !(SignalIndexCache is null))
+                            value = ParseInputMeasurementKeys(DataSource, false, string.Join("; ", SignalIndexCache.AuthorizedSignalIDs));
                     }
 
                     base.InputMeasurementKeys = value;
@@ -275,7 +268,7 @@ namespace sttp
             {
                 StringBuilder status = new StringBuilder();
 
-                if (m_parent.ClientConnections.TryGetValue(m_clientID, out SubscriberConnection connection))
+                if (m_parent.ClientConnections.TryGetValue(ClientID, out SubscriberConnection connection))
                 {
                     status.Append(connection.Status);
                     status.AppendLine();
@@ -283,7 +276,7 @@ namespace sttp
 
                 status.Append(base.Status);
 
-                if (m_iaonSession != null)
+                if (!(m_iaonSession is null))
                     status.Append(m_iaonSession.Status);
 
                 return status.ToString();
@@ -309,30 +302,30 @@ namespace sttp
         /// <param name="disposing">true to release both managed and unmanaged resources; false to release only unmanaged resources.</param>
         protected override void Dispose(bool disposing)
         {
-            if (!m_disposed)
+            if (m_disposed)
+                return;
+
+            try
             {
-                try
-                {
-                    if (disposing)
-                    {
-                        m_parent = null;
+                if (!disposing)
+                    return;
 
-                        // Dispose base time rotation timer
-                        if (m_baseTimeRotationTimer != null)
-                        {
-                            m_baseTimeRotationTimer.Dispose();
-                            m_baseTimeRotationTimer = null;
-                        }
+                m_parent = null;
 
-                        // Dispose Iaon session
-                        this.DisposeTemporalSession(ref m_iaonSession);
-                    }
-                }
-                finally
+                // Dispose base time rotation timer
+                if (!(m_baseTimeRotationTimer is null))
                 {
-                    m_disposed = true;          // Prevent duplicate dispose.
-                    base.Dispose(disposing);    // Call base class Dispose().
+                    m_baseTimeRotationTimer.Dispose();
+                    m_baseTimeRotationTimer = null;
                 }
+
+                // Dispose Iaon session
+                this.DisposeTemporalSession(ref m_iaonSession);
+            }
+            finally
+            {
+                m_disposed = true;          // Prevent duplicate dispose.
+                base.Dispose(disposing);    // Call base class Dispose().
             }
         }
 
@@ -341,26 +334,27 @@ namespace sttp
         /// </summary>
         public override void Initialize()
         {
+            Dictionary<string, string> settings = Settings;
             MeasurementKey[] inputMeasurementKeys;
 
-            if (Settings.TryGetValue("filterExpression", out string setting))
+            if (settings.TryGetValue("filterExpression", out string setting))
             {
                 // IMPORTANT: The allowSelect argument of ParseInputMeasurementKeys must be null
                 //            in order to prevent SQL injection via the subscription filter expression
                 inputMeasurementKeys = ParseInputMeasurementKeys(DataSource, false, setting);
-                m_requestedInputFilter = setting;
+                RequestedInputFilter = setting;
             }
             else
             {
                 inputMeasurementKeys = new MeasurementKey[0];
-                m_requestedInputFilter = null;
+                RequestedInputFilter = null;
             }
 
             // IMPORTANT: We need to remove the setting before calling base.Initialize()
             //            or else we will still be subject to SQL injection
-            Settings.Remove("inputMeasurementKeys");
+            settings.Remove("inputMeasurementKeys");
 
-            if (Settings.TryGetValue("throttled", out setting))
+            if (settings.TryGetValue("throttled", out setting))
                 TrackLatestMeasurements = setting.ParseBoolean();
 
             base.Initialize();
@@ -369,28 +363,18 @@ namespace sttp
             // so that the base class does not overwrite our setting
             InputMeasurementKeys = inputMeasurementKeys;
 
-            if (!Settings.TryGetValue("publishInterval", out setting) || !double.TryParse(setting, out m_publishInterval))
+            if (!settings.TryGetValue("publishInterval", out setting) || !double.TryParse(setting, out m_publishInterval))
                 m_publishInterval = -1;
 
-            if (Settings.TryGetValue("includeTime", out setting))
-                m_includeTime = setting.ParseBoolean();
-            else
-                m_includeTime = true;
+            m_includeTime = !settings.TryGetValue("includeTime", out setting) || setting.ParseBoolean();
+            m_useMillisecondResolution = settings.TryGetValue("useMillisecondResolution", out setting) && setting.ParseBoolean();
 
-            if (Settings.TryGetValue("useMillisecondResolution", out setting))
-                m_useMillisecondResolution = setting.ParseBoolean();
-            else
-                m_useMillisecondResolution = false;
-
-            if (Settings.TryGetValue("requestNaNValueFilter", out setting))
+            if (settings.TryGetValue("requestNaNValueFilter", out setting))
                 m_isNaNFiltered = m_parent.AllowNaNValueFilter && setting.ParseBoolean();
             else
                 m_isNaNFiltered = false;
 
-            if (Settings.TryGetValue("bufferBlockRetransmissionTimeout", out setting))
-                m_bufferBlockRetransmissionTimeout = double.Parse(setting);
-            else
-                m_bufferBlockRetransmissionTimeout = 5.0D;
+            m_bufferBlockRetransmissionTimeout = settings.TryGetValue("bufferBlockRetransmissionTimeout", out setting) ? double.Parse(setting) : 5.0D;
 
             if (m_parent.UseBaseTimeOffsets && m_includeTime)
             {
@@ -421,7 +405,7 @@ namespace sttp
 
             base.Start();
 
-            if (m_baseTimeRotationTimer != null && m_includeTime)
+            if (!(m_baseTimeRotationTimer is null) && m_includeTime)
                 m_baseTimeRotationTimer.Start();
         }
 
@@ -432,11 +416,11 @@ namespace sttp
         {
             base.Stop();
 
-            if (m_baseTimeRotationTimer != null)
-            {
-                m_baseTimeRotationTimer.Stop();
-                m_baseTimeOffsets = null;
-            }
+            if (m_baseTimeRotationTimer is null)
+                return;
+
+            m_baseTimeRotationTimer.Stop();
+            m_baseTimeOffsets = null;
         }
 
         /// <summary>
@@ -448,13 +432,13 @@ namespace sttp
         {
             int inputCount = 0, outputCount = 0;
 
-            if (InputMeasurementKeys != null)
+            if (!(InputMeasurementKeys is null))
                 inputCount = InputMeasurementKeys.Length;
 
-            if (OutputMeasurements != null)
+            if (!(OutputMeasurements is null))
                 outputCount = OutputMeasurements.Length;
 
-            return $"Total input measurements: {inputCount}, total output measurements: {outputCount}".PadLeft(maxLength);
+            return $"Total input measurements: {inputCount:N0}, total output measurements: {outputCount:N0}".PadLeft(maxLength);
         }
 
         /// <summary>
@@ -469,20 +453,20 @@ namespace sttp
         // calls to this function can cause TSSC parsing to get out of sequence and fail
         public override void QueueMeasurementsForProcessing(IEnumerable<IMeasurement> measurements)
         {
-            if (measurements == null)
+            if (measurements is null)
                 return;
 
             if (!m_startTimeSent && measurements.Any())
             {
                 m_startTimeSent = true;
 
-                IMeasurement measurement = measurements.FirstOrDefault(m => (object)m != null);
+                IMeasurement measurement = measurements.FirstOrDefault(m => !(m is null));
                 Ticks timestamp = 0;
 
-                if (measurement != null)
+                if (!(measurement is null))
                     timestamp = measurement.Timestamp;
 
-                m_parent.SendDataStartTime(m_clientID, timestamp);
+                m_parent.SendDataStartTime(ClientID, timestamp);
             }
 
             if (m_isNaNFiltered)
@@ -493,37 +477,35 @@ namespace sttp
 
             if (TrackLatestMeasurements)
             {
-                double publishInterval;
-
                 // Keep track of latest measurements
                 base.QueueMeasurementsForProcessing(measurements);
-                publishInterval = m_publishInterval > 0 ? m_publishInterval : LagTime;
+                
+                double publishInterval = m_publishInterval > 0 ? m_publishInterval : LagTime;
 
-                if (DateTime.UtcNow.Ticks > m_lastPublishTime + Ticks.FromSeconds(publishInterval))
+                if (DateTime.UtcNow.Ticks <= m_lastPublishTime + Ticks.FromSeconds(publishInterval))
+                    return;
+
+                List<IMeasurement> currentMeasurements = new List<IMeasurement>();
+
+                // Create a new set of measurements that represent the latest known values setting value to NaN if it is old
+                foreach (TemporalMeasurement measurement in LatestMeasurements)
                 {
-                    List<IMeasurement> currentMeasurements = new List<IMeasurement>();
-                    Measurement newMeasurement;
+                    MeasurementStateFlags timeQuality = measurement.Timestamp.TimeIsValid(RealTime, measurement.LagTime, measurement.LeadTime)
+                        ? MeasurementStateFlags.Normal
+                        : MeasurementStateFlags.BadTime;
 
-                    // Create a new set of measurements that represent the latest known values setting value to NaN if it is old
-                    foreach (TemporalMeasurement measurement in LatestMeasurements)
+                    Measurement newMeasurement = new Measurement
                     {
-                        MeasurementStateFlags timeQuality = measurement.Timestamp.TimeIsValid(RealTime, measurement.LagTime, measurement.LeadTime)
-                            ? MeasurementStateFlags.Normal
-                            : MeasurementStateFlags.BadTime;
+                        Metadata = measurement.Metadata,
+                        Value = measurement.Value,
+                        Timestamp = measurement.Timestamp,
+                        StateFlags = measurement.StateFlags | timeQuality
+                    };
 
-                        newMeasurement = new Measurement
-                        {
-                            Metadata = measurement.Metadata,
-                            Value = measurement.Value,
-                            Timestamp = measurement.Timestamp,
-                            StateFlags = measurement.StateFlags | timeQuality
-                        };
-
-                        currentMeasurements.Add(newMeasurement);
-                    }
-
-                    ProcessMeasurements(currentMeasurements);
+                    currentMeasurements.Add(newMeasurement);
                 }
+
+                ProcessMeasurements(currentMeasurements);
             }
             else
             {
@@ -540,8 +522,6 @@ namespace sttp
         public void ConfirmBufferBlock(uint sequenceNumber)
         {
             DataPublisher parent = m_parent;
-            int sequenceIndex;
-            int removalCount;
 
             // We are still receiving confirmations,
             // so stop the retransmission timer
@@ -550,9 +530,9 @@ namespace sttp
             lock (m_bufferBlockCacheLock)
             {
                 // Find the buffer block's location in the cache
-                sequenceIndex = (int)(sequenceNumber - m_expectedBufferBlockConfirmationNumber);
+                int sequenceIndex = (int)(sequenceNumber - m_expectedBufferBlockConfirmationNumber);
 
-                if (sequenceIndex >= 0 && sequenceIndex < m_bufferBlockCache.Count && m_bufferBlockCache[sequenceIndex] != null)
+                if (sequenceIndex >= 0 && sequenceIndex < m_bufferBlockCache.Count && !(m_bufferBlockCache[sequenceIndex] is null))
                 {
                     // Remove the confirmed block from the cache
                     m_bufferBlockCache[sequenceIndex] = null;
@@ -560,7 +540,7 @@ namespace sttp
                     if (sequenceNumber == m_expectedBufferBlockConfirmationNumber)
                     {
                         // Get the number of elements to trim from the start of the cache
-                        removalCount = m_bufferBlockCache.TakeWhile(m => (object)m == null).Count();
+                        int removalCount = m_bufferBlockCache.TakeWhile(m => m is null).Count();
 
                         // Trim the cache
                         m_bufferBlockCache.RemoveRange(0, removalCount);
@@ -573,11 +553,11 @@ namespace sttp
                         // Retransmit if confirmations are received out of order
                         for (int i = 0; i < sequenceIndex; i++)
                         {
-                            if (m_bufferBlockCache[i] != null)
-                            {
-                                parent?.SendClientResponse(m_clientID, ServerResponse.BufferBlock, ServerCommand.Subscribe, m_bufferBlockCache[i]);
-                                OnBufferBlockRetransmission();
-                            }
+                            if (m_bufferBlockCache[i] is null)
+                                continue;
+
+                            parent?.SendClientResponse(ClientID, ServerResponse.BufferBlock, ServerCommand.Subscribe, m_bufferBlockCache[i]);
+                            OnBufferBlockRetransmission();
                         }
                     }
                 }
@@ -600,35 +580,22 @@ namespace sttp
             // Includes data packet flags and measurement count
             const int PacketHeaderSize = DataPublisher.ClientResponseHeaderSize + 5;
 
-            List<IBinaryMeasurement> packet;
-            int packetSize;
-
-            //bool usePayloadCompression;
-            bool useCompactMeasurementFormat;
-
-            BufferBlockMeasurement bufferBlockMeasurement;
-            byte[] bufferBlock;
-            int bufferBlockSignalIndex;
-
-            IBinaryMeasurement binaryMeasurement;
-            int binaryLength;
-
             try
             {
                 if (!Enabled)
                     return;
 
-                packet = new List<IBinaryMeasurement>();
-                packetSize = PacketHeaderSize;
+                List<IBinaryMeasurement> packet = new List<IBinaryMeasurement>();
+                int packetSize = PacketHeaderSize;
 
                 //usePayloadCompression = m_usePayloadCompression;
-                useCompactMeasurementFormat = m_useCompactMeasurementFormat; // || usePayloadCompression;
+                bool useCompactMeasurementFormat = m_useCompactMeasurementFormat;
 
                 foreach (IMeasurement measurement in measurements)
                 {
-                    bufferBlockMeasurement = measurement as BufferBlockMeasurement;
+                    BufferBlockMeasurement bufferBlockMeasurement = measurement as BufferBlockMeasurement;
 
-                    if ((object)bufferBlockMeasurement != null)
+                    if (!(bufferBlockMeasurement is null))
                     {
                         // Still sending buffer block measurements to client; we are expecting
                         // confirmations which will indicate whether retransmission is necessary,
@@ -637,19 +604,19 @@ namespace sttp
 
                         // Handle buffer block measurements as a special case - this can be any kind of data,
                         // measurement subscriber will need to know how to interpret buffer
-                        bufferBlock = new byte[6 + bufferBlockMeasurement.Length];
+                        byte[] bufferBlock = new byte[6 + bufferBlockMeasurement.Length];
 
                         // Prepend sequence number
                         BigEndian.CopyBytes(m_bufferBlockSequenceNumber, bufferBlock, 0);
                         m_bufferBlockSequenceNumber++;
 
                         // Copy signal index into buffer
-                        bufferBlockSignalIndex = m_signalIndexCache.GetSignalIndex(bufferBlockMeasurement.Key);
+                        int bufferBlockSignalIndex = SignalIndexCache.GetSignalIndex(bufferBlockMeasurement.Key);
                         BigEndian.CopyBytes(bufferBlockSignalIndex, bufferBlock, 4);
 
                         // Append measurement data and send
                         Buffer.BlockCopy(bufferBlockMeasurement.Buffer, 0, bufferBlock, 6, bufferBlockMeasurement.Length);
-                        m_parent.SendClientResponse(m_clientID, ServerResponse.BufferBlock, ServerCommand.Subscribe, bufferBlock);
+                        m_parent.SendClientResponse(ClientID, ServerResponse.BufferBlock, ServerCommand.Subscribe, bufferBlock);
 
                         lock (m_bufferBlockCacheLock)
                         {
@@ -663,13 +630,14 @@ namespace sttp
                     else
                     {
                         // Serialize the current measurement.
+                        IBinaryMeasurement binaryMeasurement;
                         if (useCompactMeasurementFormat)
-                            binaryMeasurement = new CompactMeasurement(measurement, m_signalIndexCache, m_includeTime, m_baseTimeOffsets, m_timeIndex, m_useMillisecondResolution);
+                            binaryMeasurement = new CompactMeasurement(measurement, SignalIndexCache, m_includeTime, m_baseTimeOffsets, m_timeIndex, m_useMillisecondResolution);
                         else
-                            binaryMeasurement = new SerializableMeasurement(measurement, m_parent.GetClientEncoding(m_clientID));
+                            binaryMeasurement = new SerializableMeasurement(measurement, m_parent.GetClientEncoding(ClientID));
 
                         // Determine the size of the measurement in bytes.
-                        binaryLength = binaryMeasurement.BinaryLength;
+                        int binaryLength = binaryMeasurement.BinaryLength;
 
                         // If the current measurement will not fit in the packet based on the max
                         // packet size, process the current packet and start a new packet.
@@ -705,44 +673,31 @@ namespace sttp
         private void ProcessBinaryMeasurements(IEnumerable<IBinaryMeasurement> measurements, bool useCompactMeasurementFormat/*, bool usePayloadCompression*/)
         {
             // Create working buffer
-            using (BlockAllocatedMemoryStream workingBuffer = new BlockAllocatedMemoryStream())
-            {
-                // Serialize data packet flags into response
-                DataPacketFlags flags = DataPacketFlags.NoFlags; // No flags means bit is cleared, i.e., unsynchronized
+            using BlockAllocatedMemoryStream workingBuffer = new BlockAllocatedMemoryStream();
 
-                if (useCompactMeasurementFormat)
-                    flags |= DataPacketFlags.Compact;
+            // Serialize data packet flags into response
+            DataPacketFlags flags = DataPacketFlags.NoFlags; // No flags means bit is cleared, i.e., unsynchronized
 
-                workingBuffer.WriteByte((byte)flags);
+            if (useCompactMeasurementFormat)
+                flags |= DataPacketFlags.Compact;
 
-                // No frame level timestamp is serialized into the data packet since all data is unsynchronized and essentially
-                // published upon receipt, however timestamps are optionally included in the serialized measurements.
+            workingBuffer.WriteByte((byte)flags);
 
-                // Serialize total number of measurement values to follow
-                workingBuffer.Write(BigEndian.GetBytes(measurements.Count()), 0, 4);
+            // No frame level timestamp is serialized into the data packet since all data is unsynchronized and essentially
+            // published upon receipt, however timestamps are optionally included in the serialized measurements.
 
-                //// Attempt compression when requested - encoding of compressed buffer only happens if size would be smaller than normal serialization
-                //if (!usePayloadCompression || !measurements.Cast<CompactMeasurement>().CompressPayload(workingBuffer, m_compressionStrength, m_includeTime, ref flags))
-                //{
-                // Serialize measurements to data buffer
-                foreach (IBinaryMeasurement measurement in measurements)
-                    measurement.CopyBinaryImageToStream(workingBuffer);
-                //}
+            // Serialize total number of measurement values to follow
+            workingBuffer.Write(BigEndian.GetBytes(measurements.Count()), 0, 4);
 
-                //// Update data packet flags if it has updated compression flags
-                //if ((flags & DataPacketFlags.Compressed) > 0)
-                //{
-                //    workingBuffer.Seek(0, SeekOrigin.Begin);
-                //    workingBuffer.WriteByte((byte)flags);
-                //}
+            // Serialize measurements to data buffer
+            foreach (IBinaryMeasurement measurement in measurements)
+                measurement.CopyBinaryImageToStream(workingBuffer);
 
-                // Publish data packet to client
-                if (m_parent != null)
-                    m_parent.SendClientResponse(m_clientID, ServerResponse.DataPacket, ServerCommand.Subscribe, workingBuffer.ToArray());
+            // Publish data packet to client
+            m_parent?.SendClientResponse(ClientID, ServerResponse.DataPacket, ServerCommand.Subscribe, workingBuffer.ToArray());
 
-                // Track last publication time
-                m_lastPublishTime = DateTime.UtcNow.Ticks;
-            }
+            // Track last publication time
+            m_lastPublishTime = DateTime.UtcNow.Ticks;
         }
 
         private void ProcessTSSCMeasurements(IEnumerable<IMeasurement> measurements)
@@ -754,11 +709,12 @@ namespace sttp
                     if (!Enabled)
                         return;
 
-                    if (m_tsscEncoder == null || m_resetTsscEncoder)
+                    if (m_tsscEncoder is null || m_resetTsscEncoder)
                     {
                         m_resetTsscEncoder = false;
                         m_tsscEncoder = new TsscEncoder();
                         m_tsscWorkingBuffer = new byte[32 * 1024];
+
                         OnStatusMessage(MessageLevel.Info, $"TSSC algorithm reset before sequence number: {m_tsscSequenceNumber}", "TSSC");
                         m_tsscSequenceNumber = 0;
                     }
@@ -769,7 +725,7 @@ namespace sttp
 
                     foreach (IMeasurement measurement in measurements)
                     {
-                        int index = m_signalIndexCache.GetSignalIndex(measurement.Key);
+                        int index = SignalIndexCache.GetSignalIndex(measurement.Key);
 
                         if (!m_tsscEncoder.TryAddMeasurement(index, measurement.Timestamp.Value, (uint)measurement.StateFlags, (float)measurement.AdjustedValue))
                         {
@@ -811,17 +767,17 @@ namespace sttp
             BigEndian.CopyBytes(count, packet, 1);
 
             packet[1 + 4] = 85; // A version number
+            
             BigEndian.CopyBytes(m_tsscSequenceNumber, packet, 5 + 1);
+
             m_tsscSequenceNumber++;
+
             if (m_tsscSequenceNumber == 0)
-            {
-                //Do not increment to 0
-                m_tsscSequenceNumber = 1;
-            }
+                m_tsscSequenceNumber = 1; //Do not increment to 0
+
             Array.Copy(m_tsscWorkingBuffer, 0, packet, 8, length);
 
-            if (m_parent != null)
-                m_parent.SendClientResponse(m_clientID, ServerResponse.DataPacket, ServerCommand.Subscribe, packet);
+            m_parent?.SendClientResponse(ClientID, ServerResponse.DataPacket, ServerCommand.Subscribe, packet);
 
             // Track last publication time
             m_lastPublishTime = DateTime.UtcNow.Ticks;
@@ -834,11 +790,11 @@ namespace sttp
             {
                 foreach (byte[] bufferBlock in m_bufferBlockCache)
                 {
-                    if (bufferBlock != null)
-                    {
-                        m_parent.SendClientResponse(m_clientID, ServerResponse.BufferBlock, ServerCommand.Subscribe, bufferBlock);
-                        OnBufferBlockRetransmission();
-                    }
+                    if (bufferBlock is null)
+                        continue;
+
+                    m_parent.SendClientResponse(ClientID, ServerResponse.BufferBlock, ServerCommand.Subscribe, bufferBlock);
+                    OnBufferBlockRetransmission();
                 }
             }
 
@@ -849,43 +805,41 @@ namespace sttp
         // Rotates base time offsets
         private void RotateBaseTimes()
         {
-            if (m_parent != null && m_baseTimeRotationTimer != null)
+            if (m_parent == null || m_baseTimeRotationTimer == null)
+                return;
+
+            if (m_baseTimeOffsets is null)
             {
-                if (m_baseTimeOffsets == null)
-                {
-                    m_baseTimeOffsets = new long[2];
-                    m_baseTimeOffsets[0] = RealTime;
-                    m_baseTimeOffsets[1] = RealTime + m_baseTimeRotationTimer.Interval * Ticks.PerMillisecond;
-                    m_timeIndex = 0;
-                }
-                else
-                {
-                    int oldIndex = m_timeIndex;
-
-                    // Switch to newer timestamp
-                    m_timeIndex ^= 1;
-
-                    // Now make older timestamp the newer timestamp
-                    m_baseTimeOffsets[oldIndex] = RealTime + m_baseTimeRotationTimer.Interval * Ticks.PerMillisecond;
-                }
-
-                // Since this function will only be called periodically, there is no real benefit
-                // to maintaining this memory stream at a member level
-                using (BlockAllocatedMemoryStream responsePacket = new BlockAllocatedMemoryStream())
-                {
-                    responsePacket.Write(BigEndian.GetBytes(m_timeIndex), 0, 4);
-                    responsePacket.Write(BigEndian.GetBytes(m_baseTimeOffsets[0]), 0, 8);
-                    responsePacket.Write(BigEndian.GetBytes(m_baseTimeOffsets[1]), 0, 8);
-
-                    m_parent.SendClientResponse(m_clientID, ServerResponse.UpdateBaseTimes, ServerCommand.Subscribe, responsePacket.ToArray());
-                }
+                m_baseTimeOffsets = new long[2];
+                m_baseTimeOffsets[0] = RealTime;
+                m_baseTimeOffsets[1] = RealTime + m_baseTimeRotationTimer.Interval * Ticks.PerMillisecond;
+                m_timeIndex = 0;
             }
+            else
+            {
+                int oldIndex = m_timeIndex;
+
+                // Switch to newer timestamp
+                m_timeIndex ^= 1;
+
+                // Now make older timestamp the newer timestamp
+                m_baseTimeOffsets[oldIndex] = RealTime + m_baseTimeRotationTimer.Interval * Ticks.PerMillisecond;
+            }
+
+            // Since this function will only be called periodically, there is no real benefit
+            // to maintaining this memory stream at a member level
+            using MemoryStream responsePacket = new MemoryStream();
+
+            responsePacket.Write(BigEndian.GetBytes(m_timeIndex), 0, 4);
+            responsePacket.Write(BigEndian.GetBytes(m_baseTimeOffsets[0]), 0, 8);
+            responsePacket.Write(BigEndian.GetBytes(m_baseTimeOffsets[1]), 0, 8);
+
+            m_parent.SendClientResponse(ClientID, ServerResponse.UpdateBaseTimes, ServerCommand.Subscribe, responsePacket.ToArray());
         }
 
         private void OnBufferBlockRetransmission()
         {
-            if ((object)BufferBlockRetransmission != null)
-                BufferBlockRetransmission(this, EventArgs.Empty);
+            BufferBlockRetransmission?.Invoke(this, EventArgs.Empty);
         }
 
         private void BaseTimeRotationTimer_Elapsed(object sender, EventArgs<DateTime> e)
@@ -900,8 +854,7 @@ namespace sttp
         // Explicitly implement processing completed event bubbler to satisfy IClientSubscription interface
         void IClientSubscription.OnProcessingCompleted(object sender, EventArgs e)
         {
-            if ((object)ProcessingComplete != null)
-                ProcessingComplete(sender, new EventArgs<IClientSubscription, EventArgs>(this, e));
+            ProcessingComplete?.Invoke(sender, new EventArgs<IClientSubscription, EventArgs>(this, e));
         }
 
         #endregion

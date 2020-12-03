@@ -182,7 +182,6 @@ namespace sttp
         private int m_timeIndex;
         private readonly bool m_useMillisecondResolution;
         private bool m_usingBaseTimeOffset;
-        private readonly bool m_includeTime;
 
         #endregion
 
@@ -199,14 +198,10 @@ namespace sttp
         public CompactMeasurement(SignalIndexCache signalIndexCache, bool includeTime = true, long[] baseTimeOffsets = null, int timeIndex = 0, bool useMillisecondResolution = false)
         {
             m_signalIndexCache = signalIndexCache;
-            m_includeTime = includeTime;
+            IncludeTime = includeTime;
 
             // We keep a clone of the base time offsets, if provided, since array contents can change at any time
-            if (baseTimeOffsets == null)
-                m_baseTimeOffsets = s_emptyBaseTimeOffsets;
-            else
-                m_baseTimeOffsets = new[] { baseTimeOffsets[0], baseTimeOffsets[1] };
-
+            m_baseTimeOffsets = baseTimeOffsets is null ? s_emptyBaseTimeOffsets : new[] { baseTimeOffsets[0], baseTimeOffsets[1] };
             m_timeIndex = timeIndex;
             m_useMillisecondResolution = useMillisecondResolution;
         }
@@ -228,14 +223,10 @@ namespace sttp
             StateFlags = measurement.StateFlags;
 
             m_signalIndexCache = signalIndexCache;
-            m_includeTime = includeTime;
+            IncludeTime = includeTime;
 
             // We keep a clone of the base time offsets, if provided, since array contents can change at any time
-            if (baseTimeOffsets == null)
-                m_baseTimeOffsets = s_emptyBaseTimeOffsets;
-            else
-                m_baseTimeOffsets = new[] { baseTimeOffsets[0], baseTimeOffsets[1] };
-
+            m_baseTimeOffsets = baseTimeOffsets is null ? s_emptyBaseTimeOffsets : new[] { baseTimeOffsets[0], baseTimeOffsets[1] };
             m_timeIndex = timeIndex;
             m_useMillisecondResolution = useMillisecondResolution;
         }
@@ -247,7 +238,7 @@ namespace sttp
         /// <summary>
         /// Gets flag that determines if time is serialized into measurement binary image.
         /// </summary>
-        public bool IncludeTime => m_includeTime;
+        public bool IncludeTime { get; }
 
         /// <summary>
         /// Gets the length of the <see cref="CompactMeasurement"/>.
@@ -258,7 +249,7 @@ namespace sttp
             {
                 int length = FixedLength;
 
-                if (m_includeTime)
+                if (IncludeTime)
                 {
                     long baseTimeOffset = m_baseTimeOffsets[m_timeIndex];
 
@@ -391,7 +382,7 @@ namespace sttp
             Value = BigEndian.ToSingle(buffer, index);
             index += 4;
 
-            if (m_includeTime)
+            if (IncludeTime)
             {
                 if (m_usingBaseTimeOffset)
                 {
@@ -466,7 +457,7 @@ namespace sttp
             // Encode adjusted value (accounts for adder and multiplier)
             startIndex += BigEndian.CopyBytes((float)AdjustedValue, buffer, startIndex);
 
-            if (m_includeTime)
+            if (IncludeTime)
             {
                 if (m_usingBaseTimeOffset)
                 {

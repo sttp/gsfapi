@@ -34,8 +34,6 @@ using GSF.Collections;
 using GSF.Parsing;
 using GSF.TimeSeries;
 
-#pragma warning disable 618
-
 namespace sttp
 {
     /// <summary>
@@ -95,7 +93,13 @@ namespace sttp
             m_subscriberID = remoteCache.SubscriberID;
 
             // If active measurements are defined, interpret signal cache in context of current measurement key definitions
-            if (dataSource != null && dataSource.Tables.Contains("ActiveMeasurements"))
+            if (dataSource is null || !dataSource.Tables.Contains("ActiveMeasurements"))
+            {
+                // Just use remote signal index cache as-is if no local configuration exists
+                m_reference = remoteCache.Reference;
+                m_unauthorizedSignalIDs = remoteCache.UnauthorizedSignalIDs;
+            }
+            else
             {
                 DataTable activeMeasurements = dataSource.Tables["ActiveMeasurements"];
                 m_reference = new ConcurrentDictionary<int, MeasurementKey>();
@@ -105,20 +109,14 @@ namespace sttp
                     Guid signalID = signalIndex.Value.SignalID;
                     DataRow[] filteredRows = activeMeasurements.Select($"SignalID = '{signalID}'");
 
-                    if (filteredRows.Length > 0)
-                    {
-                        DataRow row = filteredRows[0];
-                        MeasurementKey key = MeasurementKey.LookUpOrCreate(signalID, row["ID"].ToNonNullString(MeasurementKey.Undefined.ToString()));
-                        m_reference.TryAdd(signalIndex.Key, key);
-                    }
+                    if (filteredRows.Length == 0)
+                        continue;
+
+                    DataRow row = filteredRows[0];
+                    MeasurementKey key = MeasurementKey.LookUpOrCreate(signalID, row["ID"].ToNonNullString(MeasurementKey.Undefined.ToString()));
+                    m_reference.TryAdd(signalIndex.Key, key);
                 }
 
-                m_unauthorizedSignalIDs = remoteCache.UnauthorizedSignalIDs;
-            }
-            else
-            {
-                // Just use remote signal index cache as-is if no local configuration exists
-                m_reference = remoteCache.Reference;
                 m_unauthorizedSignalIDs = remoteCache.UnauthorizedSignalIDs;
             }
         }
@@ -146,10 +144,9 @@ namespace sttp
             {
                 m_reference = value;
                 IndexedArray<int> signalIDCache = new IndexedArray<int>(-1);
-                foreach (var pair in value)
-                {
+
+                foreach (KeyValuePair<int, MeasurementKey> pair in value)
                     signalIDCache[pair.Value.RuntimeID] = pair.Key;
-                }
 
                 m_signalIDCache = signalIDCache;
             }
@@ -158,13 +155,7 @@ namespace sttp
         /// <summary>
         /// Gets reference to array of requested input measurement signal IDs that were authorized.
         /// </summary>
-        public Guid[] AuthorizedSignalIDs
-        {
-            get
-            {
-                return m_reference.Select(kvp => kvp.Value.SignalID).ToArray();
-            }
-        }
+        public Guid[] AuthorizedSignalIDs => m_reference.Select(kvp => kvp.Value.SignalID).ToArray();
 
         /// <summary>
         /// Gets or sets reference to array of requested input measurement signal IDs that were unauthorized.
@@ -178,16 +169,7 @@ namespace sttp
         /// <summary>
         /// Gets the current maximum integer signal index.
         /// </summary>
-        public int MaximumIndex
-        {
-            get
-            {
-                if (m_reference.Count == 0)
-                    return 0;
-
-                return m_reference.Max(kvp => kvp.Key) + 1;
-            }
-        }
+        public int MaximumIndex => m_reference.Count == 0 ? 0 : m_reference.Max(kvp => kvp.Key) + 1;
 
         /// <summary>
         /// Gets or sets character encoding used to convert strings to binary.
@@ -205,13 +187,11 @@ namespace sttp
         {
             get
             {
-                int binaryLength = 0;
-
-                if (m_encoding == null)
+                if (m_encoding is null)
                     throw new InvalidOperationException("Attempt to get binary length of signal index cache without setting a character encoding.");
 
                 // Byte size of cache
-                binaryLength += 4;
+                int binaryLength = 4;
 
                 // Subscriber ID
                 binaryLength += 16;
@@ -244,11 +224,7 @@ namespace sttp
         public int GetSignalIndex(MeasurementKey key)
         {
             int value = m_signalIDCache[key.RuntimeID];
-
-            if (value < 0)
-                return int.MaxValue;
-
-            return value;
+            return value < 0 ? int.MaxValue : value;
         }
 
         /// <summary>
@@ -259,20 +235,17 @@ namespace sttp
         /// <returns>The number of bytes written to the <paramref name="buffer"/>.</returns>
         public int GenerateBinaryImage(byte[] buffer, int startIndex)
         {
-            Guid[] unauthorizedSignalIDs = m_unauthorizedSignalIDs ?? new Guid[0];
+            if (m_encoding is null)
+                throw new InvalidOperationException("Attempt to generate binary image of signal index cache without setting a character encoding.");
 
+            Guid[] unauthorizedSignalIDs = m_unauthorizedSignalIDs ?? new Guid[0];
             int binaryLength = BinaryLength;
             int offset = startIndex;
-            byte[] bigEndianBuffer;
-            byte[] unicodeBuffer;
-
-            if (m_encoding == null)
-                throw new InvalidOperationException("Attempt to generate binary image of signal index cache without setting a character encoding.");
 
             buffer.ValidateParameters(startIndex, binaryLength);
 
             // Byte size of cache
-            bigEndianBuffer = BigEndian.GetBytes(binaryLength);
+            byte[] bigEndianBuffer = BigEndian.GetBytes(binaryLength);
             Buffer.BlockCopy(bigEndianBuffer, 0, buffer, offset, bigEndianBuffer.Length);
             offset += bigEndianBuffer.Length;
 
@@ -299,7 +272,7 @@ namespace sttp
                 offset += bigEndianBuffer.Length;
 
                 // Source
-                unicodeBuffer = m_encoding.GetBytes(kvp.Value.Source);
+                byte[] unicodeBuffer = m_encoding.GetBytes(kvp.Value.Source);
                 bigEndianBuffer = BigEndian.GetBytes(unicodeBuffer.Length);
                 Buffer.BlockCopy(bigEndianBuffer, 0, buffer, offset, bigEndianBuffer.Length);
                 offset += bigEndianBuffer.Length;
@@ -337,19 +310,7 @@ namespace sttp
         /// <returns>The number of bytes used for initialization in the <paramref name="buffer"/> (i.e., the number of bytes parsed).</returns>
         public int ParseBinaryImage(byte[] buffer, int startIndex, int length)
         {
-            int binaryLength;
-            int offset = startIndex;
-
-            int referenceCount;
-            int signalIndex;
-            Guid signalID;
-            int sourceSize;
-            string source;
-            ulong id;
-
-            int unauthorizedIDCount;
-
-            if (m_encoding == null)
+            if (m_encoding is null)
                 throw new InvalidOperationException("Attempt to parse binary image of signal index cache without setting a character encoding.");
 
             buffer.ValidateParameters(startIndex, length);
@@ -357,8 +318,10 @@ namespace sttp
             if (length < 4)
                 return 0;
 
+            int offset = startIndex;
+
             // Byte size of cache
-            binaryLength = BigEndian.ToInt32(buffer, offset);
+            int binaryLength = BigEndian.ToInt32(buffer, offset);
             offset += 4;
 
             if (length < binaryLength)
@@ -372,34 +335,35 @@ namespace sttp
             offset += 16;
 
             // Number of references
-            referenceCount = BigEndian.ToInt32(buffer, offset);
+            int referenceCount = BigEndian.ToInt32(buffer, offset);
             offset += 4;
 
             for (int i = 0; i < referenceCount; i++)
             {
                 // Signal index
-                signalIndex = BigEndian.ToInt32(buffer, offset);
+                int signalIndex = BigEndian.ToInt32(buffer, offset);
                 offset += 4;
 
                 // Signal ID
-                signalID = buffer.ToRfcGuid(offset);
+                Guid signalID = buffer.ToRfcGuid(offset);
                 offset += 16;
 
                 // Source
-                sourceSize = BigEndian.ToInt32(buffer, offset);
+                int sourceSize = BigEndian.ToInt32(buffer, offset);
                 offset += 4;
-                source = m_encoding.GetString(buffer, offset, sourceSize);
+
+                string source = m_encoding.GetString(buffer, offset, sourceSize);
                 offset += sourceSize;
 
                 // ID
-                id = BigEndian.ToUInt64(buffer, offset);
+                ulong id = BigEndian.ToUInt64(buffer, offset);
                 offset += 8;
 
                 m_reference[signalIndex] = MeasurementKey.LookUpOrCreate(signalID, source, id);
             }
 
             // Number of unauthorized IDs
-            unauthorizedIDCount = BigEndian.ToInt32(buffer, offset);
+            int unauthorizedIDCount = BigEndian.ToInt32(buffer, offset);
             m_unauthorizedSignalIDs = new Guid[unauthorizedIDCount];
             offset += 4;
 
