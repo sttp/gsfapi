@@ -523,7 +523,8 @@ namespace sttp
         /// Gets flag that indicates whether the connection will be persisted
         /// even while the adapter is offline in order to synchronize metadata.
         /// </summary>
-        public bool PersistConnectionForMetadata => !AutoStart && AutoSynchronizeMetadata && !this.TemporalConstraintIsDefined();
+        public bool PersistConnectionForMetadata =>
+            !AutoStart && AutoSynchronizeMetadata && !this.TemporalConstraintIsDefined();
 
         /// <summary>
         /// Gets or sets flag that determines if child devices associated with a subscription
@@ -544,6 +545,30 @@ namespace sttp
         /// FILTER MeasurementDetail WHERE SignalType &lt;&gt; 'STAT'; FILTER PhasorDetail WHERE Phase = '+'
         /// </example>
         public string MetadataFilters { get; set; }
+
+        /// <summary>
+        /// Gets or sets flag that determines if a subscription is mutual, i.e., bi-directional pub/sub. In this mode one node will
+        /// be the owner and set <c>Internal = True</c> and the other node will be the renter and set <c>Internal = False</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// This flag is intended to be used in scenarios where a remote subscriber can add new measurements associated with a
+        /// source device, e.g., creating new calculated result measurements on a remote machine for load distribution that should
+        /// get associated with a device on the local machine, thus becoming part of the local measurement set.
+        /// </para>
+        /// <para>
+        /// For best results, both the owner and renter subscriptions should be reduced to needed measurements, i.e., renter should
+        /// only receive measurements needed for remote calculations and owner should only receive new calculated results. Note that
+        /// when used with a TLS-style subscription this can be accomplished by using the subscription UI screens that control the
+        /// measurement <c>subscribed</c> flag. For internal subscriptions, reduction of metadata and subscribed measurements will
+        /// need to be controlled via connection string with <c>metadataFilters</c> and <c>outputMeasurements</c>, respectively.
+        /// </para>
+        /// <para>
+        /// Setting <see cref="MutualSubscription"/> to <c>true</c> will force <see cref="ReceiveInternalMetadata"/> to <c>true</c>
+        /// and <see cref="ReceiveExternalMetadata"/> to <c>false</c>.
+        /// </para>
+        /// </remarks>
+        public bool MutualSubscription { get; set; }
 
         /// <summary>
         /// Gets or sets flag that informs publisher if base time-offsets can use millisecond resolution to conserve bandwidth.
@@ -940,7 +965,17 @@ namespace sttp
                 status.AppendLine();
                 status.AppendFormat("         Compression modes: {0}", CompressionModes);
                 status.AppendLine();
-                
+                status.AppendFormat("       Mutual Subscription: {0}{1}", MutualSubscription, MutualSubscription ? $" - system is {(m_internal ? "owner" : "renter")}" : "");
+                status.AppendLine();
+                status.AppendFormat(" Mark Received as Internal: {0}", m_internal);
+                status.AppendLine();
+                status.AppendFormat(" Receive Internal Metadata: {0}", ReceiveInternalMetadata);
+                status.AppendLine();
+                status.AppendFormat(" Receive External Metadata: {0}", ReceiveExternalMetadata);
+                status.AppendLine();
+                status.AppendFormat("      Total Bytes Received: {0:N0}", TotalBytesReceived);
+                status.AppendLine();
+
                 if (!(m_dataChannel is null))
                 {
                     status.AppendFormat("  UDP Data packet security: {0}", m_keyIVs is null ? "Unencrypted" : "Encrypted");
@@ -1190,6 +1225,7 @@ namespace sttp
 
                 DataLossInterval = 0.0D;
                 ClientCommandChannel = null;
+				ServerCommandChannel = null;
                 DataChannel = null;
 
                 if (!(m_dataGapRecoverer is null))
@@ -1261,6 +1297,14 @@ namespace sttp
             // Check if user has explicitly defined the ReceiveExternalMetadata flag
             if (settings.TryGetValue("receiveExternalMetadata", out setting))
                 ReceiveExternalMetadata = setting.ParseBoolean();
+
+            // Check if user has explicitly defined the MutualSubscription flag
+            if (settings.TryGetValue(nameof(MutualSubscription), out setting) && setting.ParseBoolean())
+            {
+                MutualSubscription = true;
+                ReceiveInternalMetadata = true;
+                ReceiveExternalMetadata = false;
+            }
 
             // Check if user has defined a meta-data synchronization timeout
             if (settings.TryGetValue("metadataSynchronizationTimeout", out setting) && int.TryParse(setting, out int metadataSynchronizationTimeout))
@@ -3039,7 +3083,7 @@ namespace sttp
                             string deleteDeviceSql = database.ParameterizedQueryString("DELETE FROM Device WHERE UniqueID = {0}", "uniqueID");
 
                             // Determine which device rows should be synchronized based on operational mode flags
-                            if (ReceiveInternalMetadata && ReceiveExternalMetadata)
+                            if (ReceiveInternalMetadata && ReceiveExternalMetadata || MutualSubscription)
                                 deviceRows = deviceDetail.Select();
                             else if (ReceiveInternalMetadata)
                                 deviceRows = deviceDetail.Select("OriginalSource IS NULL");
@@ -3152,36 +3196,37 @@ namespace sttp
                                     if (interconnectionNameFieldExists)
                                         contactList["interconnectionName"] = row.Field<string>("InterconnectionName") ?? string.Empty;
 
-                                    // Determine if device record already exists
-                                    if (Convert.ToInt32(command.ExecuteScalar(deviceExistsSql, MetadataSynchronizationTimeout, database.Guid(uniqueID))) == 0)
+                                    // For mutual subscriptions where this subscription is owner (i.e., internal is true), we only sync devices that we did not provide
+                                    if (!MutualSubscription || !m_internal || string.IsNullOrEmpty(row.Field<string>("OriginalSource")))
                                     {
-                                        // Insert new device record
-                                        command.ExecuteNonQuery(insertDeviceSql, MetadataSynchronizationTimeout, database.Guid(m_nodeID), parentID, historianID, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"), m_sttpProtocolID, row.ConvertField<int>("FramesPerSecond"),
-                                                                m_internal ? (object)DBNull.Value : string.IsNullOrEmpty(row.Field<string>("ParentAcronym")) ? sourcePrefix + row.Field<string>("Acronym") : sourcePrefix + row.Field<string>("ParentAcronym"), accessID, longitude, latitude, contactList.JoinKeyValuePairs());
+                                        // Gateway is assuming ownership of the device records when the "internal" flag is true - this means the device's measurements can be forwarded to another party. From a device record perspective,
+                                        // ownership is inferred by setting 'OriginalSource' to null. When gateway doesn't own device records (i.e., the "internal" flag is false), this means the device's measurements can only be consumed
+                                        // locally - from a device record perspective this means the 'OriginalSource' field is set to the acronym of the PDC or PMU that generated the source measurements. This field allows a mirrored source
+                                        // restriction to be implemented later to ensure all devices in an output protocol came from the same original source connection, if desired.
+                                        originalSource = m_internal ? (object)DBNull.Value : string.IsNullOrEmpty(row.Field<string>("ParentAcronym")) ? sourcePrefix + row.Field<string>("Acronym") : sourcePrefix + row.Field<string>("ParentAcronym");
 
-                                        // Guids are normally auto-generated during insert - after insertion update the Guid so that it matches the source data. Most of the database
-                                        // scripts have triggers that support properly assigning the Guid during an insert, but this code ensures the Guid will always get assigned.
-                                        command.ExecuteNonQuery(updateDeviceUniqueIDSql, MetadataSynchronizationTimeout, database.Guid(uniqueID), sourcePrefix + row.Field<string>("Acronym"));
-                                    }
-                                    else if (recordNeedsUpdating)
-                                    {
-                                        // Perform safety check to preserve device records which are not safe to overwrite (e.g., device already exists locally as part of another connection)
-                                        if (Convert.ToInt32(command.ExecuteScalar(deviceIsUpdatableSql, MetadataSynchronizationTimeout, database.Guid(uniqueID), parentID)) <= 0)
-                                        {
-                                            // Gateway is assuming ownership of the device records when the "internal" flag is true - this means the device's measurements can be forwarded to another party. From a device record perspective,
-                                            // ownership is inferred by setting 'OriginalSource' to null. When gateway doesn't own device records (i.e., the "internal" flag is false), this means the device's measurements can only be consumed
-                                            // locally - from a device record perspective this means the 'OriginalSource' field is set to the acronym of the PDC or PMU that generated the source measurements. This field allows a mirrored source
-                                            // restriction to be implemented later to ensure all devices in an output protocol came from the same original source connection, if desired.
-                                            originalSource = m_internal ? (object)DBNull.Value : string.IsNullOrEmpty(row.Field<string>("ParentAcronym")) ? sourcePrefix + row.Field<string>("Acronym") : sourcePrefix + row.Field<string>("ParentAcronym");
+	                                    // Determine if device record already exists
+	                                    if (Convert.ToInt32(command.ExecuteScalar(deviceExistsSql, MetadataSynchronizationTimeout, database.Guid(uniqueID))) == 0)
+	                                    {
+	                                        // Insert new device record
+	                                        command.ExecuteNonQuery(insertDeviceSql, MetadataSynchronizationTimeout, database.Guid(m_nodeID), parentID, historianID, sourcePrefix + row.Field<string>("Acronym"),
+												row.Field<string>("Name"), m_sttpProtocolID, row.ConvertField<int>("FramesPerSecond"),
+	                                            originalSource, accessID, longitude, latitude, contactList.JoinKeyValuePairs());
+
+	                                        // Guids are normally auto-generated during insert - after insertion update the Guid so that it matches the source data. Most of the database
+	                                        // scripts have triggers that support properly assigning the Guid during an insert, but this code ensures the Guid will always get assigned.
+	                                        command.ExecuteNonQuery(updateDeviceUniqueIDSql, MetadataSynchronizationTimeout, database.Guid(uniqueID), sourcePrefix + row.Field<string>("Acronym"));
+	                                    }
+	                                    else if (recordNeedsUpdating)
+	                                    {
+	                                        // Perform safety check to preserve device records which are not safe to overwrite (e.g., device already exists locally as part of another connection)
+	                                        if (Convert.ToInt32(command.ExecuteScalar(deviceIsUpdatableSql, MetadataSynchronizationTimeout, database.Guid(uniqueID), parentID)) > 0)
+                                                continue;
 
                                             // Update existing device record
-                                            command.ExecuteNonQuery(updateDeviceSql, MetadataSynchronizationTimeout, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"), originalSource, m_sttpProtocolID, row.ConvertField<int>("FramesPerSecond"), historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Guid(uniqueID));
+											command.ExecuteNonQuery(updateDeviceSql, MetadataSynchronizationTimeout, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),											
+												originalSource, m_sttpProtocolID, row.ConvertField<int>("FramesPerSecond"), historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Guid(uniqueID));
                                         }
-
-                                        // Even when device already exists locally, we allow device ID to be tracked since in a mutual subscription the remote subscriber may add new measurements
-                                        // to local device -- measurements will only be synchronized when a source device exists in the deviceIDs map. The use case is that a separate machine has
-                                        // been established to run calculations whose results are associated with a source device, the primary publisher will then want to subscribe to these
-                                        // calculated results so they can be processed and redistributed locally.
                                     }
                                 }
 
@@ -3245,24 +3290,31 @@ namespace sttp
 
                             // Define local signal type ID deletion exclusion set
                             List<int> excludedSignalTypeIDs = new List<int>();
+                            string deleteCondition = "";
 
-                            // We are intentionally ignoring CALC and ALRM signals during measurement deletion since if you have subscribed to a device and subsequently created local
-                            // calculations and alarms associated with this device, these signals are locally owned and not part of the publisher subscription stream. As a result any
-                            // CALC or ALRM measurements that are created at source and then removed could be orphaned in subscriber. The best fix would be to have a simple flag that
-                            // clearly designates that a measurement was created locally and is not part of the remote synchronization set.
-                            if (signalTypeIDs.TryGetValue("CALC", out int signalTypeID))
-                                excludedSignalTypeIDs.Add(signalTypeID);
+                            if (MutualSubscription && !m_internal)
+                            {
+                                // For mutual subscriptions where this subscription is renter (i.e., internal is false), do not delete measurements that are locally owned
+                                deleteCondition = " AND Internal == 0";
+                            }
+                            else
+                            {
+                                // We are intentionally ignoring CALC and ALRM signals during measurement deletion since if you have subscribed to a device and subsequently created local
+                                // calculations and alarms associated with this device, these signals are locally owned and not part of the publisher subscription stream. As a result any
+                                // CALC or ALRM measurements that are created at source and then removed could be orphaned in subscriber. The best fix would be to have a simple flag that
+                                // clearly designates that a measurement was created locally and is not part of the remote synchronization set.
+                                if (signalTypeIDs.TryGetValue("CALC", out int signalTypeID))
+                                    excludedSignalTypeIDs.Add(signalTypeID);
 
-                            if (signalTypeIDs.TryGetValue("ALRM", out signalTypeID))
-                                excludedSignalTypeIDs.Add(signalTypeID);
+                                if (signalTypeIDs.TryGetValue("ALRM", out signalTypeID))
+                                    excludedSignalTypeIDs.Add(signalTypeID);
 
-                            string exclusionExpression = "";
-
-                            if (excludedSignalTypeIDs.Count > 0)
-                                exclusionExpression = $" AND NOT SignalTypeID IN ({excludedSignalTypeIDs.ToDelimitedString(',')})";
+                                if (excludedSignalTypeIDs.Count > 0)
+                                    deleteCondition = $" AND NOT SignalTypeID IN ({excludedSignalTypeIDs.ToDelimitedString(',')})";
+                            }
 
                             // Define SQL statement to remove device records that no longer exist in the meta-data
-                            string deleteMeasurementSql = database.ParameterizedQueryString($"DELETE FROM Measurement WHERE SignalID = {{0}}{exclusionExpression}", "signalID");
+                            string deleteMeasurementSql = database.ParameterizedQueryString($"DELETE FROM Measurement WHERE SignalID = {{0}}{deleteCondition}", "signalID");
 
                             // Determine which measurement rows should be synchronized based on operational mode flags
                             if (ReceiveInternalMetadata && ReceiveExternalMetadata)
@@ -3528,13 +3580,17 @@ namespace sttp
                                     command.ExecuteNonQuery(updateDestinationPhasorIDSql, MetadataSynchronizationTimeout, destinationPhasorID, sourcePhasorID);
                             }
 
-                            // Remove any phasor records associated with existing devices in this session but no longer exist in the meta-data
-                            foreach (int id in deviceIDs.Values)
+                            // For mutual subscriptions where this subscription is owner (i.e., internal is true), do not delete any phasor data - it will be managed by owner only
+                            if (!MutualSubscription || !m_internal)
                             {
-                                if (definedSourceIndicies.TryGetValue(id, out List<int> sourceIndicies))
-                                    command.ExecuteNonQuery($"{deletePhasorSql} AND SourceIndex NOT IN ({string.Join(",", sourceIndicies)})", MetadataSynchronizationTimeout, id);
-                                else
-                                    command.ExecuteNonQuery(deletePhasorSql, MetadataSynchronizationTimeout, id);
+	                            // Remove any phasor records associated with existing devices in this session but no longer exist in the meta-data
+	                            foreach (int id in deviceIDs.Values)
+	                            {
+	                                if (definedSourceIndicies.TryGetValue(id, out List<int> sourceIndicies))
+	                                    command.ExecuteNonQuery($"{deletePhasorSql} AND SourceIndex NOT IN ({string.Join(",", sourceIndicies)})", MetadataSynchronizationTimeout, id);
+	                                else
+	                                    command.ExecuteNonQuery(deletePhasorSql, MetadataSynchronizationTimeout, id);
+                                }
                             }
                         }
 
@@ -4249,7 +4305,7 @@ namespace sttp
             {
                 statisticsHelper?.Update(now);
 
-                // TODO: Missing data detection could be complex. For example, no need to continue logging data outages for devices that are offline - but how to detect?
+                // FUTURE: Missing data detection could be complex. For example, no need to continue logging data outages for devices that are offline - but how to detect?
                 // If data channel is UDP, measurements are missing for time span and data gap recovery enabled, request missing
                 //if (!(m_dataChannel is null) && m_dataGapRecoveryEnabled && !(m_dataGapRecoverer is null) && m_lastMeasurementCheck > 0 &&
                 //    statisticsHelper.Device.MeasurementsExpected - statisticsHelper.Device.MeasurementsReceived > m_minimumMissingMeasurementThreshold)
