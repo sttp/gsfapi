@@ -791,7 +791,6 @@ namespace sttp
         private long m_commandChannelConnectionAttempts;
         private Guid m_proxyClientID;
         private RoutingTables m_routingTables;
-        private string m_cachedMeasurementExpression;
         private bool m_encryptPayload;
 
         private long m_lastPublishBufferSize;
@@ -858,17 +857,17 @@ namespace sttp
         /// <summary>
         /// Gets or sets the security mode of the <see cref="DataPublisher"/>'s command channel.
         /// </summary>
-        [ConnectionStringParameter,
-        Description("Define the security mode used for communications over the command channel."),
-        DefaultValue(DefaultSecurityMode)]
+        [ConnectionStringParameter]
+        [Description("Define the security mode used for communications over the command channel.")]
+        [DefaultValue(DefaultSecurityMode)]
         public SecurityMode SecurityMode { get; set; }
 
         /// <summary>
         /// Gets or sets flag that determines whether data sent over the data channel should be encrypted.
         /// </summary>
-        [ConnectionStringParameter,
-        Description("Define the flag that determines whether data sent over the data channel should be encrypted. This value is only relevant when SecurityMode is TLS."),
-        DefaultValue(DefaultEncryptPayload)]
+        [ConnectionStringParameter]
+        [Description("Define the flag that determines whether data sent over the data channel should be encrypted. This value is only relevant when SecurityMode is TLS.")]
+        [DefaultValue(DefaultEncryptPayload)]
         public bool EncryptPayload
         {
             get => m_encryptPayload;
@@ -886,49 +885,49 @@ namespace sttp
         /// Gets or sets flag that indicates whether this publisher is publishing
         /// data that this node subscribed to from another node in a shared database.
         /// </summary>
-        [ConnectionStringParameter,
-        Description("Define the flag that indicates whether this publisher is publishing data that this node subscribed to from another node in a shared database."),
-        DefaultValue(DefaultSharedDatabase)]
+        [ConnectionStringParameter]
+        [Description("Define the flag that indicates whether this publisher is publishing data that this node subscribed to from another node in a shared database.")]
+        [DefaultValue(DefaultSharedDatabase)]
         public bool SharedDatabase { get; set; }
 
         /// <summary>
         /// Gets or sets flag that indicates if this publisher will allow payload compression when requested by subscribers.
         /// </summary>
-        [ConnectionStringParameter,
-        Description("Define the flag that indicates if this publisher will allow payload compression when requested by subscribers."),
-        DefaultValue(DefaultAllowPayloadCompression)]
+        [ConnectionStringParameter]
+        [Description("Define the flag that indicates if this publisher will allow payload compression when requested by subscribers.")]
+        [DefaultValue(DefaultAllowPayloadCompression)]
         public bool AllowPayloadCompression { get; set; }
 
         /// <summary>
         /// Gets or sets flag that indicates if this publisher will allow synchronized subscriptions when requested by subscribers.
         /// </summary>
-        [ConnectionStringParameter,
-        Description("Define the flag that indicates if this publisher will allow metadata refresh commands when requested by subscribers."),
-        DefaultValue(DefaultAllowMetadataRefresh)]
+        [ConnectionStringParameter]
+        [Description("Define the flag that indicates if this publisher will allow metadata refresh commands when requested by subscribers.")]
+        [DefaultValue(DefaultAllowMetadataRefresh)]
         public bool AllowMetadataRefresh { get; set; }
 
         /// <summary>
         /// Gets or sets flag that indicates if this publisher will allow filtering of data which is not a number.
         /// </summary>
-        [ConnectionStringParameter,
-        Description("Define the flag that indicates if this publisher will allow filtering of data which is not a number."),
-        DefaultValue(DefaultAllowNaNValueFilter)]
+        [ConnectionStringParameter]
+        [Description("Define the flag that indicates if this publisher will allow filtering of data which is not a number.")]
+        [DefaultValue(DefaultAllowNaNValueFilter)]
         public bool AllowNaNValueFilter { get; set; }
 
         /// <summary>
         /// Gets or sets flag that indicates if this publisher will force filtering of data which is not a number.
         /// </summary>
-        [ConnectionStringParameter,
-        Description("Define the flag that indicates if this publisher will force filtering of data which is not a number."),
-        DefaultValue(DefaultForceNaNValueFilter)]
+        [ConnectionStringParameter]
+        [Description("Define the flag that indicates if this publisher will force filtering of data which is not a number.")]
+        [DefaultValue(DefaultForceNaNValueFilter)]
         public bool ForceNaNValueFilter { get; set; }
 
         /// <summary>
         /// Gets or sets flag that determines whether to use base time offsets to decrease the size of compact measurements.
         /// </summary>
-        [ConnectionStringParameter,
-        Description("Define the flag that determines whether to use base time offsets to decrease the size of compact measurements."),
-        DefaultValue(DefaultUseBaseTimeOffsets)]
+        [ConnectionStringParameter]
+        [Description("Define the flag that determines whether to use base time offsets to decrease the size of compact measurements.")]
+        [DefaultValue(DefaultUseBaseTimeOffsets)]
         public bool UseBaseTimeOffsets { get; set; }
 
         /// <summary>
@@ -942,9 +941,9 @@ namespace sttp
         /// <summary>
         /// Gets or sets the cipher key rotation period.
         /// </summary>
-        [ConnectionStringParameter,
-        Description("Define the period, in milliseconds, over which new cipher keys will be provided to subscribers when EncryptPayload is true."),
-        DefaultValue(DefaultCipherKeyRotationPeriod)]
+        [ConnectionStringParameter]
+        [Description("Define the period, in milliseconds, over which new cipher keys will be provided to subscribers when EncryptPayload is true.")]
+        [DefaultValue(DefaultCipherKeyRotationPeriod)]
         public double CipherKeyRotationPeriod
         {
             get
@@ -970,15 +969,11 @@ namespace sttp
         /// Gets or sets the set of measurements which are cached by the data
         /// publisher to be published to subscribers immediately upon subscription.
         /// </summary>
-        [ConnectionStringParameter,
-        DefaultValue(""),
-        Description("Defines the set of measurements to be cached and sent to subscribers immediately upon subscription."),
-        CustomConfigurationEditor("GSF.TimeSeries.UI.WPF.dll", "GSF.TimeSeries.UI.Editors.MeasurementEditor")]
-        public string CachedMeasurementExpression
-        {
-            get => m_cachedMeasurementExpression;
-            set => m_cachedMeasurementExpression = value;
-        }
+        [ConnectionStringParameter]
+        [Description("Defines the set of measurements to be cached and sent to subscribers immediately upon subscription.")]
+        [CustomConfigurationEditor("GSF.TimeSeries.UI.WPF.dll", "GSF.TimeSeries.UI.Editors.MeasurementEditor")]
+        [DefaultValue("")]
+        public string CachedMeasurementExpression { get; set; }
 
         /// <summary>
         /// Gets or sets the measurement reporting interval.
@@ -986,33 +981,33 @@ namespace sttp
         /// <remarks>
         /// This is used to determined how many measurements should be processed before reporting status.
         /// </remarks>
-        [ConnectionStringParameter,
-        DefaultValue(AdapterBase.DefaultMeasurementReportingInterval),
-        Description("Defines the measurement reporting interval used to determined how many measurements should be processed, per subscriber, before reporting status.")]
+        [ConnectionStringParameter]
+        [Description("Defines the measurement reporting interval used to determined how many measurements should be processed, per subscriber, before reporting status.")]
+        [DefaultValue(AdapterBase.DefaultMeasurementReportingInterval)]
         public int MeasurementReportingInterval { get; set; }
 
         /// <summary>
         /// Gets or sets the maximum publication interval in milliseconds for data publications. Set to zero for no defined maximum.
         /// </summary>
-        [ConnectionStringParameter,
-        DefaultValue(DefaultMaxPublishInterval),
-        Description("Defines the maximum publication interval in milliseconds for data publications. Set to zero for no defined maximum.")]
+        [ConnectionStringParameter]
+        [Description("Defines the maximum publication interval in milliseconds for data publications. Set to zero for no defined maximum.")]
+        [DefaultValue(DefaultMaxPublishInterval)]
         public long MaxPublishInterval { get; set; } = DefaultMaxPublishInterval;
 
         /// <summary>
         /// Gets or sets flag that determines whether measurement rights validation is enforced. Defaults to true for TLS connections.
         /// </summary>
-        [ConnectionStringParameter,
-        DefaultValue(DefaultValidateMeasurementRights),
-        Description("Define the flag that determines whether measurement rights validation is enforced. Defaults to true for TLS connections.")]
+        [ConnectionStringParameter]
+        [Description("Define the flag that determines whether measurement rights validation is enforced. Defaults to true for TLS connections.")]
+        [DefaultValue(DefaultValidateMeasurementRights)]
         public bool ValidateMeasurementRights { get; set; }
 
         /// <summary>
         /// Gets or sets flag that determines whether client subscriber IP address is validated. Defaults to true when measurement rights are validated.")]
         /// </summary>
-        [ConnectionStringParameter,
-        DefaultValue(DefaultValidateClientIPAddress),
-        Description("Define the flag that determines whether client subscriber IP address is validated. Defaults to true when measurement rights are validated.")]
+        [ConnectionStringParameter]
+        [Description("Define the flag that determines whether client subscriber IP address is validated. Defaults to true when measurement rights are validated.")]
+        [DefaultValue(DefaultValidateClientIPAddress)]
         public bool ValidateClientIPAddress { get; set; }
 
         /// <summary>
@@ -1067,6 +1062,8 @@ namespace sttp
                 }
 
                 status.Append(base.Status);
+                status.AppendFormat("       Mutual Subscription: {0}", MutualSubscription);
+                status.AppendLine();
                 status.AppendFormat("        Reporting interval: {0:N0} per subscriber", MeasurementReportingInterval);
                 status.AppendLine();
                 status.AppendFormat("  Buffer block retransmits: {0:N0}", BufferBlockRetransmissions);
@@ -1080,7 +1077,6 @@ namespace sttp
                     status.AppendLine();
                     status.AppendFormat("    Pending publish buffer: {0}", SI2.ToScaledString(m_publishBuffer.Length, 3, "B"));
                     status.AppendLine();
-
                 }
 
                 return status.ToString();
@@ -1344,45 +1340,45 @@ namespace sttp
             Dictionary<string, string> settings = Settings;
 
             // Check flag that will determine if subscriber payloads should be encrypted by default
-            if (settings.TryGetValue("encryptPayload", out string setting))
+            if (settings.TryGetValue(nameof(EncryptPayload), out string setting))
                 m_encryptPayload = setting.ParseBoolean();
 
             // Check flag that indicates whether publisher is publishing data
             // that its node subscribed to from another node in a shared database
-            if (settings.TryGetValue("sharedDatabase", out setting))
+            if (settings.TryGetValue(nameof(SharedDatabase), out setting))
                 SharedDatabase = setting.ParseBoolean();
 
             // Extract custom metadata table expressions if provided
-            if (settings.TryGetValue("metadataTables", out setting) && !string.IsNullOrWhiteSpace(setting))
+            if (settings.TryGetValue(nameof(MetadataTables), out setting) && !string.IsNullOrWhiteSpace(setting))
                 MetadataTables = setting;
 
             // Check for mutual subscription flag
             MutualSubscription = settings.TryGetValue(nameof(MutualSubscription), out setting) && setting.ParseBoolean();
 
             // Check flag to see if payload compression is allowed
-            if (settings.TryGetValue("allowPayloadCompression", out setting))
+            if (settings.TryGetValue(nameof(AllowPayloadCompression), out setting))
                 AllowPayloadCompression = setting.ParseBoolean();
 
             // Check flag to see if metadata refresh commands are allowed
-            if (settings.TryGetValue("allowMetadataRefresh", out setting))
+            if (settings.TryGetValue(nameof(AllowMetadataRefresh), out setting))
                 AllowMetadataRefresh = setting.ParseBoolean();
 
             // Check flag to see if NaN value filtering is allowed
-            if (settings.TryGetValue("allowNaNValueFilter", out setting))
+            if (settings.TryGetValue(nameof(AllowNaNValueFilter), out setting))
                 AllowNaNValueFilter = setting.ParseBoolean();
 
             // Check flag to see if NaN value filtering is forced
-            if (settings.TryGetValue("forceNaNValueFilter", out setting))
+            if (settings.TryGetValue(nameof(ForceNaNValueFilter), out setting))
                 ForceNaNValueFilter = setting.ParseBoolean();
 
-            if (settings.TryGetValue("useBaseTimeOffsets", out setting))
+            if (settings.TryGetValue(nameof(UseBaseTimeOffsets), out setting))
                 UseBaseTimeOffsets = setting.ParseBoolean();
 
             if (settings.TryGetValue(nameof(MaxPacketSize), out setting) && int.TryParse(setting, out int maxPacketSize))
                 MaxPacketSize = maxPacketSize;
 
-            if (settings.TryGetValue("measurementReportingInterval", out setting))
-                MeasurementReportingInterval = int.Parse(setting);
+            if (settings.TryGetValue(nameof(MeasurementReportingInterval), out setting) && int.TryParse(setting, out int measurementReportingInterval))
+                MeasurementReportingInterval = measurementReportingInterval;
             else
                 MeasurementReportingInterval = AdapterBase.DefaultMeasurementReportingInterval;
 
@@ -1393,29 +1389,33 @@ namespace sttp
                 MaxPublishInterval = 0L;
 
             // Get user specified period for cipher key rotation
-            if (settings.TryGetValue("cipherKeyRotationPeriod", out setting) && double.TryParse(setting, out double period))
+            if (settings.TryGetValue(nameof(CipherKeyRotationPeriod), out setting) && double.TryParse(setting, out double period))
                 CipherKeyRotationPeriod = period;
 
             // Get security mode used for the command channel
-            if (settings.TryGetValue("securityMode", out setting))
+            if (settings.TryGetValue(nameof(SecurityMode), out setting))
                 SecurityMode = (SecurityMode)Enum.Parse(typeof(SecurityMode), setting);
 
             // Get any configured flag for measurement rights validation, otherwise set default value
-            if (settings.TryGetValue("validateMeasurementRights", out setting))
+            if (settings.TryGetValue(nameof(ValidateMeasurementRights), out setting))
                 ValidateMeasurementRights = setting.ParseBoolean();
             else
                 ValidateMeasurementRights = SecurityMode == SecurityMode.TLS;
 
             // Gets any configured flag for client IP validation, otherwise set default value
-            if (settings.TryGetValue("m_validateClientIPAddress", out setting))
+            if (settings.TryGetValue(nameof(ValidateClientIPAddress), out setting))
                 ValidateClientIPAddress = setting.ParseBoolean();
             else
                 ValidateClientIPAddress = ValidateMeasurementRights;
 
-            if (settings.TryGetValue("cachedMeasurementExpression", out m_cachedMeasurementExpression))
+            if (settings.TryGetValue(nameof(CachedMeasurementExpression), out setting) &&
+                (AdapterBase.ParseInputMeasurementKeys(DataSource, false, setting).Length > 0 ||
+                 AdapterBase.ParseFilterExpression(setting, out _, out _, out _, out _)))
             {
+                CachedMeasurementExpression = setting;
+
                 // Create adapter for caching measurements that have a slower refresh interval
-                LatestMeasurementCache cache = new LatestMeasurementCache($"trackLatestMeasurements=true;lagTime=60;leadTime=60;inputMeasurementKeys={{{m_cachedMeasurementExpression}}}")
+                LatestMeasurementCache cache = new LatestMeasurementCache($"trackLatestMeasurements=true;lagTime=60;leadTime=60;inputMeasurementKeys={{{CachedMeasurementExpression}}}")
                 {
                     DataSource = DataSource
                 };
@@ -1442,10 +1442,9 @@ namespace sttp
             bool clientBasedConnection = false;
 
             // Attempt to retrieve any defined command channel settings
-            if (settings.TryGetValue("commandChannel", out string commandChannelConnectionString))
-                commandChannelSettings = commandChannelConnectionString.ParseKeyValuePairs();
-            else
-                commandChannelSettings = settings;
+            commandChannelSettings = settings.TryGetValue("commandChannel", out string commandChannelConnectionString) ?
+                commandChannelConnectionString.ParseKeyValuePairs() :
+                settings;
 
             if (commandChannelSettings.TryGetValue("server", out string server))
                 clientBasedConnection = !string.IsNullOrWhiteSpace(server);
@@ -1609,6 +1608,9 @@ namespace sttp
             Initialized = true;
         }
 
+        RoutingPassthroughMethod IOptimizedRoutingConsumer.GetRoutingPassthroughMethods() =>
+            new RoutingPassthroughMethod(QueueMeasurementsForProcessing);
+
         /// <summary>
         /// Queues a collection of measurements for processing to each <see cref="IActionAdapter"/> connected to this <see cref="DataPublisher"/>.
         /// </summary>
@@ -1621,11 +1623,6 @@ namespace sttp
             int measurementCount = measurementList.Count;
             LifetimeMeasurements += measurementCount;
             UpdateMeasurementsPerSecond(measurementCount);
-        }
-
-        RoutingPassthroughMethod IOptimizedRoutingConsumer.GetRoutingPassthroughMethods()
-        {
-            return new RoutingPassthroughMethod(QueueMeasurementsForProcessing);
         }
 
         /// <summary>
@@ -1689,19 +1686,15 @@ namespace sttp
         /// Enumerates connected clients.
         /// </summary>
         [AdapterCommand("Enumerates connected clients.", "Administrator", "Editor", "Viewer")]
-        public virtual void EnumerateClients()
-        {
+        public virtual void EnumerateClients() => 
             OnStatusMessage(MessageLevel.Info, EnumerateClients(false));
-        }
 
         /// <summary>
         /// Enumerates connected clients with active temporal sessions.
         /// </summary>
         [AdapterCommand("Enumerates connected clients with active temporal sessions.", "Administrator", "Editor", "Viewer")]
-        public virtual void EnumerateTemporalClients()
-        {
+        public virtual void EnumerateTemporalClients() => 
             OnStatusMessage(MessageLevel.Info, EnumerateClients(true));
-        }
 
         private string EnumerateClients(bool filterToTemporalSessions)
         {
@@ -1711,7 +1704,7 @@ namespace sttp
             if (filterToTemporalSessions)
                 clientEnumeration.AppendFormat("\r\nIndices for connected clients with active temporal sessions:\r\n\r\n");
             else
-                clientEnumeration.AppendFormat("\r\nIndices for {0} connected clients:\r\n\r\n", clientIDs.Length);
+                clientEnumeration.AppendFormat("\r\nIndices for {0:N0} connected clients:\r\n\r\n", clientIDs.Length);
 
             for (int i = 0; i < clientIDs.Length; i++)
             {
@@ -1918,10 +1911,10 @@ namespace sttp
         /// </summary>
         /// <param name="subscriberID">Guid based subscriber ID for client connection.</param>
         [AdapterCommand("Gets subscriber status for client connection using its subscriber ID.", "Administrator", "Editor", "Viewer")]
-        public virtual Tuple<Guid, bool, string> GetSubscriberStatus(Guid subscriberID)
-        {
-            return new Tuple<Guid, bool, string>(subscriberID, GetConnectionProperty(subscriberID, cc => cc.IsConnected), GetConnectionProperty(subscriberID, cc => cc.SubscriberInfo));
-        }
+        public virtual Tuple<Guid, bool, string> GetSubscriberStatus(Guid subscriberID) => 
+            new Tuple<Guid, bool, string>(subscriberID, 
+                GetConnectionProperty(subscriberID, cc => cc.IsConnected), 
+                GetConnectionProperty(subscriberID, cc => cc.SubscriberInfo));
 
         /// <summary>
         /// Resets the counters for the lifetime statistics without interrupting the adapter's operations.
@@ -2191,10 +2184,8 @@ namespace sttp
         /// <param name="response">Server response.</param>
         /// <param name="command">In response to command.</param>
         /// <returns><c>true</c> if send was successful; otherwise <c>false</c>.</returns>
-        protected internal virtual bool SendClientResponse(Guid clientID, ServerResponse response, ServerCommand command)
-        {
-            return SendClientResponse(clientID, response, command, (byte[])null);
-        }
+        protected internal virtual bool SendClientResponse(Guid clientID, ServerResponse response, ServerCommand command) => 
+            SendClientResponse(clientID, response, command, (byte[])null);
 
         /// <summary>
         /// Sends response back to specified client with a message.
@@ -2237,10 +2228,8 @@ namespace sttp
         /// <param name="command">In response to command.</param>
         /// <param name="data">Data to return to client; null if none.</param>
         /// <returns><c>true</c> if send was successful; otherwise <c>false</c>.</returns>
-        protected internal virtual bool SendClientResponse(Guid clientID, ServerResponse response, ServerCommand command, byte[] data)
-        {
-            return SendClientResponse(clientID, (byte)response, (byte)command, data);
-        }
+        protected internal virtual bool SendClientResponse(Guid clientID, ServerResponse response, ServerCommand command, byte[] data) => 
+            SendClientResponse(clientID, (byte)response, (byte)command, data);
 
         /// <summary>
         /// Updates latency statistics based on the collection of latencies passed into the method.
@@ -2336,10 +2325,6 @@ namespace sttp
         {
             try
             {
-                CertificatePolicy policy;
-                string remoteCertificateFile;
-                X509Certificate certificate;
-
                 if (m_certificateChecker is null || m_subscriberIdentities is null || SecurityMode != SecurityMode.TLS)
                     return;
 
@@ -2350,8 +2335,8 @@ namespace sttp
                 {
                     try
                     {
-                        policy = new CertificatePolicy();
-                        remoteCertificateFile = subscriber["RemoteCertificateFile"].ToNonNullString();
+                        CertificatePolicy policy = new CertificatePolicy();
+                        string remoteCertificateFile = subscriber["RemoteCertificateFile"].ToNonNullString();
 
                         if (Enum.TryParse(subscriber["ValidPolicyErrors"].ToNonNullString(), out SslPolicyErrors validPolicyErrors))
                             policy.ValidPolicyErrors = validPolicyErrors;
@@ -2359,12 +2344,12 @@ namespace sttp
                         if (Enum.TryParse(subscriber["ValidChainFlags"].ToNonNullString(), out X509ChainStatusFlags validChainFlags))
                             policy.ValidChainFlags = validChainFlags;
 
-                        if (File.Exists(remoteCertificateFile))
-                        {
-                            certificate = new X509Certificate2(remoteCertificateFile);
-                            m_certificateChecker.Trust(certificate, policy);
-                            m_subscriberIdentities.Add(certificate, subscriber);
-                        }
+                        if (!File.Exists(remoteCertificateFile))
+                            continue;
+
+                        X509Certificate certificate = new X509Certificate2(remoteCertificateFile);
+                        m_certificateChecker.Trust(certificate, policy);
+                        m_subscriberIdentities.Add(certificate, subscriber);
                     }
                     catch (Exception ex)
                     {
@@ -2679,10 +2664,8 @@ namespace sttp
         }
 
         // Handle notification on input measurement key change
-        private void NotifyHostOfSubscriptionRemoval(object state)
-        {
+        private void NotifyHostOfSubscriptionRemoval(object state) => 
             OnInputMeasurementKeysUpdated();
-        }
 
         // Attempt to find client subscription
         private bool TryGetClientSubscription(Guid clientID, out SubscriberAdapter subscription)
@@ -2698,10 +2681,8 @@ namespace sttp
             return false;
         }
 
-        private bool GetClientSubscription(IActionAdapter item, Guid value)
-        {
-            return item is SubscriberAdapter subscription && subscription.ClientID == value;
-        }
+        private bool GetClientSubscription(IActionAdapter item, Guid value) => 
+            item is SubscriberAdapter subscription && subscription.ClientID == value;
 
         // Gets specified property from client connection based on subscriber ID
         private TResult GetConnectionProperty<TResult>(Guid subscriberID, Func<SubscriberConnection, TResult> predicate)
@@ -2753,21 +2734,19 @@ namespace sttp
             }
         }
 
-        protected internal new void OnStatusMessage(MessageLevel level, string status, string eventName = null, MessageFlags flags = MessageFlags.None)
-        {
+        protected internal new void OnStatusMessage(MessageLevel level, string status, string eventName = null, MessageFlags flags = MessageFlags.None) => 
             base.OnStatusMessage(level, status, eventName, flags);
-        }
 
-        protected internal new void OnProcessException(MessageLevel level, Exception exception, string eventName = null, MessageFlags flags = MessageFlags.None)
-        {
+        protected internal new void OnProcessException(MessageLevel level, Exception exception, string eventName = null, MessageFlags flags = MessageFlags.None) => 
             base.OnProcessException(level, exception, eventName, flags);
-        }
 
         // Make sure to expose any routing table messages
-        private void RoutingTables_StatusMessage(object sender, EventArgs<string> e) => OnStatusMessage(MessageLevel.Info, e.Argument);
+        private void RoutingTables_StatusMessage(object sender, EventArgs<string> e) => 
+            OnStatusMessage(MessageLevel.Info, e.Argument);
 
         // Make sure to expose any routing table exceptions
-        private void RoutingTables_ProcessException(object sender, EventArgs<Exception> e) => OnProcessException(MessageLevel.Warning, e.Argument);
+        private void RoutingTables_ProcessException(object sender, EventArgs<Exception> e) => 
+            OnProcessException(MessageLevel.Warning, e.Argument);
 
         // Cipher key rotation timer handler
         private void CipherKeyRotationTimer_Elapsed(object sender, EventArgs<DateTime> e)
@@ -3124,28 +3103,26 @@ namespace sttp
                     // Apply any maximum row count that user may have specified
                     List<DataRow> filteredRowList = filteredRows.Take(takeCount).ToList();
 
-                    if (filteredRowList.Count > 0)
+                    if (filteredRowList.Count == 0)
+                        continue;
+
+                    DataTable metadataTable = metadata.Tables[table.TableName];
+
+                    // Manually copy-in each row into table
+                    foreach (DataRow row in filteredRowList)
                     {
-                        DataTable metadataTable = metadata.Tables[table.TableName];
+                        DataRow newRow = metadataTable.NewRow();
 
-                        // Manually copy-in each row into table
-                        foreach (DataRow row in filteredRowList)
-                        {
-                            DataRow newRow = metadataTable.NewRow();
+                        // Copy each column of data in the current row
+                        for (int x = 0; x < table.Columns.Count; x++)
+                            newRow[x] = row[x];
 
-                            // Copy each column of data in the current row
-                            for (int x = 0; x < table.Columns.Count; x++)
-                            {
-                                newRow[x] = row[x];
-                            }
-
-                            metadataTable.Rows.Add(newRow);
-                        }
+                        metadataTable.Rows.Add(newRow);
                     }
                 }
             }
 
-            // MuTODO: Although protected against unprovided tables and columns, this post-analysis operation is schema specific. This may need to be moved to an external function and executed via delegate to allow this kind of work for other schemas.
+            // TODO: Although protected against unprovided tables and columns, this post-analysis operation is schema specific. This may need to be moved to an external function and executed via delegate to allow this kind of work for other schemas.
 
             // Do some post analysis on the meta-data to be delivered to the client, e.g., if a device exists with no associated measurements - don't send the device.
             if (metadata.Tables.Contains("MeasurementDetail") && metadata.Tables["MeasurementDetail"].Columns.Contains("DeviceAcronym") && metadata.Tables.Contains("DeviceDetail") && metadata.Tables["DeviceDetail"].Columns.Contains("Acronym"))
@@ -3401,10 +3378,8 @@ namespace sttp
         /// <param name="buffer">The buffer containing the entire message from the subscriber.</param>
         /// <param name="startIndex">The index indicating where to start reading from the buffer to skip past the message header.</param>
         /// <param name="length">The total number of bytes in the message, including the header.</param>
-        protected virtual void HandleUserCommand(SubscriberConnection connection, ServerCommand command, byte[] buffer, int startIndex, int length)
-        {
+        protected virtual void HandleUserCommand(SubscriberConnection connection, ServerCommand command, byte[] buffer, int startIndex, int length) => 
             OnStatusMessage(MessageLevel.Info, $"Received command code for user-defined command \"{command}\".");
-        }
 
         private byte[] SerializeSignalIndexCache(Guid clientID, SignalIndexCache signalIndexCache)
         {
@@ -3522,10 +3497,8 @@ namespace sttp
             m_measurementsPerSecondCount = 0L;
         }
 
-        private void Subscription_BufferBlockRetransmission(object sender, EventArgs eventArgs)
-        {
+        private void Subscription_BufferBlockRetransmission(object sender, EventArgs eventArgs) => 
             BufferBlockRetransmissions++;
-        }
 
         // Bubble up processing complete notifications from subscriptions
         private void Subscription_ProcessingComplete(object sender, EventArgs<IClientSubscription, EventArgs> e)
@@ -3714,10 +3687,8 @@ namespace sttp
             OnProcessException(MessageLevel.Info, new ConnectionException($"Data publisher encountered an exception while connecting client to the command channel: {ex.Message}", ex));
         }
 
-        private void ServerCommandChannelServerStarted(object sender, EventArgs e)
-        {
+        private void ServerCommandChannelServerStarted(object sender, EventArgs e) => 
             OnStatusMessage(MessageLevel.Info, "Data publisher command channel started.");
-        }
 
         private void ServerCommandChannelServerStopped(object sender, EventArgs e)
         {
@@ -3805,10 +3776,8 @@ namespace sttp
                 OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data publisher encountered an exception while sending client-based command channel data to subscriber connection: {ex.Message}", ex));
         }
 
-        private void ClientCommandChannelReceiveDataComplete(object sender, EventArgs<byte[], int> e)
-        {
+        private void ClientCommandChannelReceiveDataComplete(object sender, EventArgs<byte[], int> e) => 
             ServerCommandChannelReceiveClientDataComplete(sender, new EventArgs<Guid, byte[], int>(m_proxyClientID, e.Argument1, e.Argument2));
-        }
 
         private void ClientCommandChannelReceiveDataException(object sender, EventArgs<Exception> e)
         {
