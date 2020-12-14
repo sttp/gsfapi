@@ -1304,6 +1304,7 @@ namespace sttp
                 MutualSubscription = true;
                 ReceiveInternalMetadata = true;
                 ReceiveExternalMetadata = false;
+                m_filterOutputMeasurements = false;
             }
 
             // Check if user has defined a meta-data synchronization timeout
