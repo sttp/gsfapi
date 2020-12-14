@@ -1657,7 +1657,7 @@ namespace sttp
             }
 
             // If active measurements are defined, attempt to defined desired subscription points from there
-            if (m_filterOutputMeasurements && !(DataSource is null) && DataSource.Tables.Contains("ActiveMeasurements"))
+            if ((m_securityMode == SecurityMode.TLS || m_filterOutputMeasurements) && !(DataSource is null) && DataSource.Tables.Contains("ActiveMeasurements"))
             {
                 try
                 {
