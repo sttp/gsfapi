@@ -753,6 +753,11 @@ namespace sttp
             "SELECT VersionNumber FROM SchemaVersion";
 
         /// <summary>
+        /// Default value for <see cref="MutualSubscription"/>.
+        /// </summary>
+        public const bool DefaultMutualSubscription = false;
+
+        /// <summary>
         /// Default maximum packet size before software fragmentation of payload.
         /// </summary>
         public const int DefaultMaxPacketSize = ushort.MaxValue / 2;
@@ -1110,6 +1115,29 @@ namespace sttp
         public string MetadataTables { get; set; }
 
         /// <summary>
+        /// Gets or sets flag that determines if a subscription is mutual, i.e., bi-directional pub/sub. In this mode one node will
+        /// be the owner and set <c>Internal = True</c> and the other node will be the renter and set <c>Internal = False</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// This flag is intended to be used in scenarios where a remote subscriber can add new measurements associated with a
+        /// source device, e.g., creating new calculated result measurements on a remote machine for load distribution that should
+        /// get associated with a device on the local machine, thus becoming part of the local measurement set.
+        /// </para>
+        /// <para>
+        /// For best results, both the owner and renter subscriptions should be reduced to needed measurements, i.e., renter should
+        /// only receive measurements needed for remote calculations and owner should only receive new calculated results. Note that
+        /// when used with a TLS-style subscription this can be accomplished by using the subscription UI screens that control the
+        /// measurement <c>subscribed</c> flag. For internal subscriptions, reduction of metadata and subscribed measurements will
+        /// need to be controlled via connection string with <c>metadataFilters</c> and <c>outputMeasurements</c>, respectively.
+        /// </para>
+        /// </remarks>
+        [ConnectionStringParameter]
+        [Description("Gets or sets flag that determines if a subscription is mutual, i.e., bi-directional pub/sub.")]
+        [DefaultValue(DefaultMutualSubscription)]
+        public bool MutualSubscription { get; set; }
+
+        /// <summary>
         /// Gets flag that determines if <see cref="DataPublisher"/> subscriptions
         /// are automatically initialized when they are added to the collection.
         /// </summary>
@@ -1327,6 +1355,9 @@ namespace sttp
             // Extract custom metadata table expressions if provided
             if (settings.TryGetValue("metadataTables", out setting) && !string.IsNullOrWhiteSpace(setting))
                 MetadataTables = setting;
+
+            // Check for mutual subscription flag
+            MutualSubscription = settings.TryGetValue(nameof(MutualSubscription), out setting) && setting.ParseBoolean();
 
             // Check flag to see if payload compression is allowed
             if (settings.TryGetValue("allowPayloadCompression", out setting))
@@ -3057,7 +3088,7 @@ namespace sttp
                 if (table.Columns.Contains("Internal") && !(sendInternalMetadata && sendExternalMetadata))
                     filters.Add($"Internal {(sendExternalMetadata ? "=" : "<>")} 0");
 
-                if (table.Columns.Contains("OriginalSource") && !(sendInternalMetadata && sendExternalMetadata))
+                if (table.Columns.Contains("OriginalSource") && !(sendInternalMetadata && sendExternalMetadata) && !MutualSubscription)
                     filters.Add($"OriginalSource IS {(sendExternalMetadata ? "NOT" : "")} NULL");
 
                 if (filterExpressions.TryGetValue(table.TableName, out Tuple<string, string, int> filterParameters))
@@ -3114,7 +3145,7 @@ namespace sttp
                 }
             }
 
-            // TODO: Although protected against unprovided tables and columns, this post-analysis operation is schema specific. This may need to be moved to an external function and executed via delegate to allow this kind of work for other schemas.
+            // MuTODO: Although protected against unprovided tables and columns, this post-analysis operation is schema specific. This may need to be moved to an external function and executed via delegate to allow this kind of work for other schemas.
 
             // Do some post analysis on the meta-data to be delivered to the client, e.g., if a device exists with no associated measurements - don't send the device.
             if (metadata.Tables.Contains("MeasurementDetail") && metadata.Tables["MeasurementDetail"].Columns.Contains("DeviceAcronym") && metadata.Tables.Contains("DeviceDetail") && metadata.Tables["DeviceDetail"].Columns.Contains("Acronym"))
