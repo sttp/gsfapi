@@ -103,10 +103,7 @@ namespace sttp
             /// <summary>
             /// Releases the unmanaged resources before the <see cref="SubscribedDevice"/> object is reclaimed by <see cref="GC"/>.
             /// </summary>
-            ~SubscribedDevice()
-            {
-                Unregister();
-            }
+            ~SubscribedDevice() => Unregister();
 
             #endregion
 
@@ -166,10 +163,8 @@ namespace sttp
 
             #region [ Methods ]
 
-            public override bool Equals(object obj)
-            {
-                return obj is SubscribedDevice subscribedDevice && Name.Equals(subscribedDevice.Name);
-            }
+            public override bool Equals(object obj) => 
+                obj is SubscribedDevice subscribedDevice && Name.Equals(subscribedDevice.Name);
 
             public override int GetHashCode() => Name.GetHashCode();
 
@@ -374,10 +369,7 @@ namespace sttp
         private Guid m_nodeID;
         private int m_sttpProtocolID;
         private SecurityMode m_securityMode;
-        private bool m_internal;
         private bool m_includeTime;
-        private bool m_filterOutputMeasurements;
-        private bool m_useIdentityInsertsForMetadata;
         private bool m_metadataRefreshPending;
         private readonly LongSynchronizedOperation m_synchronizeMetadataOperation;
         private volatile DataSet m_receivedMetadata;
@@ -386,7 +378,6 @@ namespace sttp
         private OperationalModes m_operationalModes;
         private string m_loggingPath;
         private RunTimeLog m_runTimeLog;
-        private bool m_bypassingStatistics;
         private bool m_dataGapRecoveryEnabled;
         private DataGapRecoverer m_dataGapRecoverer;
         private int m_parsingExceptionCount;
@@ -453,7 +444,7 @@ namespace sttp
             // Default to not using transactions for meta-data on SQL server (helps avoid deadlocks)
             try
             {
-                using AdoDataConnection database = new AdoDataConnection("systemSettings");
+                using AdoDataConnection database = new("systemSettings");
                 UseTransactionForMetadata = database.DatabaseType != DatabaseType.SQLServer;
             }
             catch
@@ -564,8 +555,8 @@ namespace sttp
         /// need to be controlled via connection string with <c>metadataFilters</c> and <c>outputMeasurements</c>, respectively.
         /// </para>
         /// <para>
-        /// Setting <see cref="MutualSubscription"/> to <c>true</c> will force <see cref="ReceiveInternalMetadata"/> to <c>true</c>
-        /// and <see cref="ReceiveExternalMetadata"/> to <c>false</c>.
+        /// Setting <see cref="MutualSubscription"/> to <c>true</c> will force <see cref="ReceiveInternalMetadata"/> to <c>true</c>,
+        /// <see cref="ReceiveExternalMetadata"/> to <c>false</c>, and <see cref="FilterOutputMeasurements"/> to <c>false</c>.
         /// </para>
         /// </remarks>
         public bool MutualSubscription { get; set; }
@@ -577,7 +568,7 @@ namespace sttp
         public bool UseMillisecondResolution { get; set; }
 
         /// <summary>
-        /// Gets or sets flag that determines if a <see cref="TcpSimpleClient"/> should be used for reverse connections.
+        /// Gets or sets flag that determines if a <see cref="TcpSimpleClient"/> should be used for command channel connections.
         /// </summary>
         public bool UseSimpleTcpClient { get; set; }
 
@@ -616,7 +607,7 @@ namespace sttp
                 else
                 {
                     // Disable data monitor
-                    if (!(m_dataStreamMonitor is null))
+                    if (m_dataStreamMonitor is not null)
                     {
                         m_dataStreamMonitor.Elapsed -= DataStreamMonitor_Elapsed;
                         m_dataStreamMonitor.Dispose();
@@ -628,8 +619,7 @@ namespace sttp
         }
 
         /// <summary>
-        /// Gets or sets a set of flags that define ways in
-        /// which the subscriber and publisher communicate.
+        /// Gets or sets a set of flags that define ways in which the subscriber and publisher communicate.
         /// </summary>
         public OperationalModes OperationalModes
         {
@@ -703,6 +693,26 @@ namespace sttp
                     m_operationalModes &= ~OperationalModes.ReceiveInternalMetadata;
             }
         }
+
+        /// <summary>
+        /// Gets or sets flag that determines if measurements for this data subscription should be marked as "internal", i.e., owned and allowed for proxy.
+        /// </summary>
+        public bool Internal { get; set; }
+
+        /// <summary>
+        /// Gets or sets flag that determines if output measurements should be automatically filtered to only those belonging to the subscriber.
+        /// </summary>
+        public bool FilterOutputMeasurements { get; set; }
+
+        /// <summary>
+        /// Gets or sets flag that determines if identity inserts should be used for SQL Server connections during meta-data synchronization.
+        /// </summary>
+        public bool UseIdentityInsertsForMetadata { get; set; }
+
+        /// <summary>
+        /// Gets or sets flag that determines if statistics engine should be enable for the data subscriber.
+        /// </summary>
+        public bool BypassStatistics { get; set; }
 
         /// <summary>
         /// Gets or sets the operational mode flag to receive external meta-data.
@@ -872,7 +882,7 @@ namespace sttp
                         SubscribeToOutputMeasurements(true);
                 }
 
-                if (!(m_dataGapRecoverer is null))
+                if (m_dataGapRecoverer is not null)
                     m_dataGapRecoverer.DataSource = value;
             }
         }
@@ -887,15 +897,15 @@ namespace sttp
             {
                 MeasurementKey[] oldKeys = base.RequestedOutputMeasurementKeys ?? new MeasurementKey[0];
                 MeasurementKey[] newKeys = value ?? Array.Empty<MeasurementKey>();
-                HashSet<MeasurementKey> oldKeySet = new HashSet<MeasurementKey>(oldKeys);
+                HashSet<MeasurementKey> oldKeySet = new(oldKeys);
 
                 base.RequestedOutputMeasurementKeys = value;
 
-                if (!AutoStart && Enabled && CommandChannelConnected && !oldKeySet.SetEquals(newKeys))
-                {
-                    OnStatusMessage(MessageLevel.Info, "Requested measurements have changed, adjusting active subscription...");
-                    SubscribeToOutputMeasurements(true);
-                }
+                if (AutoStart || !Enabled || !CommandChannelConnected || oldKeySet.SetEquals(newKeys))
+                    return;
+
+                OnStatusMessage(MessageLevel.Info, "Requested measurements have changed, adjusting active subscription...");
+                SubscribeToOutputMeasurements(true);
             }
         }
 
@@ -910,7 +920,7 @@ namespace sttp
             {
                 base.OutputMeasurements = value;
 
-                if (!(m_dataGapRecoverer is null))
+                if (m_dataGapRecoverer is not null)
                     m_dataGapRecoverer.FilterExpression = this.OutputMeasurementKeys().Select(key => key.SignalID.ToString()).ToDelimitedString(';');
             }
         }
@@ -922,7 +932,7 @@ namespace sttp
         {
             get
             {
-                if (!(m_serverCommandChannel is null) && string.IsNullOrWhiteSpace(m_connectionID))
+                if (m_serverCommandChannel is not null && string.IsNullOrWhiteSpace(m_connectionID))
                 {
                     Guid clientID = m_serverCommandChannel.ClientIDs.FirstOrDefault();
                     IPEndPoint endPoint = GetCommandChannelSocket()?.RemoteEndPoint as IPEndPoint;
@@ -955,60 +965,39 @@ namespace sttp
         {
             get
             {
-                StringBuilder status = new StringBuilder();
+                StringBuilder status = new();
 
-                status.AppendFormat("             Authenticated: {0}", m_securityMode == SecurityMode.TLS && CommandChannelConnected);
-                status.AppendLine();
-                status.AppendFormat("                Subscribed: {0}", m_subscribed);
-                status.AppendLine();
-                status.AppendFormat("             Security mode: {0}", SecurityMode);
-                status.AppendLine();
-                status.AppendFormat("         Compression modes: {0}", CompressionModes);
-                status.AppendLine();
-                status.AppendFormat("       Mutual Subscription: {0}{1}", MutualSubscription, MutualSubscription ? $" - system is {(m_internal ? "owner" : "renter")}" : "");
-                status.AppendLine();
-                status.AppendFormat(" Mark Received as Internal: {0}", m_internal);
-                status.AppendLine();
-                status.AppendFormat(" Receive Internal Metadata: {0}", ReceiveInternalMetadata);
-                status.AppendLine();
-                status.AppendFormat(" Receive External Metadata: {0}", ReceiveExternalMetadata);
-                status.AppendLine();
-                status.AppendFormat("      Total Bytes Received: {0:N0}", TotalBytesReceived);
-                status.AppendLine();
+                status.AppendLine($"                 Connected: {CommandChannelConnected}");
+                status.AppendLine($"                Subscribed: {m_subscribed}");
+                status.AppendLine($"             Security mode: {SecurityMode}");
+                status.AppendLine($"             Authenticated: {m_securityMode == SecurityMode.TLS && CommandChannelConnected}");
+                status.AppendLine($"         Compression modes: {CompressionModes}");
+                status.AppendLine($"       Mutual subscription: {MutualSubscription}{(MutualSubscription ? $" - System has {(Internal ? "Owner" : "Renter")} Role" : "")}");
+                status.AppendLine($" Mark received as internal: {Internal}");
+                status.AppendLine($" Receive internal metadata: {ReceiveInternalMetadata}");
+                status.AppendLine($" Receive external metadata: {ReceiveExternalMetadata}");
+                status.AppendLine($"Filter output measurements: {FilterOutputMeasurements}");
+                status.AppendLine($"  Synchronize metadata IDs: {UseIdentityInsertsForMetadata}");
+                status.AppendLine($"  Bypass statistics engine: {BypassStatistics}");
+                status.AppendLine($"      Total bytes received: {TotalBytesReceived:N0}");
+                status.AppendLine($"      Data packet security: {(m_securityMode == SecurityMode.TLS && m_dataChannel is null ? "Secured via TLS" : m_keyIVs is null ? "Unencrypted" : "AES Encrypted")}");
+                status.AppendLine($"      Data monitor enabled: {m_dataStreamMonitor is not null && m_dataStreamMonitor.Enabled}");
+                status.AppendLine($"              Logging path: {FilePath.TrimFileName(m_loggingPath.ToNonNullNorWhiteSpace(FilePath.GetAbsolutePath("")), 51)}");
+                status.AppendLine($"No data reconnect interval: {(DataLossInterval > 0.0D ? $"{DataLossInterval:0.000} seconds" : "Disabled")}");
+                status.AppendLine($"    Data gap recovery mode: {(m_dataGapRecoveryEnabled ? "Enabled" : "Disabled")}");
 
-                if (!(m_dataChannel is null))
-                {
-                    status.AppendFormat("  UDP Data packet security: {0}", m_keyIVs is null ? "Unencrypted" : "Encrypted");
-                    status.AppendLine();
-                }
-                
-                status.AppendFormat("      Data monitor enabled: {0}", !(m_dataStreamMonitor is null) && m_dataStreamMonitor.Enabled);
-                status.AppendLine();
-                status.AppendFormat("              Logging path: {0}", FilePath.TrimFileName(m_loggingPath.ToNonNullNorWhiteSpace(FilePath.GetAbsolutePath("")), 51));
-                status.AppendLine();
-
-                if (DataLossInterval > 0.0D)
-                    status.AppendFormat("No data reconnect interval: {0:0.000} seconds", DataLossInterval);
-                else
-                    status.Append("No data reconnect interval: disabled");
-
-                status.AppendLine();
-
-                status.AppendFormat("    Data gap recovery mode: {0}", m_dataGapRecoveryEnabled ? "Enabled" : "Disabled");
-                status.AppendLine();
-
-                if (m_dataGapRecoveryEnabled && !(m_dataGapRecoverer is null))
+                if (m_dataGapRecoveryEnabled && m_dataGapRecoverer is not null)
                     status.Append(m_dataGapRecoverer.Status);
 
-                if (!(m_runTimeLog is null))
+                if (m_runTimeLog is not null)
                 {
                     status.AppendLine();
                     status.AppendLine("Run-Time Log Status".CenterText(50));
                     status.AppendLine("-------------------".CenterText(50));
-                    status.AppendFormat(m_runTimeLog.Status);
+                    status.Append(m_runTimeLog.Status);
                 }
 
-                if (!(m_dataChannel is null))
+                if (m_dataChannel is not null)
                 {
                     status.AppendLine();
                     status.AppendLine("Data Channel Status".CenterText(50));
@@ -1016,18 +1005,17 @@ namespace sttp
                     status.Append(m_dataChannel.Status);
                 }
 
-                if (!(m_clientCommandChannel is null))
+                if (m_clientCommandChannel is not null)
                 {
                     status.AppendLine();
                     status.AppendLine("Command Channel Status".CenterText(50));
                     status.AppendLine("----------------------".CenterText(50));
                     status.Append(m_clientCommandChannel.Status);
-
-                    status.AppendFormat("   Using simple TCP client: {0}", UseSimpleTcpClient);
-                    status.AppendLine();
+                    
+                    status.AppendLine($"   Using simple TCP client: {UseSimpleTcpClient}");
                 }
 
-                if (!(m_serverCommandChannel is null))
+                if (m_serverCommandChannel is not null)
                 {
                     status.AppendLine();
                     status.AppendLine("Command Channel Status".CenterText(50));
@@ -1054,7 +1042,7 @@ namespace sttp
             get => m_dataChannel;
             set
             {
-                if (!(m_dataChannel is null))
+                if (m_dataChannel is not null)
                 {
                     // Detach from events on existing data channel reference
                     m_dataChannel.ConnectionException -= DataChannelConnectionException;
@@ -1069,7 +1057,7 @@ namespace sttp
                 // Assign new data channel reference
                 m_dataChannel = value;
 
-                if (!(m_dataChannel is null))
+                if (m_dataChannel is not null)
                 {
                     // Attach to desired events on new data channel reference
                     m_dataChannel.ConnectionException += DataChannelConnectionException;
@@ -1088,7 +1076,7 @@ namespace sttp
             get => m_clientCommandChannel;
             set
             {
-                if (!(m_clientCommandChannel is null))
+                if (m_clientCommandChannel is not null)
                 {
                     // Detach from events on existing command channel reference
                     m_clientCommandChannel.ConnectionAttempt -= ClientCommandChannelConnectionAttempt;
@@ -1106,7 +1094,7 @@ namespace sttp
                 // Assign new command channel reference
                 m_clientCommandChannel = value;
 
-                if (!(m_clientCommandChannel is null))
+                if (m_clientCommandChannel is not null)
                 {
                     // Attach to desired events on new command channel reference
                     m_clientCommandChannel.ConnectionAttempt += ClientCommandChannelConnectionAttempt;
@@ -1131,7 +1119,7 @@ namespace sttp
             get => m_serverCommandChannel;
             set
             {
-                if (!(m_serverCommandChannel is null))
+                if (m_serverCommandChannel is not null)
                 {
                     // Detach from events on existing command channel reference
                     m_serverCommandChannel.ClientConnected -= ServerCommandChannelClientConnected;
@@ -1150,7 +1138,7 @@ namespace sttp
                 // Assign new command channel reference
                 m_serverCommandChannel = value;
 
-                if (!(m_serverCommandChannel is null))
+                if (m_serverCommandChannel is not null)
                 {
                     // Attach to desired events on new command channel reference
                     m_serverCommandChannel.ClientConnected += ServerCommandChannelClientConnected;
@@ -1228,7 +1216,7 @@ namespace sttp
 				ServerCommandChannel = null;
                 DataChannel = null;
 
-                if (!(m_dataGapRecoverer is null))
+                if (m_dataGapRecoverer is not null)
                 {
                     m_dataGapRecoverer.RecoveredMeasurements -= DataGapRecoverer_RecoveredMeasurements;
                     m_dataGapRecoverer.StatusMessage -= DataGapRecoverer_StatusMessage;
@@ -1237,14 +1225,14 @@ namespace sttp
                     m_dataGapRecoverer = null;
                 }
 
-                if (!(m_runTimeLog is null))
+                if (m_runTimeLog is not null)
                 {
                     m_runTimeLog.ProcessException -= RunTimeLog_ProcessException;
                     m_runTimeLog.Dispose();
                     m_runTimeLog = null;
                 }
 
-                if (!(m_subscribedDevicesTimer is null))
+                if (m_subscribedDevicesTimer is not null)
                 {
                     m_subscribedDevicesTimer.Elapsed -= SubscribedDevicesTimer_Elapsed;
                     m_subscribedDevicesTimer.Dispose();
@@ -1268,34 +1256,34 @@ namespace sttp
             Dictionary<string, string> settings = Settings;
 
             // See if user has opted for different operational modes
-            if (settings.TryGetValue("operationalModes", out string setting) && Enum.TryParse(setting, true, out OperationalModes operationalModes))
+            if (settings.TryGetValue(nameof(OperationalModes), out string setting) && Enum.TryParse(setting, true, out OperationalModes operationalModes))
                 OperationalModes = operationalModes;
 
             // Set the security mode if explicitly defined
-            if (!settings.TryGetValue("securityMode", out setting) || !Enum.TryParse(setting, true, out m_securityMode))
+            if (!settings.TryGetValue(nameof(SecurityMode), out setting) || !Enum.TryParse(setting, true, out m_securityMode))
                 m_securityMode = SecurityMode.None;
 
             // Apply gateway compression mode to operational mode flags
-            if (settings.TryGetValue("compressionModes", out setting) && Enum.TryParse(setting, true, out CompressionModes compressionModes))
+            if (settings.TryGetValue(nameof(CompressionModes), out setting) && Enum.TryParse(setting, true, out CompressionModes compressionModes))
                 CompressionModes = compressionModes;
 
             // Check if output measurements should be filtered to only those belonging to the subscriber
-            m_filterOutputMeasurements = !settings.TryGetValue("filterOutputMeasurements", out setting) || setting.ParseBoolean();
+            FilterOutputMeasurements = !settings.TryGetValue(nameof(FilterOutputMeasurements), out setting) || setting.ParseBoolean();
 
             // Check if the subscriber supports real-time and historical processing
-            SupportsRealTimeProcessing = !settings.TryGetValue("supportsRealTimeProcessing", out setting) || setting.ParseBoolean();
-            m_supportsTemporalProcessing = settings.TryGetValue("supportsTemporalProcessing", out setting) && setting.ParseBoolean();
+            SupportsRealTimeProcessing = !settings.TryGetValue(nameof(SupportsRealTimeProcessing), out setting) || setting.ParseBoolean();
+            m_supportsTemporalProcessing = settings.TryGetValue(nameof(SupportsTemporalProcessing), out setting) && setting.ParseBoolean();
 
             // Check if measurements for this connection should be marked as "internal" - i.e., owned and allowed for proxy
-            if (settings.TryGetValue("internal", out setting))
-                m_internal = setting.ParseBoolean();
+            if (settings.TryGetValue(nameof(Internal), out setting))
+                Internal = setting.ParseBoolean();
 
             // Check if user has explicitly defined the ReceiveInternalMetadata flag
-            if (settings.TryGetValue("receiveInternalMetadata", out setting))
+            if (settings.TryGetValue(nameof(ReceiveInternalMetadata), out setting))
                 ReceiveInternalMetadata = setting.ParseBoolean();
 
             // Check if user has explicitly defined the ReceiveExternalMetadata flag
-            if (settings.TryGetValue("receiveExternalMetadata", out setting))
+            if (settings.TryGetValue(nameof(ReceiveExternalMetadata), out setting))
                 ReceiveExternalMetadata = setting.ParseBoolean();
 
             // Check if user has explicitly defined the MutualSubscription flag
@@ -1304,32 +1292,32 @@ namespace sttp
                 MutualSubscription = true;
                 ReceiveInternalMetadata = true;
                 ReceiveExternalMetadata = false;
-                m_filterOutputMeasurements = false;
+                FilterOutputMeasurements = false;
             }
 
             // Check if user has defined a meta-data synchronization timeout
-            if (settings.TryGetValue("metadataSynchronizationTimeout", out setting) && int.TryParse(setting, out int metadataSynchronizationTimeout))
+            if (settings.TryGetValue(nameof(MetadataSynchronizationTimeout), out setting) && int.TryParse(setting, out int metadataSynchronizationTimeout))
                 MetadataSynchronizationTimeout = metadataSynchronizationTimeout;
 
             // Check if user has defined a flag for using a transaction during meta-data synchronization
-            if (settings.TryGetValue("useTransactionForMetadata", out setting))
+            if (settings.TryGetValue(nameof(UseTransactionForMetadata), out setting))
                 UseTransactionForMetadata = setting.ParseBoolean();
 
             // Check if user has defined a flag for using identity inserts during meta-data synchronization
-            if (settings.TryGetValue("useIdentityInsertsForMetadata", out setting))
-                m_useIdentityInsertsForMetadata = setting.ParseBoolean();
+            if (settings.TryGetValue(nameof(UseIdentityInsertsForMetadata), out setting))
+                UseIdentityInsertsForMetadata = setting.ParseBoolean();
 
             // Check if user wants to request that publisher use millisecond resolution to conserve bandwidth
             #pragma warning disable CS0618 // Type or member is obsolete
-            UseMillisecondResolution = !settings.TryGetValue("useMillisecondResolution", out setting) || setting.ParseBoolean();
+            UseMillisecondResolution = !settings.TryGetValue(nameof(UseMillisecondResolution), out setting) || setting.ParseBoolean();
             #pragma warning restore CS0618
 
             // Check if user has defined any meta-data filter expressions
-            if (settings.TryGetValue("metadataFilters", out setting))
+            if (settings.TryGetValue(nameof(MetadataFilters), out setting))
                 MetadataFilters = setting;
 
             // Define auto connect setting
-            if (settings.TryGetValue("autoConnect", out setting))
+            if (settings.TryGetValue(nameof(AutoConnect), out setting))
             {
                 AutoConnect = setting.ParseBoolean();
 
@@ -1338,37 +1326,39 @@ namespace sttp
             }
 
             // Define the maximum allowed exceptions before resetting the connection
-            if (settings.TryGetValue("allowedParsingExceptions", out setting))
+            if (settings.TryGetValue(nameof(AllowedParsingExceptions), out setting))
                 AllowedParsingExceptions = int.Parse(setting);
 
             // Define the window of time over which parsing exceptions are tolerated
-            if (settings.TryGetValue("parsingExceptionWindow", out setting))
+            if (settings.TryGetValue(nameof(ParsingExceptionWindow), out setting))
                 ParsingExceptionWindow = Ticks.FromSeconds(double.Parse(setting));
 
             // Check if synchronize meta-data is explicitly enabled or disabled
-            if (settings.TryGetValue("synchronizeMetadata", out setting))
+            if (settings.TryGetValue(nameof(AutoSynchronizeMetadata), out setting))
+                AutoSynchronizeMetadata = setting.ParseBoolean();
+            else if (settings.TryGetValue("synchronizeMetadata", out setting))
                 AutoSynchronizeMetadata = setting.ParseBoolean();
 
             // Determine if source name prefixes should be applied during metadata synchronization
-            if (settings.TryGetValue("useSourcePrefixNames", out setting))
+            if (settings.TryGetValue(nameof(UseSourcePrefixNames), out setting))
                 UseSourcePrefixNames = setting.ParseBoolean();
 
             // Define data loss interval
-            if (settings.TryGetValue("dataLossInterval", out setting) && double.TryParse(setting, out double interval))
+            if (settings.TryGetValue(nameof(DataLossInterval), out setting) && double.TryParse(setting, out double interval))
                 DataLossInterval = interval;
 
             // Define buffer size
             if (!settings.TryGetValue("bufferSize", out setting) || !int.TryParse(setting, out int bufferSize))
                 bufferSize = ClientBase.DefaultReceiveBufferSize;
 
-            if (settings.TryGetValue("useLocalClockAsRealTime", out setting))
+            if (settings.TryGetValue(nameof(UseLocalClockAsRealTime), out setting))
                 UseLocalClockAsRealTime = setting.ParseBoolean();
 
             // Handle throttled subscription options
-            if (settings.TryGetValue("throttled", out setting))
+            if (settings.TryGetValue(nameof(Throttled), out setting))
                 Throttled = setting.ParseBoolean();
 
-            if (settings.TryGetValue("publishInterval", out setting) && double.TryParse(setting, out interval))
+            if (settings.TryGetValue(nameof(PublishInterval), out setting) && double.TryParse(setting, out interval))
                 PublishInterval = interval;
 
             if (AutoConnect)
@@ -1387,10 +1377,8 @@ namespace sttp
                 TryFilterOutputMeasurements();
             }
 
-            Dictionary<string, string> commandChannelSettings;
-
             // Attempt to retrieve any defined command channel settings
-            commandChannelSettings = settings.TryGetValue("commandChannel", out string commandChannelConnectionString) ? commandChannelConnectionString.ParseKeyValuePairs() : settings;
+            Dictionary<string, string> commandChannelSettings = settings.TryGetValue("commandChannel", out string commandChannelConnectionString) ? commandChannelConnectionString.ParseKeyValuePairs() : settings;
 
             if (string.IsNullOrWhiteSpace(commandChannelConnectionString))
                 commandChannelConnectionString = ConnectionString;
@@ -1421,7 +1409,7 @@ namespace sttp
                 else
                     checkCertificateRevocation = true;
 
-                SimpleCertificateChecker certificateChecker = new SimpleCertificateChecker();
+                SimpleCertificateChecker certificateChecker = new();
 
                 // Set up certificate checker
                 certificateChecker.TrustedCertificates.Add(new X509Certificate2(FilePath.GetAbsolutePath(remoteCertificate)));
@@ -1431,7 +1419,7 @@ namespace sttp
                 if (serverBasedConnection)
                 {
                     // Create a new TLS server
-                    TlsServer commandChannel = new TlsServer
+                    TlsServer commandChannel = new()
                     {
                         ConfigurationString = commandChannelConnectionString,
                         PayloadAware = true,
@@ -1454,7 +1442,7 @@ namespace sttp
                 else
                 {
                     // Create a new TLS client
-                    TlsClient commandChannel = new TlsClient
+                    TlsClient commandChannel = new()
                     {
                         ConnectionString = commandChannelConnectionString,
                         PayloadAware = true,
@@ -1479,7 +1467,7 @@ namespace sttp
                 if (serverBasedConnection)
                 {
                     // Create a new TCP server
-                    TcpServer commandChannel = new TcpServer
+                    TcpServer commandChannel = new()
                     {
                         ConfigurationString = commandChannelConnectionString,
                         PayloadAware = true,
@@ -1500,7 +1488,7 @@ namespace sttp
                     if (UseSimpleTcpClient)
                     {
                         // Create a new simple TCP client
-                        TcpSimpleClient commandChannel = new TcpSimpleClient
+                        TcpSimpleClient commandChannel = new()
                         {
                             ConnectionString = commandChannelConnectionString,
                             PayloadAware = true,
@@ -1519,7 +1507,7 @@ namespace sttp
                     else
                     {
                         // Create a new TCP client
-                        TcpClient commandChannel = new TcpClient
+                        TcpClient commandChannel = new()
                         {
                             ConnectionString = commandChannelConnectionString,
                             PayloadAware = true,
@@ -1546,7 +1534,7 @@ namespace sttp
             }
 
             // Get logging path, if any has been defined
-            if (settings.TryGetValue("loggingPath", out setting))
+            if (settings.TryGetValue(nameof(LoggingPath), out setting))
             {
                 setting = FilePath.GetDirectoryName(FilePath.GetAbsolutePath(setting));
 
@@ -1584,10 +1572,12 @@ namespace sttp
                             // This will prevent any recursive data gap recovery operations from being established:
                             Dictionary<string, string> connectionSettings = m_clientCommandChannel.ConnectionString.ParseKeyValuePairs();
                             connectionSettings.Remove("dataGapRecovery");
-                            connectionSettings.Remove("autoConnect");
                             connectionSettings.Remove("synchronizeMetadata");
-                            connectionSettings.Remove("outputMeasurements");
-                            connectionSettings.Remove("BypassStatistics");
+                            connectionSettings.Remove(nameof(AutoConnect));
+                            connectionSettings.Remove(nameof(AutoSynchronizeMetadata));
+                            connectionSettings.Remove(nameof(OutputMeasurements));
+                            connectionSettings.Remove(nameof(BypassStatistics));
+                            connectionSettings.Remove(nameof(LoggingPath));
 
                             // Note that the data gap recoverer will connect on the same command channel port as
                             // the real-time subscriber (TCP only)
@@ -1618,16 +1608,16 @@ namespace sttp
                 m_dataGapRecoveryEnabled = false;
             }
 
-            if (!settings.TryGetValue("BypassStatistics", out setting) || !setting.ParseBoolean())
+            if (settings.TryGetValue(nameof(BypassStatistics), out setting) && setting.ParseBoolean())
+            {
+                BypassStatistics = true;
+            }
+            else
             {
                 void statisticsCalculated(object sender, EventArgs args) => ResetMeasurementsPerSecondCounters();
                 StatisticsEngine.Register(this, "Subscriber", "SUB");
                 StatisticsEngine.Calculated += statisticsCalculated;
-                Disposed += (sender, args) => StatisticsEngine.Calculated -= statisticsCalculated;
-            }
-            else
-            {
-                m_bypassingStatistics = true;
+                Disposed += (_, _) => StatisticsEngine.Calculated -= statisticsCalculated;
             }
 
             if (PersistConnectionForMetadata)
@@ -1657,18 +1647,18 @@ namespace sttp
             }
 
             // If active measurements are defined, attempt to defined desired subscription points from there
-            if ((m_securityMode == SecurityMode.TLS || m_filterOutputMeasurements) && !(DataSource is null) && DataSource.Tables.Contains("ActiveMeasurements"))
+            if ((m_securityMode == SecurityMode.TLS || FilterOutputMeasurements) && DataSource is not null && DataSource.Tables.Contains("ActiveMeasurements"))
             {
                 try
                 {
                     // Filter to points associated with this subscriber that have been requested for subscription, are enabled and not owned locally
                     DataRow[] filteredRows = DataSource.Tables["ActiveMeasurements"].Select("Subscribed <> 0");
-                    List<IMeasurement> subscribedMeasurements = new List<IMeasurement>();
+                    List<IMeasurement> subscribedMeasurements = new();
 
                     foreach (DataRow row in filteredRows)
                     {
                         // Create a new measurement for the provided field level information
-                        Measurement measurement = new Measurement();
+                        Measurement measurement = new();
 
                         // Parse primary measurement identifier
                         Guid signalID = row["SignalID"].ToNonNullString(Guid.Empty.ToString()).ConvertToType<Guid>();
@@ -1708,28 +1698,26 @@ namespace sttp
         // the published meta-data rather than blindly attempting to subscribe to all signals.
         private void TryFilterOutputMeasurements()
         {
-            if (!m_filterOutputMeasurements)
+            if (!FilterOutputMeasurements)
                 return;
-
-            IEnumerable<Guid> measurementIDs;
-            ISet<Guid> measurementIDSet;
-            Guid signalID = Guid.Empty;
 
             try
             {
-                if (!(OutputMeasurements is null) && !(DataSource is null) && DataSource.Tables.Contains("ActiveMeasurements"))
-                {
-                    // Have to use a Convert expression for DeviceID column in Select function
-                    // here since SQLite doesn't report data types for COALESCE based columns
-                    measurementIDs = DataSource.Tables["ActiveMeasurements"]
-                        .Select($"Convert(DeviceID, 'System.String') = '{ID}'")
-                        .Where(row => Guid.TryParse(row["SignalID"].ToNonNullString(), out signalID))
-                        .Select(row => signalID);
+                if (OutputMeasurements is null || DataSource is null || !DataSource.Tables.Contains("ActiveMeasurements"))
+                    return;
 
-                    measurementIDSet = new HashSet<Guid>(measurementIDs);
+                Guid signalID = Guid.Empty;
 
-                    OutputMeasurements = OutputMeasurements.Where(measurement => measurementIDSet.Contains(measurement.ID)).ToArray();
-                }
+                // Have to use a Convert expression for DeviceID column in Select function
+                // here since SQLite doesn't report data types for COALESCE based columns
+                IEnumerable<Guid> measurementIDs = DataSource.Tables["ActiveMeasurements"]
+                    .Select($"Convert(DeviceID, 'System.String') = '{ID}'")
+                    .Where(row => Guid.TryParse(row["SignalID"].ToNonNullString(), out signalID))
+                    .Select(_ => signalID);
+
+                HashSet<Guid> measurementIDSet = new(measurementIDs);
+
+                OutputMeasurements = OutputMeasurements.Where(measurement => measurementIDSet.Contains(measurement.ID)).ToArray();
             }
             catch (Exception ex)
             {
@@ -1744,41 +1732,41 @@ namespace sttp
         /// <returns><c>true</c> if subscribe transmission was successful; otherwise <c>false</c>.</returns>
         public bool Subscribe(SubscriptionInfo info)
         {
-            StringBuilder connectionString = new StringBuilder();
-            AssemblyInfo assemblyInfo = new AssemblyInfo(typeof(DataSubscriber).Assembly);
+            StringBuilder connectionString = new();
+            AssemblyInfo assemblyInfo = new(typeof(DataSubscriber).Assembly);
 
-            connectionString.AppendFormat("throttled={0};", info.Throttled);
-            connectionString.AppendFormat("publishInterval={0};", info.PublishInterval);
-            connectionString.AppendFormat("includeTime={0};", info.IncludeTime);
-            connectionString.AppendFormat("lagTime={0};", info.LagTime);
-            connectionString.AppendFormat("leadTime={0};", info.LeadTime);
-            connectionString.AppendFormat("useLocalClockAsRealTime={0};", info.UseLocalClockAsRealTime);
-            connectionString.AppendFormat("processingInterval={0};", info.ProcessingInterval);
-            connectionString.AppendFormat("useMillisecondResolution={0};", info.UseMillisecondResolution);
-            connectionString.AppendFormat("requestNaNValueFilter={0};", info.RequestNaNValueFilter);
-            connectionString.AppendFormat("assemblyInfo={{source=STTP GSF Library ({0}.dll); version={1}.{2}.{3}; updatedOn={4:yyyy-MM-dd HH:mm:ss}}};", assemblyInfo.Name, assemblyInfo.Version.Major, assemblyInfo.Version.Minor, assemblyInfo.Version.Build, assemblyInfo.BuildDate);
+            connectionString.Append($"throttled={info.Throttled};");
+            connectionString.Append($"publishInterval={info.PublishInterval};");
+            connectionString.Append($"includeTime={info.IncludeTime};");
+            connectionString.Append($"lagTime={info.LagTime};");
+            connectionString.Append($"leadTime={info.LeadTime};");
+            connectionString.Append($"useLocalClockAsRealTime={info.UseLocalClockAsRealTime};");
+            connectionString.Append($"processingInterval={info.ProcessingInterval};");
+            connectionString.Append($"useMillisecondResolution={info.UseMillisecondResolution};");
+            connectionString.Append($"requestNaNValueFilter={info.RequestNaNValueFilter};");
+            connectionString.Append($"assemblyInfo={{source=STTP GSF Library ({assemblyInfo.Name}.dll); version={assemblyInfo.Version.Major}.{assemblyInfo.Version.Minor}.{assemblyInfo.Version.Build}; updatedOn={assemblyInfo.BuildDate:yyyy-MM-dd HH:mm:ss} }};");
 
             if (!string.IsNullOrWhiteSpace(info.FilterExpression))
-                connectionString.AppendFormat("filterExpression={{{0}}};", info.FilterExpression);
+                connectionString.Append($"filterExpression={{{info.FilterExpression}}};");
 
             if (info.UdpDataChannel)
-                connectionString.AppendFormat("dataChannel={{localport={0}}};", info.DataChannelLocalPort);
+                connectionString.Append($"dataChannel={{localport={info.DataChannelLocalPort}}};");
 
             if (!string.IsNullOrWhiteSpace(info.StartTime))
-                connectionString.AppendFormat("startTimeConstraint={0};", info.StartTime);
+                connectionString.Append($"startTimeConstraint={info.StartTime};");
 
             if (!string.IsNullOrWhiteSpace(info.StopTime))
-                connectionString.AppendFormat("stopTimeConstraint={0};", info.StopTime);
+                connectionString.Append($"stopTimeConstraint={info.StopTime};");
 
             if (!string.IsNullOrWhiteSpace(info.ConstraintParameters))
-                connectionString.AppendFormat("timeConstraintParameters={0};", info.ConstraintParameters);
+                connectionString.Append($"timeConstraintParameters={info.ConstraintParameters};");
 
             if (!string.IsNullOrWhiteSpace(info.ExtraConnectionStringParameters))
-                connectionString.AppendFormat("{0};", info.ExtraConnectionStringParameters);
+                connectionString.Append($"{info.ExtraConnectionStringParameters};");
 
             // Make sure not to monitor for data loss any faster than down-sample time on throttled connections - additionally
             // you will want to make sure data stream monitor is twice lag-time to allow time for initial points to arrive.
-            if (info.Throttled && !(m_dataStreamMonitor is null) && m_dataStreamMonitor.Interval / 1000.0D < info.LagTime)
+            if (info.Throttled && m_dataStreamMonitor is not null && m_dataStreamMonitor.Interval / 1000.0D < info.LagTime)
                 m_dataStreamMonitor.Interval = (int)(2.0D * info.LagTime * 1000.0D);
 
             // Set millisecond resolution member variable for compact measurement parsing
@@ -1932,7 +1920,7 @@ namespace sttp
                     DataChannel = dataChannel;
 
                     // Setup subscription packet
-                    using BlockAllocatedMemoryStream buffer = new BlockAllocatedMemoryStream();
+                    using BlockAllocatedMemoryStream buffer = new();
                     DataPacketFlags flags = DataPacketFlags.NoFlags;
                     byte[] bytes;
 
@@ -1964,7 +1952,7 @@ namespace sttp
                 OnProcessException(MessageLevel.Error, new InvalidOperationException("Cannot make publisher subscription without a connection string."));
             }
 
-            // Reset decompresser on successful resubscription
+            // Reset decompresser on successful re-subscription
             if (success)
                 m_tsscResetRequested = true;
 
@@ -1972,9 +1960,21 @@ namespace sttp
         }
 
         /// <summary>
+        /// Subscribes to a data publisher based on currently configured adapter settings.
+        /// </summary>
+        /// <returns><c>true</c> if subscribe command was sent successfully; otherwise <c>false</c>.</returns>
+        [AdapterCommand("Subscribes to data publisher.", "Administrator", "Editor")]
+        [EditorBrowsable(EditorBrowsableState.Advanced)] // Method exists for remote console execution
+        public virtual bool Subscribe()
+        {
+            return SubscribeToOutputMeasurements(!m_metadataRefreshPending);
+        }
+
+        /// <summary>
         /// Unsubscribes from a data publisher.
         /// </summary>
-        /// <returns><c>true</c> if unsubscribe transmission was successful; otherwise <c>false</c>.</returns>
+        /// <returns><c>true</c> if unsubscribe command was sent successfully; otherwise <c>false</c>.</returns>
+        [AdapterCommand("Unsubscribes from data publisher.", "Administrator", "Editor")]
         public virtual bool Unsubscribe()
         {
             // Send unsubscribe server command
@@ -2090,7 +2090,7 @@ namespace sttp
         [AdapterCommand("Displays data gaps queued for data gap recovery.", "Administrator", "Editor", "Viewer")]
         public virtual string DumpOutageLog()
         {
-            if (m_dataGapRecoveryEnabled && !(m_dataGapRecoverer is null))
+            if (m_dataGapRecoveryEnabled && m_dataGapRecoverer is not null)
                 return Environment.NewLine + m_dataGapRecoverer.DumpOutageLog();
 
             throw new InvalidOperationException("Data gap recovery not enabled");
@@ -2103,7 +2103,7 @@ namespace sttp
         [AdapterCommand("Gets the status of the temporal subscription used by the data gap recovery module.", "Administrator", "Editor", "Viewer")]
         public virtual string GetDataGapRecoverySubscriptionStatus()
         {
-            if (m_dataGapRecoveryEnabled && !(m_dataGapRecoverer is null))
+            if (m_dataGapRecoveryEnabled && m_dataGapRecoverer is not null)
                 return m_dataGapRecoverer.TemporalSubscriptionStatus;
 
             return "Data gap recovery not enabled";
@@ -2140,7 +2140,7 @@ namespace sttp
         {
             if (!string.IsNullOrWhiteSpace(message))
             {
-                using BlockAllocatedMemoryStream buffer = new BlockAllocatedMemoryStream();
+                using BlockAllocatedMemoryStream buffer = new();
                 byte[] bytes = Encoding.GetBytes(message);
 
                 buffer.Write(BigEndian.GetBytes(bytes.Length), 0, 4);
@@ -2164,12 +2164,12 @@ namespace sttp
             {
                 try
                 {
-                    using BlockAllocatedMemoryStream commandPacket = new BlockAllocatedMemoryStream();
+                    using BlockAllocatedMemoryStream commandPacket = new();
                     // Write command code into command packet
                     commandPacket.WriteByte((byte)commandCode);
 
                     // Write command buffer into command packet
-                    if (!(data is null) && data.Length > 0)
+                    if (data is not null && data.Length > 0)
                         commandPacket.Write(data, 0, data.Length);
 
                     // Send command packet to publisher
@@ -2232,7 +2232,7 @@ namespace sttp
                 m_subscribedDevicesTimer.Elapsed += SubscribedDevicesTimer_Elapsed;
             }
 
-            if (!(statisticsHelpers is null))
+            if (statisticsHelpers is not null)
             {
                 m_realTime = 0L;
                 m_lastStatisticsHelperUpdate = 0L;
@@ -2254,7 +2254,7 @@ namespace sttp
             m_registerStatisticsOperation.RunOnceAsync();
 
             // Stop data stream monitor
-            if (!(m_dataStreamMonitor is null))
+            if (m_dataStreamMonitor is not null)
                 m_dataStreamMonitor.Enabled = false;
 
             // Disconnect command channel
@@ -2357,7 +2357,7 @@ namespace sttp
                                 case ServerCommand.Unsubscribe:
                                     OnStatusMessage(MessageLevel.Info, $"Success code received in response to server command \"{commandCode}\": {InterpretResponseMessage(buffer, responseIndex, responseLength)}");
                                     m_subscribed = false;
-                                    if (!(m_dataStreamMonitor is null))
+                                    if (m_dataStreamMonitor is not null)
                                         m_dataStreamMonitor.Enabled = false;
                                     break;
                                 case ServerCommand.RotateCipherKeys:
@@ -2380,7 +2380,7 @@ namespace sttp
                             long now = DateTime.UtcNow.Ticks;
 
                             // Deserialize data packet
-                            List<IMeasurement> measurements = new List<IMeasurement>();
+                            List<IMeasurement> measurements = new();
                             DataPacketFlags flags;
                             Ticks timestamp = 0;
                             int count;
@@ -2430,7 +2430,7 @@ namespace sttp
                             int packetLength = responseLength - 1;
 
                             // Decrypt data packet payload if keys are available
-                            if (!(m_keyIVs is null))
+                            if (m_keyIVs is not null)
                             {
                                 // Get a local copy of volatile keyIVs reference since this can change at any time
                                 keyIVs = m_keyIVs;
@@ -2473,18 +2473,18 @@ namespace sttp
                                     if (!compactMeasurementFormat)
                                     {
                                         // Deserialize full measurement format
-                                        SerializableMeasurement measurement = new SerializableMeasurement(Encoding);
+                                        SerializableMeasurement measurement = new(Encoding);
                                         responseIndex += measurement.ParseBinaryImage(packet, responseIndex, length - responseIndex);
                                         measurements.Add(measurement);
                                     }
-                                    else if (!(m_signalIndexCache is null))
+                                    else if (m_signalIndexCache is not null)
                                     {
                                         #pragma warning disable 618
                                         bool useMillisecondResolution = UseMillisecondResolution;
                                         #pragma warning restore 618
 
                                         // Deserialize compact measurement format
-                                        CompactMeasurement measurement = new CompactMeasurement(m_signalIndexCache, m_includeTime, m_baseTimeOffsets, m_timeIndex, useMillisecondResolution);
+                                        CompactMeasurement measurement = new(m_signalIndexCache, m_includeTime, m_baseTimeOffsets, m_timeIndex, useMillisecondResolution);
                                         responseIndex += measurement.ParseBinaryImage(packet, responseIndex, length - responseIndex);
 
                                         // Apply timestamp from frame if not included in transmission
@@ -2508,7 +2508,7 @@ namespace sttp
                             subscribedDevicesLookup = m_subscribedDevicesLookup;
                             statisticsHelper = null;
 
-                            if (!(subscribedDevicesLookup is null))
+                            if (subscribedDevicesLookup is not null)
                             {
                                 IEnumerable<IGrouping<DeviceStatisticsHelper<SubscribedDevice>, IMeasurement>> deviceGroups = measurements
                                     .Where(measurement => subscribedDevicesLookup.TryGetValue(measurement.ID, out statisticsHelper))
@@ -2550,7 +2550,7 @@ namespace sttp
 
                                         // If we are receiving status flags for this device,
                                         // count the data quality, time quality, and device errors
-                                        if (!(statusFlags is null))
+                                        if (statusFlags is not null)
                                         {
                                             uint commonStatusFlags = (uint)statusFlags.Value;
 
@@ -2571,7 +2571,7 @@ namespace sttp
 
                                         // Zero is not a valid value for frequency.
                                         // If frequency is zero, invalidate both frequency and delta frequency
-                                        if (!(frequency is null) && frequency.Value == 0.0D)
+                                        if (frequency is not null && frequency.Value == 0.0D)
                                         {
                                             if (deltaFrequency is null || double.IsNaN(deltaFrequency.Value))
                                                 measurementsReceived--;
@@ -2608,9 +2608,9 @@ namespace sttp
                             LifetimeMeasurements += measurements.Count;
                             UpdateMeasurementsPerSecond(timeReceived, measurements.Count);
 
-                            for (int x = 0; x < measurements.Count; x++)
+                            foreach (IMeasurement measurement in measurements)
                             {
-                                long latency = timeReceived.Ticks - (long)measurements[x].Timestamp;
+                                long latency = timeReceived.Ticks - (long)measurement.Timestamp;
 
                                 // Throw out latencies that exceed one hour as invalid
                                 if (Math.Abs(latency) > Time.SecondsPerHour * Ticks.PerSecond)
@@ -2654,7 +2654,7 @@ namespace sttp
                                 // Determine if this is the next buffer block in the sequence
                                 if (sequenceNumber == m_expectedBufferBlockSequenceNumber)
                                 {
-                                    List<IMeasurement> bufferBlockMeasurements = new List<IMeasurement>();
+                                    List<IMeasurement> bufferBlockMeasurements = new();
                                     int i;
 
                                     // Add the buffer block measurement to the list of measurements to be published
@@ -2902,9 +2902,9 @@ namespace sttp
                 SendServerCommand(ServerCommand.MetaDataRefresh, MetadataFilters);
         }
 
-        private void SubscribeToOutputMeasurements(bool metaDataRefreshCompleted)
+        private bool SubscribeToOutputMeasurements(bool metaDataRefreshCompleted)
         {
-            StringBuilder filterExpression = new StringBuilder();
+            StringBuilder filterExpression = new();
             string dataChannel = null;
             string startTimeConstraint = null;
             string stopTimeConstraint = null;
@@ -2925,7 +2925,7 @@ namespace sttp
                 ? this.OutputMeasurementKeys()
                 : RequestedOutputMeasurementKeys;
 
-            if (!(outputMeasurementKeys is null) && outputMeasurementKeys.Length > 0)
+            if (outputMeasurementKeys is not null && outputMeasurementKeys.Length > 0)
             {
                 // TODO: Determine best way to handle reduced connection string size
                 //if (Settings.TryGetValue("outputMeasurements", out string setting))
@@ -2950,16 +2950,16 @@ namespace sttp
 
                 // Start unsynchronized subscription
                 #pragma warning disable 618
-                Subscribe(true, Throttled, filterExpression.ToString(), dataChannel, startTime: startTimeConstraint, stopTime: stopTimeConstraint, processingInterval: processingInterval, publishInterval: PublishInterval);
+                return Subscribe(true, Throttled, filterExpression.ToString(), dataChannel, startTime: startTimeConstraint, stopTime: stopTimeConstraint, processingInterval: processingInterval, publishInterval: PublishInterval);
                 #pragma warning restore 618
             }
-            else
-            {
-                Unsubscribe();
 
-                if (AutoStart && metaDataRefreshCompleted)
-                    OnStatusMessage(MessageLevel.Error, "No measurements are currently defined for subscription.");
-            }
+            Unsubscribe();
+
+            if (AutoStart && metaDataRefreshCompleted)
+                OnStatusMessage(MessageLevel.Error, "No measurements are currently defined for subscription.");
+
+            return false;
         }
 
         /// <summary>
@@ -3002,7 +3002,7 @@ namespace sttp
                 DateTime latestUpdateTime = DateTime.MinValue;
 
                 // Open the configuration database using settings found in the config file
-                using (AdoDataConnection database = new AdoDataConnection("systemSettings"))
+                using (AdoDataConnection database = new("systemSettings"))
                 using (IDbCommand command = database.Connection.CreateCommand())
                 {
                     IDbTransaction transaction = null;
@@ -3012,7 +3012,7 @@ namespace sttp
 
                     try
                     {
-                        if (!(transaction is null))
+                        if (transaction is not null)
                             command.Transaction = transaction;
 
                         // Query the actual record ID based on the known run-time ID for this subscriber device
@@ -3043,7 +3043,7 @@ namespace sttp
 
                         // Prefix all children devices with the name of the parent since the same device names could appear in different connections (helps keep device names unique)
                         string sourcePrefix = UseSourcePrefixNames ? $"{Name}!" : "";
-                        Dictionary<string, int> deviceIDs = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                        Dictionary<string, int> deviceIDs = new(StringComparer.OrdinalIgnoreCase);
                         DateTime updateTime;
                         string deviceAcronym, signalTypeAcronym;
                         decimal longitude, latitude;
@@ -3180,7 +3180,7 @@ namespace sttp
                                     }
 
                                     // Save any reported extraneous values from device meta-data in connection string formatted contact list - all fields are considered optional
-                                    Dictionary<string, string> contactList = new Dictionary<string, string>();
+                                    Dictionary<string, string> contactList = new();
 
                                     if (companyAcronymFieldExists)
                                         contactList["companyAcronym"] = row.Field<string>("CompanyAcronym") ?? string.Empty;
@@ -3198,13 +3198,13 @@ namespace sttp
                                         contactList["interconnectionName"] = row.Field<string>("InterconnectionName") ?? string.Empty;
 
                                     // For mutual subscriptions where this subscription is owner (i.e., internal is true), we only sync devices that we did not provide
-                                    if (!MutualSubscription || !m_internal || string.IsNullOrEmpty(row.Field<string>("OriginalSource")))
+                                    if (!MutualSubscription || !Internal || string.IsNullOrEmpty(row.Field<string>("OriginalSource")))
                                     {
                                         // Gateway is assuming ownership of the device records when the "internal" flag is true - this means the device's measurements can be forwarded to another party. From a device record perspective,
                                         // ownership is inferred by setting 'OriginalSource' to null. When gateway doesn't own device records (i.e., the "internal" flag is false), this means the device's measurements can only be consumed
                                         // locally - from a device record perspective this means the 'OriginalSource' field is set to the acronym of the PDC or PMU that generated the source measurements. This field allows a mirrored source
                                         // restriction to be implemented later to ensure all devices in an output protocol came from the same original source connection, if desired.
-                                        originalSource = m_internal ? (object)DBNull.Value : string.IsNullOrEmpty(row.Field<string>("ParentAcronym")) ? sourcePrefix + row.Field<string>("Acronym") : sourcePrefix + row.Field<string>("ParentAcronym");
+                                        originalSource = Internal ? (object)DBNull.Value : string.IsNullOrEmpty(row.Field<string>("ParentAcronym")) ? sourcePrefix + row.Field<string>("Acronym") : sourcePrefix + row.Field<string>("ParentAcronym");
 
 	                                    // Determine if device record already exists
 	                                    if (Convert.ToInt32(command.ExecuteScalar(deviceExistsSql, MetadataSynchronizationTimeout, database.Guid(uniqueID))) == 0)
@@ -3243,7 +3243,7 @@ namespace sttp
                         if (metadata.Tables.Contains("MeasurementDetail"))
                         {
                             DataTable measurementDetail = metadata.Tables["MeasurementDetail"];
-                            List<Guid> signalIDs = new List<Guid>();
+                            List<Guid> signalIDs = new();
                             DataRow[] measurementRows;
 
                             // Define SQL statement to query if this measurement is already defined (this should always be based on the unique signal ID Guid)
@@ -3279,7 +3279,7 @@ namespace sttp
                             string queryMeasurementDeviceIDSql = database.ParameterizedQueryString("SELECT DeviceID FROM Measurement WHERE SignalID = {0}", "signalID");
 
                             // Load signal type ID's from local database associated with their acronym for proper signal type translation
-                            Dictionary<string, int> signalTypeIDs = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                            Dictionary<string, int> signalTypeIDs = new(StringComparer.OrdinalIgnoreCase);
 
                             foreach (DataRow row in command.RetrieveData(database.AdapterType, "SELECT ID, Acronym FROM SignalType", MetadataSynchronizationTimeout).Rows)
                             {
@@ -3290,10 +3290,10 @@ namespace sttp
                             }
 
                             // Define local signal type ID deletion exclusion set
-                            List<int> excludedSignalTypeIDs = new List<int>();
+                            List<int> excludedSignalTypeIDs = new();
                             string deleteCondition = "";
 
-                            if (MutualSubscription && !m_internal)
+                            if (MutualSubscription && !Internal)
                             {
                                 // For mutual subscriptions where this subscription is renter (i.e., internal is false), do not delete measurements that are locally owned
                                 deleteCondition = " AND Internal == 0";
@@ -3334,7 +3334,7 @@ namespace sttp
 
                             object phasorSourceIndex = DBNull.Value;
 
-                            if (m_useIdentityInsertsForMetadata && database.IsSQLServer)
+                            if (UseIdentityInsertsForMetadata && database.IsSQLServer)
                                 command.ExecuteNonQuery("SET IDENTITY_INSERT Measurement ON");
 
                             try
@@ -3398,18 +3398,18 @@ namespace sttp
                                             string alternateTag = Guid.NewGuid().ToString();
 
                                             // Insert new measurement record
-                                            if (m_useIdentityInsertsForMetadata && MeasurementKey.TryParse(row.Field<string>("ID"), out MeasurementKey measurementKey))
+                                            if (UseIdentityInsertsForMetadata && MeasurementKey.TryParse(row.Field<string>("ID"), out MeasurementKey measurementKey))
                                             {
                                                 long pointID = (long)measurementKey.ID;
 
                                                 if (Convert.ToInt32(command.ExecuteScalar(identityMeasurementExistsSql, MetadataSynchronizationTimeout, pointID)) == 0)
-                                                    command.ExecuteNonQuery(identityInsertMeasurementSql, MetadataSynchronizationTimeout, pointID, deviceID, historianID, pointTag, alternateTag, signalTypeIDs[signalTypeAcronym], phasorSourceIndex, sourcePrefix + row.Field<string>("SignalReference"), row.Field<string>("Description") ?? string.Empty, database.Bool(m_internal));
+                                                    command.ExecuteNonQuery(identityInsertMeasurementSql, MetadataSynchronizationTimeout, pointID, deviceID, historianID, pointTag, alternateTag, signalTypeIDs[signalTypeAcronym], phasorSourceIndex, sourcePrefix + row.Field<string>("SignalReference"), row.Field<string>("Description") ?? string.Empty, database.Bool(Internal));
                                                 else
-                                                    command.ExecuteNonQuery(identityUpdateMeasurementSql, MetadataSynchronizationTimeout, deviceID, historianID, pointTag, alternateTag, signalTypeIDs[signalTypeAcronym], phasorSourceIndex, sourcePrefix + row.Field<string>("SignalReference"), row.Field<string>("Description") ?? string.Empty, database.Bool(m_internal), database.Guid(signalID), pointID);
+                                                    command.ExecuteNonQuery(identityUpdateMeasurementSql, MetadataSynchronizationTimeout, deviceID, historianID, pointTag, alternateTag, signalTypeIDs[signalTypeAcronym], phasorSourceIndex, sourcePrefix + row.Field<string>("SignalReference"), row.Field<string>("Description") ?? string.Empty, database.Bool(Internal), database.Guid(signalID), pointID);
                                             }
                                             else
                                             {
-                                                command.ExecuteNonQuery(insertMeasurementSql, MetadataSynchronizationTimeout, deviceID, historianID, pointTag, alternateTag, signalTypeIDs[signalTypeAcronym], phasorSourceIndex, sourcePrefix + row.Field<string>("SignalReference"), row.Field<string>("Description") ?? string.Empty, database.Bool(m_internal));
+                                                command.ExecuteNonQuery(insertMeasurementSql, MetadataSynchronizationTimeout, deviceID, historianID, pointTag, alternateTag, signalTypeIDs[signalTypeAcronym], phasorSourceIndex, sourcePrefix + row.Field<string>("SignalReference"), row.Field<string>("Description") ?? string.Empty, database.Bool(Internal));
                                             }
 
                                             // Guids are normally auto-generated during insert - after insertion update the Guid so that it matches the source data. Most of the database
@@ -3419,7 +3419,7 @@ namespace sttp
                                         else if (recordNeedsUpdating)
                                         {
                                             // Update existing measurement record. Note that this update assumes that measurements will remain associated with a static source device.
-                                            command.ExecuteNonQuery(updateMeasurementSql, MetadataSynchronizationTimeout, historianID, pointTag, signalTypeIDs[signalTypeAcronym], phasorSourceIndex, sourcePrefix + row.Field<string>("SignalReference"), row.Field<string>("Description") ?? string.Empty, database.Bool(m_internal), database.Guid(signalID));
+                                            command.ExecuteNonQuery(updateMeasurementSql, MetadataSynchronizationTimeout, historianID, pointTag, signalTypeIDs[signalTypeAcronym], phasorSourceIndex, sourcePrefix + row.Field<string>("SignalReference"), row.Field<string>("Description") ?? string.Empty, database.Bool(Internal), database.Guid(signalID));
                                         }
                                     }
 
@@ -3429,7 +3429,7 @@ namespace sttp
                             }
                             finally
                             {
-                                if (m_useIdentityInsertsForMetadata && database.IsSQLServer)
+                                if (UseIdentityInsertsForMetadata && database.IsSQLServer)
                                     command.ExecuteNonQuery("SET IDENTITY_INSERT Measurement OFF");
                             }
 
@@ -3457,7 +3457,7 @@ namespace sttp
                                         // If the unknown measurement is directly associated with a device that exists in the meta-data it is assumed that this measurement
                                         // was removed from the publishing system and no longer exists therefore we remove it from the local measurement cache. If the user
                                         // needs custom local measurements associated with a remote device, they should be associated with the parent device only.
-                                        if (!(measurementDeviceID is null) && !(measurementDeviceID is DBNull) && deviceIDs.ContainsValue(Convert.ToInt32(measurementDeviceID)))
+                                        if (measurementDeviceID is not null && !(measurementDeviceID is DBNull) && deviceIDs.ContainsValue(Convert.ToInt32(measurementDeviceID)))
                                             command.ExecuteNonQuery(deleteMeasurementSql, MetadataSynchronizationTimeout, database.Guid(signalID));
                                     }
                                 }
@@ -3470,9 +3470,9 @@ namespace sttp
                         if (metadata.Tables.Contains("PhasorDetail"))
                         {
                             DataTable phasorDetail = metadata.Tables["PhasorDetail"];
-                            Dictionary<int, List<int>> definedSourceIndicies = new Dictionary<int, List<int>>();
-                            Dictionary<int, int> metadataToDatabaseIDMap = new Dictionary<int, int>();
-                            Dictionary<int, int> sourceToDestinationIDMap = new Dictionary<int, int>();
+                            Dictionary<int, List<int>> definedSourceIndicies = new();
+                            Dictionary<int, int> metadataToDatabaseIDMap = new();
+                            Dictionary<int, int> sourceToDestinationIDMap = new();
 
                             // Phasor data is normally only needed so that the user can properly generate a mirrored IEEE C37.118 output stream from the source data.
                             // This is necessary since, in this protocol, the phasors are described (i.e., labeled) as a unit (i.e., as a complex number) instead of
@@ -3567,7 +3567,7 @@ namespace sttp
                                     }
 
                                     // Track defined phasors for each device
-                                    definedSourceIndicies.GetOrAdd(deviceID, id => new List<int>()).Add(sourceIndex);
+                                    definedSourceIndicies.GetOrAdd(deviceID, _ => new List<int>()).Add(sourceIndex);
                                 }
 
                                 // Periodically notify user about synchronization progress
@@ -3582,7 +3582,7 @@ namespace sttp
                             }
 
                             // For mutual subscriptions where this subscription is owner (i.e., internal is true), do not delete any phasor data - it will be managed by owner only
-                            if (!MutualSubscription || !m_internal)
+                            if (!MutualSubscription || !Internal)
                             {
 	                            // Remove any phasor records associated with existing devices in this session but no longer exist in the meta-data
 	                            foreach (int id in deviceIDs.Values)
@@ -3604,7 +3604,7 @@ namespace sttp
                     {
                         OnProcessException(MessageLevel.Error, new InvalidOperationException($"Failed to synchronize meta-data to local cache: {ex.Message}", ex));
 
-                        if (!(transaction is null))
+                        if (transaction is not null)
                         {
                             try
                             {
@@ -3625,7 +3625,7 @@ namespace sttp
                 }
 
                 // New signals may have been defined, take original remote signal index cache and apply changes
-                if (!(m_remoteSignalIndexCache is null))
+                if (m_remoteSignalIndexCache is not null)
                     m_signalIndexCache = new SignalIndexCache(DataSource, m_remoteSignalIndexCache);
 
                 m_lastMetaDataRefreshTime = latestUpdateTime > DateTime.MinValue ? latestUpdateTime : DateTime.UtcNow;
@@ -3642,7 +3642,7 @@ namespace sttp
             finally
             {
                 // Restart data stream monitor after meta-data synchronization if it was originally enabled
-                if (dataMonitoringEnabled && !(m_dataStreamMonitor is null))
+                if (dataMonitoringEnabled && m_dataStreamMonitor is not null)
                     m_dataStreamMonitor.Enabled = m_serverCommandChannel is null;
             }
         }
@@ -3676,7 +3676,7 @@ namespace sttp
             {
                 try
                 {
-                    using MemoryStream compressedData = new MemoryStream(buffer);
+                    using MemoryStream compressedData = new(buffer);
                     inflater = new GZipStream(compressedData, CompressionMode.Decompress, true);
                     buffer = inflater.ReadStream();
                 }
@@ -3686,7 +3686,7 @@ namespace sttp
                 }
             }
 
-            SignalIndexCache deserializedCache = new SignalIndexCache { Encoding = Encoding };
+            SignalIndexCache deserializedCache = new() { Encoding = Encoding };
             deserializedCache.ParseBinaryImage(buffer, 0, buffer.Length);
 
             return deserializedCache;
@@ -3705,7 +3705,7 @@ namespace sttp
                 try
                 {
                     // Insert compressed data into compressed buffer
-                    using MemoryStream compressedData = new MemoryStream(buffer);
+                    using MemoryStream compressedData = new(buffer);
                     inflater = new GZipStream(compressedData, CompressionMode.Decompress, true);
                     buffer = inflater.ReadStream();
                 }
@@ -3716,8 +3716,8 @@ namespace sttp
             }
 
             // Copy decompressed data into encoded buffer
-            using (MemoryStream encodedData = new MemoryStream(buffer))
-            using (XmlTextReader xmlReader = new XmlTextReader(encodedData))
+            using (MemoryStream encodedData = new(buffer))
+            using (XmlTextReader xmlReader = new(encodedData))
             {
                 // Read encoded data into data set as XML
                 deserializedMetadata = new DataSet();
@@ -3762,7 +3762,7 @@ namespace sttp
                 }
             }
 
-            if (!(ex is null))
+            if (ex is not null)
                 HandleSocketException(ex.InnerException);
 
             return false;
@@ -3772,14 +3772,14 @@ namespace sttp
         private void DisconnectClient()
         {
             // Mark end of any data transmission in run-time log
-            if (!(m_runTimeLog is null) && m_runTimeLog.Enabled)
+            if (m_runTimeLog is not null && m_runTimeLog.Enabled)
             {
                 m_runTimeLog.StopTime = DateTimeOffset.UtcNow;
                 m_runTimeLog.Enabled = false;
             }
 
             // Stop data gap recovery operations
-            if (m_dataGapRecoveryEnabled && !(m_dataGapRecoverer is null))
+            if (m_dataGapRecoveryEnabled && m_dataGapRecoverer is not null)
             {
                 try
                 {
@@ -3814,7 +3814,7 @@ namespace sttp
 
         private void HandleDeviceStatisticsRegistration()
         {
-            if (m_bypassingStatistics)
+            if (BypassStatistics)
                 return;
 
             if (Enabled)
@@ -3833,7 +3833,7 @@ namespace sttp
 
                 if (dataSource is null || !dataSource.Tables.Contains("InputStreamDevices"))
                 {
-                    if (!(m_statisticsHelpers is null))
+                    if (m_statisticsHelpers is not null)
                     {
                         foreach (DeviceStatisticsHelper<SubscribedDevice> statisticsHelper in m_statisticsHelpers)
                             statisticsHelper.Device.Dispose();
@@ -3844,15 +3844,15 @@ namespace sttp
                 }
                 else
                 {
-                    Dictionary<Guid, DeviceStatisticsHelper<SubscribedDevice>> subscribedDevicesLookup = new Dictionary<Guid, DeviceStatisticsHelper<SubscribedDevice>>();
-                    List<DeviceStatisticsHelper<SubscribedDevice>> subscribedDevices = new List<DeviceStatisticsHelper<SubscribedDevice>>();
+                    Dictionary<Guid, DeviceStatisticsHelper<SubscribedDevice>> subscribedDevicesLookup = new();
+                    List<DeviceStatisticsHelper<SubscribedDevice>> subscribedDevices = new();
                     ISet<string> subscribedDeviceNames = new HashSet<string>();
                     ISet<string> definedDeviceNames = new HashSet<string>();
 
                     foreach (DataRow deviceRow in dataSource.Tables["InputStreamDevices"].Select($"ParentID = {ID}"))
                         definedDeviceNames.Add($"LOCAL${deviceRow["Acronym"].ToNonNullString()}");
 
-                    if (!(m_statisticsHelpers is null))
+                    if (m_statisticsHelpers is not null)
                     {
                         foreach (DeviceStatisticsHelper<SubscribedDevice> statisticsHelper in m_statisticsHelpers)
                         {
@@ -3873,7 +3873,7 @@ namespace sttp
                         if (subscribedDeviceNames.Contains(definedDeviceName))
                             continue;
 
-                        DeviceStatisticsHelper<SubscribedDevice> statisticsHelper = new DeviceStatisticsHelper<SubscribedDevice>(new SubscribedDevice(definedDeviceName));
+                        DeviceStatisticsHelper<SubscribedDevice> statisticsHelper = new(new SubscribedDevice(definedDeviceName));
                         subscribedDevices.Add(statisticsHelper);
                         statisticsHelper.Reset(now);
                     }
@@ -4111,7 +4111,7 @@ namespace sttp
         {
             try
             {
-                UserCommandArgs args = new UserCommandArgs(command, response, buffer, startIndex, length);
+                UserCommandArgs args = new(command, response, buffer, startIndex, length);
                 ReceivedUserCommandResponse?.Invoke(this, args);
             }
             catch (Exception ex)
@@ -4308,7 +4308,7 @@ namespace sttp
 
                 // FUTURE: Missing data detection could be complex. For example, no need to continue logging data outages for devices that are offline - but how to detect?
                 // If data channel is UDP, measurements are missing for time span and data gap recovery enabled, request missing
-                //if (!(m_dataChannel is null) && m_dataGapRecoveryEnabled && !(m_dataGapRecoverer is null) && m_lastMeasurementCheck > 0 &&
+                //if m_dataChannel is not null && m_dataGapRecoveryEnabled && m_dataGapRecoverer is not null && m_lastMeasurementCheck > 0 &&
                 //    statisticsHelper.Device.MeasurementsExpected - statisticsHelper.Device.MeasurementsReceived > m_minimumMissingMeasurementThreshold)
                 //    m_dataGapRecoverer.LogDataGap(m_lastMeasurementCheck - Ticks.FromSeconds(m_transmissionDelayTimeAdjustment), now);
             }
@@ -4340,10 +4340,9 @@ namespace sttp
         /// <returns>File path within any defined logging path.</returns>
         protected string GetLoggingPath(string filePath)
         {
-            if (string.IsNullOrWhiteSpace(m_loggingPath))
-                return FilePath.GetAbsolutePath(filePath);
-
-            return Path.Combine(m_loggingPath, filePath);
+            return string.IsNullOrWhiteSpace(m_loggingPath) ?
+                FilePath.GetAbsolutePath(filePath) :
+                Path.Combine(m_loggingPath, filePath);
         }
 
         private void DataStreamMonitor_Elapsed(object sender, EventArgs<DateTime> e)
@@ -4360,8 +4359,8 @@ namespace sttp
             {
                 // If we've received no data in the last time-span, we restart connect cycle...
                 m_dataStreamMonitor.Enabled = false;
-                OnStatusMessage(MessageLevel.Info, $"\r\nNo data received in {m_dataStreamMonitor.Interval / 1000.0D:0.0} seconds, restarting connect cycle...\r\n", "Connection Issues");
-                ThreadPool.QueueUserWorkItem(state => Restart());
+                OnStatusMessage(MessageLevel.Info, $"{Environment.NewLine}No data received in {m_dataStreamMonitor.Interval / 1000.0D:0.0} seconds, restarting connect cycle...{Environment.NewLine}", "Connection Issues");
+                ThreadPool.QueueUserWorkItem(_ => Restart());
             }
 
             // Reset bytes received bytes being monitored
@@ -4409,7 +4408,7 @@ namespace sttp
             if (AutoConnect && Enabled)
                 StartSubscription();
 
-            if (m_dataGapRecoveryEnabled && !(m_dataGapRecoverer is null))
+            if (m_dataGapRecoveryEnabled && m_dataGapRecoverer is not null)
                 m_dataGapRecoverer.Enabled = true;
         }
 
@@ -4610,7 +4609,7 @@ namespace sttp
             CategorizedSettingsElement localCertificateElement = ConfigurationFile.Current.Settings["systemSettings"]["LocalCertificate"];
             string localCertificate = null;
 
-            if (!(localCertificateElement is null))
+            if (localCertificateElement is not null)
                 localCertificate = localCertificateElement.Value;
 
             if (localCertificate is null || !File.Exists(FilePath.GetAbsolutePath(localCertificate)))
@@ -4633,7 +4632,7 @@ namespace sttp
             {
                 remoteCertificateElement = ConfigurationFile.Current.Settings["systemSettings"]["RemoteCertificatesPath"];
 
-                if (!(remoteCertificateElement is null))
+                if (remoteCertificateElement is not null)
                 {
                     remoteCertificate = Path.Combine(remoteCertificateElement.Value, remoteCertificate);
                     fullPath = FilePath.GetAbsolutePath(remoteCertificate);

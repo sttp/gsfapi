@@ -249,39 +249,39 @@ namespace sttp
             {
                 int length = FixedLength;
 
-                if (IncludeTime)
+                if (!IncludeTime)
+                    return length;
+
+                long baseTimeOffset = m_baseTimeOffsets[m_timeIndex];
+
+                if (baseTimeOffset > 0)
                 {
-                    long baseTimeOffset = m_baseTimeOffsets[m_timeIndex];
+                    // See if timestamp will fit within space allowed for active base offset. We cache result so that post call
+                    // to binary length, result will speed other subsequent parsing operations by not having to reevaluate.
+                    long difference = (long)Timestamp - m_baseTimeOffsets[m_timeIndex];
 
-                    if (baseTimeOffset > 0)
+                    if (difference > 0)
+                        m_usingBaseTimeOffset = m_useMillisecondResolution ? difference / Ticks.PerMillisecond < ushort.MaxValue : difference < uint.MaxValue;
+                    else
+                        m_usingBaseTimeOffset = false;
+
+                    if (m_usingBaseTimeOffset)
                     {
-                        // See if timestamp will fit within space allowed for active base offset. We cache result so that post call
-                        // to binary length, result will speed other subsequent parsing operations by not having to reevaluate.
-                        long difference = (long)Timestamp - m_baseTimeOffsets[m_timeIndex];
-
-                        if (difference > 0)
-                            m_usingBaseTimeOffset = m_useMillisecondResolution ? difference / Ticks.PerMillisecond < ushort.MaxValue : difference < uint.MaxValue;
+                        if (m_useMillisecondResolution)
+                            length += 2;    // Use two bytes for millisecond resolution timestamp with valid offset
                         else
-                            m_usingBaseTimeOffset = false;
-
-                        if (m_usingBaseTimeOffset)
-                        {
-                            if (m_useMillisecondResolution)
-                                length += 2;    // Use two bytes for millisecond resolution timestamp with valid offset
-                            else
-                                length += 4;    // Use four bytes for tick resolution timestamp with valid offset
-                        }
-                        else
-                        {
-                            // Use eight bytes for full fidelity time
-                            length += 8;
-                        }
+                            length += 4;    // Use four bytes for tick resolution timestamp with valid offset
                     }
                     else
                     {
                         // Use eight bytes for full fidelity time
                         length += 8;
                     }
+                }
+                else
+                {
+                    // Use eight bytes for full fidelity time
+                    length += 8;
                 }
 
                 return length;
@@ -335,11 +335,8 @@ namespace sttp
             set
             {
                 // Attempt to restore signal identification
-
                 if (m_signalIndexCache.Reference.TryGetValue(value, out MeasurementKey key))
-                {
                     Metadata = key.Metadata;
-                }
                 else
                     throw new InvalidOperationException($"Failed to find associated signal identification for runtime ID {value}");
             }
@@ -382,35 +379,35 @@ namespace sttp
             Value = BigEndian.ToSingle(buffer, index);
             index += 4;
 
-            if (IncludeTime)
+            if (!IncludeTime)
+                return index - startIndex;
+
+            if (m_usingBaseTimeOffset)
             {
-                if (m_usingBaseTimeOffset)
+                long baseTimeOffset = m_baseTimeOffsets[m_timeIndex];
+
+                if (m_useMillisecondResolution)
                 {
-                    long baseTimeOffset = m_baseTimeOffsets[m_timeIndex];
+                    // Decode 2-byte millisecond offset timestamp
+                    if (baseTimeOffset > 0)
+                        Timestamp = baseTimeOffset + BigEndian.ToUInt16(buffer, index) * Ticks.PerMillisecond;
 
-                    if (m_useMillisecondResolution)
-                    {
-                        // Decode 2-byte millisecond offset timestamp
-                        if (baseTimeOffset > 0)
-                            Timestamp = baseTimeOffset + BigEndian.ToUInt16(buffer, index) * Ticks.PerMillisecond;
-
-                        index += 2;
-                    }
-                    else
-                    {
-                        // Decode 4-byte tick offset timestamp
-                        if (baseTimeOffset > 0)
-                            Timestamp = baseTimeOffset + BigEndian.ToUInt32(buffer, index);
-
-                        index += 4;
-                    }
+                    index += 2;
                 }
                 else
                 {
-                    // Decode 8-byte full fidelity timestamp
-                    Timestamp = BigEndian.ToInt64(buffer, index);
-                    index += 8;
+                    // Decode 4-byte tick offset timestamp
+                    if (baseTimeOffset > 0)
+                        Timestamp = baseTimeOffset + BigEndian.ToUInt32(buffer, index);
+
+                    index += 4;
                 }
+            }
+            else
+            {
+                // Decode 8-byte full fidelity timestamp
+                Timestamp = BigEndian.ToInt64(buffer, index);
+                index += 8;
             }
 
             return index - startIndex;
@@ -457,26 +454,26 @@ namespace sttp
             // Encode adjusted value (accounts for adder and multiplier)
             startIndex += BigEndian.CopyBytes((float)AdjustedValue, buffer, startIndex);
 
-            if (IncludeTime)
+            if (!IncludeTime)
+                return length;
+
+            if (m_usingBaseTimeOffset)
             {
-                if (m_usingBaseTimeOffset)
+                if (m_useMillisecondResolution)
                 {
-                    if (m_useMillisecondResolution)
-                    {
-                        // Encode 2-byte millisecond offset timestamp
-                        BigEndian.CopyBytes(TimestampC2, buffer, startIndex);
-                    }
-                    else
-                    {
-                        // Encode 4-byte ticks offset timestamp
-                        BigEndian.CopyBytes(TimestampC4, buffer, startIndex);
-                    }
+                    // Encode 2-byte millisecond offset timestamp
+                    BigEndian.CopyBytes(TimestampC2, buffer, startIndex);
                 }
                 else
                 {
-                    // Encode 8-byte full fidelity timestamp
-                    BigEndian.CopyBytes((long)Timestamp, buffer, startIndex);
+                    // Encode 4-byte ticks offset timestamp
+                    BigEndian.CopyBytes(TimestampC4, buffer, startIndex);
                 }
+            }
+            else
+            {
+                // Encode 8-byte full fidelity timestamp
+                BigEndian.CopyBytes((long)Timestamp, buffer, startIndex);
             }
 
             return length;
@@ -487,7 +484,7 @@ namespace sttp
         #region [ Static ]
 
         // Static Fields
-        private static readonly long[] s_emptyBaseTimeOffsets = new long[] { 0, 0 };
+        private static readonly long[] s_emptyBaseTimeOffsets = { 0L, 0L };
 
         #endregion
     }

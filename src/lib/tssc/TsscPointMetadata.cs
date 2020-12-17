@@ -73,9 +73,9 @@ namespace sttp.tssc
             m_readBits5 = readBits5 ?? NotImplementedMethod1;
         }
 
-        private int NotImplementedMethod1() => throw new NotImplementedException();
+        private static int NotImplementedMethod1() => throw new NotImplementedException();
 
-        private void NotImplementedMethod2(int a, int b) => throw new NotImplementedException();
+        private static void NotImplementedMethod2(int a, int b) => throw new NotImplementedException();
 
         public void WriteCode(int code)
         {
@@ -125,10 +125,7 @@ namespace sttp.tssc
                     code = m_readBits5();
                     break;
                 case 2:
-                    if (m_readBit() == 1)
-                        code = m_mode21;
-                    else
-                        code = m_readBits5();
+                    code = m_readBit() == 1 ? m_mode21 : m_readBits5();
                     break;
                 case 3:
                     if (m_readBit() == 1)
@@ -192,15 +189,15 @@ namespace sttp.tssc
 
             for (int x = 0; x < m_commandStats.Length; x++)
             {
-                int cnt = m_commandStats[x];
+                int count = m_commandStats[x];
                 m_commandStats[x] = 0;
 
-                total += cnt;
+                total += count;
 
-                if (cnt <= count3)
+                if (count <= count3)
                     continue;
 
-                if (cnt > count1)
+                if (count > count1)
                 {
                     code3 = code2;
                     count3 = count2;
@@ -209,20 +206,20 @@ namespace sttp.tssc
                     count2 = count1;
 
                     code1 = (byte)x;
-                    count1 = cnt;
+                    count1 = count;
                 }
-                else if (cnt > count2)
+                else if (count > count2)
                 {
                     code3 = code2;
                     count3 = count2;
 
                     code2 = (byte)x;
-                    count2 = cnt;
+                    count2 = count;
                 }
                 else
                 {
                     code3 = (byte)x;
-                    count3 = cnt;
+                    count3 = count;
                 }
             }
 

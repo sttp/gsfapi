@@ -194,10 +194,7 @@ namespace sttp
         /// <summary>
         /// Releases the unmanaged resources before the <see cref="DataGapRecoverer"/> object is reclaimed by <see cref="GC"/>.
         /// </summary>
-        ~DataGapRecoverer()
-        {
-            Dispose(false);
-        }
+        ~DataGapRecoverer() => Dispose(false);
 
         #endregion
 
@@ -237,7 +234,7 @@ namespace sttp
             {
                 m_dataSource = value;
 
-                if (!(m_temporalSubscription is null))
+                if (m_temporalSubscription is not null)
                     m_temporalSubscription.DataSource = m_dataSource;
             }
         }
@@ -453,10 +450,10 @@ namespace sttp
             {
                 m_enabled = value;
 
-                if (!(DataGapLogProcessor is null))
+                if (DataGapLogProcessor is not null)
                     DataGapLogProcessor.Enabled = m_enabled;
 
-                if (!(m_temporalSubscription is null))
+                if (m_temporalSubscription is not null)
                     m_temporalSubscription.Enabled = m_enabled;
             }
         }
@@ -491,53 +488,39 @@ namespace sttp
         {
             get
             {
-                StringBuilder status = new StringBuilder();
+                StringBuilder status = new();
 
-                status.AppendFormat(" Data recovery start delay: {0}", RecoveryStartDelay.ToString(2));
-                status.AppendLine();
-                status.AppendFormat("  Data monitoring interval: {0}", DataMonitoringInterval.ToString(2));
-                status.AppendLine();
-                status.AppendFormat("Minimum data recovery span: {0}", MinimumRecoverySpan.ToString(2));
-                status.AppendLine();
-                status.AppendFormat("Maximum data recovery span: {0}", MaximumRecoverySpan.ToString(2));
-                status.AppendLine();
-                status.AppendFormat("Recovery filter expression: {0}", FilterExpression.TruncateRight(51));
-                status.AppendLine();
-                status.AppendFormat(" Recovery processing speed: {0}", RecoveryProcessingInterval < 0 ? "Default" : RecoveryProcessingInterval == 0 ? "As fast as possible" : RecoveryProcessingInterval.ToString("N0") + " milliseconds");
-                status.AppendLine();
-                status.AppendFormat("Use millisecond resolution: {0}", UseMillisecondResolution);
-                status.AppendLine();
-                status.AppendFormat("     Start recovery buffer: {0:N2} seconds", StartRecoveryBuffer);
-                status.AppendLine();
-                status.AppendFormat("       End recovery buffer: {0:N2} seconds", EndRecoveryBuffer);
-                status.AppendLine();
-                status.AppendFormat("              Logging path: {0}", FilePath.TrimFileName(m_loggingPath.ToNonNullNorWhiteSpace(FilePath.GetAbsolutePath("")), 51));
-                status.AppendLine();
-                status.AppendFormat("Last recovered measurement: {0}", ((DateTime)m_mostRecentRecoveredTime).ToString(OutageLog.DateTimeFormat));
-                status.AppendLine();
+                status.AppendLine($" Data recovery start delay: {RecoveryStartDelay.ToString(2)}");
+                status.AppendLine($"  Data monitoring interval: {DataMonitoringInterval.ToString(2)}");
+                status.AppendLine($"Minimum data recovery span: {MinimumRecoverySpan.ToString(2)}");
+                status.AppendLine($"Maximum data recovery span: {MaximumRecoverySpan.ToString(2)}");
+                status.AppendLine($"Recovery filter expression: {FilterExpression.TruncateRight(51)}");
+                status.AppendLine($" Recovery processing speed: {(RecoveryProcessingInterval < 0 ? "Default" : RecoveryProcessingInterval == 0 ? "As fast as possible" : $"{RecoveryProcessingInterval:N0} milliseconds")}");
+                status.AppendLine($"Use millisecond resolution: {UseMillisecondResolution}");
+                status.AppendLine($"     Start recovery buffer: {StartRecoveryBuffer:N2} seconds");
+                status.AppendLine($"       End recovery buffer: {EndRecoveryBuffer:N2} seconds");
+                status.AppendLine($"              Logging path: {FilePath.TrimFileName(m_loggingPath.ToNonNullNorWhiteSpace(FilePath.GetAbsolutePath("")), 51)}");
+                status.AppendLine($"Last recovered measurement: {((DateTime)m_mostRecentRecoveredTime).ToString(OutageLog.DateTimeFormat)}");
 
                 Outage currentDataGap = m_currentDataGap;
 
-                if (!(currentDataGap is null))
-                {
-                    status.AppendFormat("      Currently recovering: {0};{1}", currentDataGap.Start.ToString(OutageLog.DateTimeFormat), currentDataGap.End.ToString(OutageLog.DateTimeFormat));
-                    status.AppendLine();
-                }
+                if (currentDataGap is not null)
+                    status.AppendLine($"      Currently recovering: {currentDataGap.Start.ToString(OutageLog.DateTimeFormat)} to {currentDataGap.End.ToString(OutageLog.DateTimeFormat)}");
 
-                if (!(m_temporalSubscription is null))
+                if (m_temporalSubscription is not null)
                 {
                     status.AppendLine();
                     status.AppendLine("Data Gap Temporal Subscription Status".CenterText(50));
                     status.AppendLine("-------------------------------------".CenterText(50));
-                    status.AppendFormat(m_temporalSubscription.Status);
+                    status.Append(m_temporalSubscription.Status);
                 }
 
-                if (!(DataGapLog is null))
+                if (DataGapLog is not null)
                 {
                     status.AppendLine();
                     status.AppendLine("Data Gap Log Status".CenterText(50));
                     status.AppendLine("-------------------".CenterText(50));
-                    status.AppendFormat(DataGapLog.Status);
+                    status.Append(DataGapLog.Status);
                 }
 
                 return status.ToString();
@@ -571,7 +554,7 @@ namespace sttp
                 if (!disposing)
                     return;
 
-                if (!(m_dataGapRecoveryCompleted is null))
+                if (m_dataGapRecoveryCompleted is not null)
                 {
                     // Signal any waiting threads
                     m_abnormalTermination = true;
@@ -579,26 +562,26 @@ namespace sttp
                     m_dataGapRecoveryCompleted.Dispose();
                 }
 
-                if (!(m_dataStreamMonitor is null))
+                if (m_dataStreamMonitor is not null)
                 {
                     m_dataStreamMonitor.Elapsed -= DataStreamMonitor_Elapsed;
                     m_dataStreamMonitor.Dispose();
                     m_dataStreamMonitor = null;
                 }
 
-                if (!(DataGapLogProcessor is null))
+                if (DataGapLogProcessor is not null)
                 {
                     DataGapLogProcessor.Dispose();
                     DataGapLogProcessor = null;
                 }
 
-                if (!(DataGapLog is null))
+                if (DataGapLog is not null)
                 {
                     DataGapLog.ProcessException -= Common_ProcessException;
                     DataGapLog = null;
                 }
 
-                if (!(m_temporalSubscription is null))
+                if (m_temporalSubscription is not null)
                 {
                     m_temporalSubscription.StatusMessage -= Common_StatusMessage;
                     m_temporalSubscription.ProcessException -= Common_ProcessException;
@@ -775,7 +758,7 @@ namespace sttp
         public string DumpOutageLog()
         {
             List<Outage> outages = DataGapLog.Outages;
-            StringBuilder dump = new StringBuilder();
+            StringBuilder dump = new();
 
             foreach (Outage outage in outages)
                 dump.AppendLine($"{outage.Start.ToString(OutageLog.DateTimeFormat)};{outage.End.ToString(OutageLog.DateTimeFormat)}");
@@ -923,15 +906,11 @@ namespace sttp
             }
         }
 
-        private string GetLoggingPath(string filePath)
-        {
-            return string.IsNullOrWhiteSpace(m_loggingPath) ? FilePath.GetAbsolutePath(filePath) : Path.Combine(m_loggingPath, filePath);
-        }
+        private string GetLoggingPath(string filePath) => 
+            string.IsNullOrWhiteSpace(m_loggingPath) ? FilePath.GetAbsolutePath(filePath) : Path.Combine(m_loggingPath, filePath);
 
-        private void TemporalSubscription_ConnectionEstablished(object sender, EventArgs e)
-        {
+        private void TemporalSubscription_ConnectionEstablished(object sender, EventArgs e) => 
             m_connected = true;
-        }
 
         private void TemporalSubscription_ConnectionTerminated(object sender, EventArgs e)
         {
@@ -943,7 +922,7 @@ namespace sttp
                 m_dataStreamMonitor.Enabled = false;
 
                 // If temporal subscription is currently enabled - connection termination was not expected
-                if (!(m_temporalSubscription is null))
+                if (m_temporalSubscription is not null)
                     m_abnormalTermination = m_temporalSubscription.Enabled;
             }
             finally
@@ -991,9 +970,11 @@ namespace sttp
             m_dataStreamMonitor.Enabled = false;
         }
 
-        private void Common_StatusMessage(object sender, EventArgs<string> e) => OnStatusMessage(MessageLevel.Info, e.Argument);
+        private void Common_StatusMessage(object sender, EventArgs<string> e) => 
+            OnStatusMessage(MessageLevel.Info, e.Argument);
 
-        private void Common_ProcessException(object sender, EventArgs<Exception> e) => OnProcessException(MessageLevel.Warning, e.Argument);
+        private void Common_ProcessException(object sender, EventArgs<Exception> e) => 
+            OnProcessException(MessageLevel.Warning, e.Argument);
 
         private void DataStreamMonitor_Elapsed(object sender, EventArgs<DateTime> e)
         {
@@ -1001,7 +982,7 @@ namespace sttp
             {
                 // If we've received no measurements in the last time-span, we cancel current process...
                 m_dataStreamMonitor.Enabled = false;
-                OnStatusMessage(MessageLevel.Warning, $"\r\nNo data received in {m_dataStreamMonitor.Interval / 1000.0D:0.0} seconds, canceling current data recovery operation...\r\n");
+                OnStatusMessage(MessageLevel.Warning, $"{Environment.NewLine}No data received in {m_dataStreamMonitor.Interval / 1000.0D:0.0} seconds, canceling current data recovery operation...{Environment.NewLine}");
                 m_dataGapRecoveryCompleted.Set();
             }
 

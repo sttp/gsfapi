@@ -32,14 +32,14 @@ namespace sttp.tssc
     /// </summary>
     public class TsscEncoder
     {
-        const uint Bits28 = 0xFFFFFFFu;
-        const uint Bits24 = 0xFFFFFFu;
-        const uint Bits20 = 0xFFFFFu;
-        const uint Bits16 = 0xFFFFu;
-        const uint Bits12 = 0xFFFu;
-        const uint Bits8 = 0xFFu;
-        const uint Bits4 = 0xFu;
-        const uint Bits0 = 0x0u;
+        private const uint Bits28 = 0xFFFFFFFU;
+        private const uint Bits24 = 0xFFFFFFU;
+        private const uint Bits20 = 0xFFFFFU;
+        private const uint Bits16 = 0xFFFFU;
+        private const uint Bits12 = 0xFFFU;
+        private const uint Bits8 = 0xFFU;
+        private const uint Bits4 = 0xFU;
+        private const uint Bits0 = 0x0U;
 
         private byte[] m_data;
         private int m_position;
@@ -59,10 +59,7 @@ namespace sttp.tssc
         /// <summary>
         /// Creates a encoder for the TSSC protocol.
         /// </summary>
-        public TsscEncoder()
-        {
-            Reset();
-        }
+        public TsscEncoder() => Reset();
 
         /// <summary>
         /// Resets the TSSC Encoder to the initial state. 
@@ -77,7 +74,7 @@ namespace sttp.tssc
         {
             m_points = new IndexedArray<TsscPointMetadata>();
             m_lastPoint = new TsscPointMetadata(WriteBits, null, null);
-            m_data = EmptyArray<byte>.Empty;
+            m_data = Array.Empty<byte>();
             m_position = 0;
             m_lastPosition = 0;
             ClearBitStream();
@@ -184,70 +181,65 @@ namespace sttp.tssc
             {
                 uint bitsChanged = valueRaw ^ point.PrevValue1;
 
-                if (bitsChanged <= Bits4)
+                switch (bitsChanged)
                 {
-                    m_lastPoint.WriteCode(TsscCodeWords.ValueXOR4);
-                    WriteBits((byte)bitsChanged & 15, 4);
-                }
-                else if (bitsChanged <= Bits8)
-                {
-                    m_lastPoint.WriteCode(TsscCodeWords.ValueXOR8);
+                    case <= Bits4:
+                        m_lastPoint.WriteCode(TsscCodeWords.ValueXOR4);
+                        WriteBits((byte)bitsChanged & 15, 4);
+                        break;
+                    case <= Bits8:
+                        m_lastPoint.WriteCode(TsscCodeWords.ValueXOR8);
 
-                    m_data[m_position] = (byte)bitsChanged;
-                    m_position++;
-                }
-                else if (bitsChanged <= Bits12)
-                {
-                    m_lastPoint.WriteCode(TsscCodeWords.ValueXOR12);
-                    WriteBits((byte)bitsChanged & 15, 4);
+                        m_data[m_position] = (byte)bitsChanged;
+                        m_position++;
+                        break;
+                    case <= Bits12:
+                        m_lastPoint.WriteCode(TsscCodeWords.ValueXOR12);
+                        WriteBits((byte)bitsChanged & 15, 4);
 
-                    m_data[m_position] = (byte)(bitsChanged >> 4);
-                    m_position++;
-                }
-                else if (bitsChanged <= Bits16)
-                {
-                    m_lastPoint.WriteCode(TsscCodeWords.ValueXOR16);
-                    m_data[m_position] = (byte)bitsChanged;
-                    m_data[m_position + 1] = (byte)(bitsChanged >> 8);
-                    m_position += 2;
-                }
-                else if (bitsChanged <= Bits20)
-                {
-                    m_lastPoint.WriteCode(TsscCodeWords.ValueXOR20);
-                    WriteBits((byte)bitsChanged & 15, 4);
+                        m_data[m_position] = (byte)(bitsChanged >> 4);
+                        m_position++;
+                        break;
+                    case <= Bits16:
+                        m_lastPoint.WriteCode(TsscCodeWords.ValueXOR16);
+                        m_data[m_position] = (byte)bitsChanged;
+                        m_data[m_position + 1] = (byte)(bitsChanged >> 8);
+                        m_position += 2;
+                        break;
+                    case <= Bits20:
+                        m_lastPoint.WriteCode(TsscCodeWords.ValueXOR20);
+                        WriteBits((byte)bitsChanged & 15, 4);
 
-                    m_data[m_position] = (byte)(bitsChanged >> 4);
-                    m_data[m_position + 1] = (byte)(bitsChanged >> 12);
-                    m_position += 2;
-                }
-                else if (bitsChanged <= Bits24)
-                {
-                    m_lastPoint.WriteCode(TsscCodeWords.ValueXOR24);
+                        m_data[m_position] = (byte)(bitsChanged >> 4);
+                        m_data[m_position + 1] = (byte)(bitsChanged >> 12);
+                        m_position += 2;
+                        break;
+                    case <= Bits24:
+                        m_lastPoint.WriteCode(TsscCodeWords.ValueXOR24);
 
-                    m_data[m_position] = (byte)bitsChanged;
-                    m_data[m_position + 1] = (byte)(bitsChanged >> 8);
-                    m_data[m_position + 2] = (byte)(bitsChanged >> 16);
-                    m_position += 3;
-                }
-                else if (bitsChanged <= Bits28)
-                {
-                    m_lastPoint.WriteCode(TsscCodeWords.ValueXOR28);
-                    WriteBits((byte)bitsChanged & 15, 4);
+                        m_data[m_position] = (byte)bitsChanged;
+                        m_data[m_position + 1] = (byte)(bitsChanged >> 8);
+                        m_data[m_position + 2] = (byte)(bitsChanged >> 16);
+                        m_position += 3;
+                        break;
+                    case <= Bits28:
+                        m_lastPoint.WriteCode(TsscCodeWords.ValueXOR28);
+                        WriteBits((byte)bitsChanged & 15, 4);
 
-                    m_data[m_position] = (byte)(bitsChanged >> 4);
-                    m_data[m_position + 1] = (byte)(bitsChanged >> 12);
-                    m_data[m_position + 2] = (byte)(bitsChanged >> 20);
-                    m_position += 3;
-                }
-                else
-                {
-                    m_lastPoint.WriteCode(TsscCodeWords.ValueXOR32);
+                        m_data[m_position] = (byte)(bitsChanged >> 4);
+                        m_data[m_position + 1] = (byte)(bitsChanged >> 12);
+                        m_data[m_position + 2] = (byte)(bitsChanged >> 20);
+                        m_position += 3;
+                        break;
+                    default:
+                        m_lastPoint.WriteCode(TsscCodeWords.ValueXOR32);
 
-                    m_data[m_position] = (byte)bitsChanged;
-                    m_data[m_position + 1] = (byte)(bitsChanged >> 8);
-                    m_data[m_position + 2] = (byte)(bitsChanged >> 16);
-                    m_data[m_position + 3] = (byte)(bitsChanged >> 24);
-                    m_position += 4;
+                        m_data[m_position] = (byte)bitsChanged;
+                        m_data[m_position + 1] = (byte)(bitsChanged >> 8);
+                        m_data[m_position + 2] = (byte)(bitsChanged >> 16);
+                        m_data[m_position + 3] = (byte)(bitsChanged >> 24);
+                        m_position += 4;
+                        break;
                 }
 
                 point.PrevValue3 = point.PrevValue2;
@@ -264,59 +256,55 @@ namespace sttp.tssc
         {
             uint bitsChanged = (uint)(id ^ m_lastPoint.PrevNextPointId1);
 
-            if (bitsChanged <= Bits4)
+            switch (bitsChanged)
             {
-                m_lastPoint.WriteCode(TsscCodeWords.PointIDXOR4);
-                WriteBits((byte)bitsChanged & 15, 4);
-            }
-            else if (bitsChanged <= Bits8)
-            {
-                m_lastPoint.WriteCode(TsscCodeWords.PointIDXOR8);
-                m_data[m_position] = (byte)bitsChanged;
-                m_position++;
-            }
-            else if (bitsChanged <= Bits12)
-            {
-                m_lastPoint.WriteCode(TsscCodeWords.PointIDXOR12);
-                WriteBits((byte)bitsChanged & 15, 4);
+                case <= Bits4:
+                    m_lastPoint.WriteCode(TsscCodeWords.PointIDXOR4);
+                    WriteBits((byte)bitsChanged & 15, 4);
+                    break;
+                case <= Bits8:
+                    m_lastPoint.WriteCode(TsscCodeWords.PointIDXOR8);
+                    m_data[m_position] = (byte)bitsChanged;
+                    m_position++;
+                    break;
+                case <= Bits12:
+                    m_lastPoint.WriteCode(TsscCodeWords.PointIDXOR12);
+                    WriteBits((byte)bitsChanged & 15, 4);
 
-                m_data[m_position] = (byte)(bitsChanged >> 4);
-                m_position++;
-            }
-            else if (bitsChanged <= Bits16)
-            {
-                m_lastPoint.WriteCode(TsscCodeWords.PointIDXOR16);
-                m_data[m_position] = (byte)bitsChanged;
-                m_data[m_position + 1] = (byte)(bitsChanged >> 8);
-                m_position += 2;
-            }
-            else if (bitsChanged <= Bits20)
-            {
-                m_lastPoint.WriteCode(TsscCodeWords.PointIDXOR20);
-                WriteBits((byte)bitsChanged & 15, 4);
+                    m_data[m_position] = (byte)(bitsChanged >> 4);
+                    m_position++;
+                    break;
+                case <= Bits16:
+                    m_lastPoint.WriteCode(TsscCodeWords.PointIDXOR16);
+                    m_data[m_position] = (byte)bitsChanged;
+                    m_data[m_position + 1] = (byte)(bitsChanged >> 8);
+                    m_position += 2;
+                    break;
+                case <= Bits20:
+                    m_lastPoint.WriteCode(TsscCodeWords.PointIDXOR20);
+                    WriteBits((byte)bitsChanged & 15, 4);
 
-                m_data[m_position] = (byte)(bitsChanged >> 4);
-                m_data[m_position + 1] = (byte)(bitsChanged >> 12);
-                m_position += 2;
-            }
-            else if (bitsChanged <= Bits24)
-            {
-                m_lastPoint.WriteCode(TsscCodeWords.PointIDXOR24);
+                    m_data[m_position] = (byte)(bitsChanged >> 4);
+                    m_data[m_position + 1] = (byte)(bitsChanged >> 12);
+                    m_position += 2;
+                    break;
+                case <= Bits24:
+                    m_lastPoint.WriteCode(TsscCodeWords.PointIDXOR24);
 
-                m_data[m_position] = (byte)bitsChanged;
-                m_data[m_position + 1] = (byte)(bitsChanged >> 8);
-                m_data[m_position + 2] = (byte)(bitsChanged >> 16);
-                m_position += 3;
-            }
-            else
-            {
-                m_lastPoint.WriteCode(TsscCodeWords.PointIDXOR32);
+                    m_data[m_position] = (byte)bitsChanged;
+                    m_data[m_position + 1] = (byte)(bitsChanged >> 8);
+                    m_data[m_position + 2] = (byte)(bitsChanged >> 16);
+                    m_position += 3;
+                    break;
+                default:
+                    m_lastPoint.WriteCode(TsscCodeWords.PointIDXOR32);
 
-                m_data[m_position] = (byte)bitsChanged;
-                m_data[m_position + 1] = (byte)(bitsChanged >> 8);
-                m_data[m_position + 2] = (byte)(bitsChanged >> 16);
-                m_data[m_position + 3] = (byte)(bitsChanged >> 24);
-                m_position += 4;
+                    m_data[m_position] = (byte)bitsChanged;
+                    m_data[m_position + 1] = (byte)(bitsChanged >> 8);
+                    m_data[m_position + 2] = (byte)(bitsChanged >> 16);
+                    m_data[m_position + 3] = (byte)(bitsChanged >> 24);
+                    m_position += 4;
+                    break;
             }
 
             m_lastPoint.PrevNextPointId1 = id;

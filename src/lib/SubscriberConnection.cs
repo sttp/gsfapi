@@ -131,9 +131,9 @@ namespace sttp
             get => m_dataChannel;
             set
             {
-                m_connectionEstablished = !(value is null);
+                m_connectionEstablished = value is not null;
 
-                if (!(m_dataChannel is null))
+                if (m_dataChannel is not null)
                 {
                     // Detach from events on existing data channel reference
                     m_dataChannel.ClientConnectingException -= DataChannel_ClientConnectingException;
@@ -148,7 +148,7 @@ namespace sttp
                 // Assign new data channel reference
                 m_dataChannel = value;
 
-                if (!(m_dataChannel is null))
+                if (m_dataChannel is not null)
                 {
                     // Save UDP settings so channel can be reestablished if needed
                     m_configurationString = m_dataChannel.ConfigurationString;
@@ -195,7 +195,7 @@ namespace sttp
                 {
                     Socket commandChannelSocket = GetCommandChannelSocket();
 
-                    if (!(commandChannelSocket is null))
+                    if (commandChannelSocket is not null)
                         isConnected = commandChannelSocket.Connected;
                 }
                 catch
@@ -324,7 +324,7 @@ namespace sttp
             {
                 m_subscription = value;
 
-                if (!(m_subscription is null))
+                if (m_subscription is not null)
                     m_subscription.Name = m_hostName;
             }
         }
@@ -367,22 +367,16 @@ namespace sttp
         {
             get
             {
-                StringBuilder status = new StringBuilder();
-                const string FormatString = "{0,26}: {1}";
+                StringBuilder status = new();
 
                 status.AppendLine();
-                status.AppendFormat(FormatString, "Subscriber ID", m_connectionID);
-                status.AppendLine();
-                status.AppendFormat(FormatString, "Subscriber name", SubscriberName);
-                status.AppendLine();
-                status.AppendFormat(FormatString, "Subscriber acronym", SubscriberAcronym);
-                status.AppendLine();
-                status.AppendFormat(FormatString, "Publish channel protocol", ServerPublishChannel.TransportProtocol);
-                status.AppendLine();
-                status.AppendFormat(FormatString, "Data packet security", m_keyIVs is null ? "unencrypted" : "encrypted");
-                status.AppendLine();
+                status.AppendLine($"             Subscriber ID: {m_connectionID}");
+                status.AppendLine($"           Subscriber name: {SubscriberName}");
+                status.AppendLine($"        Subscriber acronym: {SubscriberAcronym}");
+                status.AppendLine($"  Publish channel protocol: {ServerPublishChannel?.TransportProtocol.ToString() ?? "Not configured"}");
+                status.AppendLine($"      Data packet security: {(m_parent?.SecurityMode == SecurityMode.TLS && m_dataChannel is null ? "Secured via TLS" : m_keyIVs is null ? "Unencrypted" : "AES Encrypted")}");
 
-                if (!(m_dataChannel is null))
+                if (m_dataChannel is not null)
                 {
                     status.AppendLine();
                     status.Append(m_dataChannel.Status);
@@ -419,14 +413,14 @@ namespace sttp
                 if (!disposing)
                     return;
 
-                if (!(m_pingTimer is null))
+                if (m_pingTimer is not null)
                 {
                     m_pingTimer.Elapsed -= PingTimer_Elapsed;
                     m_pingTimer.Dispose();
                     m_pingTimer = null;
                 }
 
-                if (!(m_reconnectTimer is null))
+                if (m_reconnectTimer is not null)
                 {
                     m_reconnectTimer.Elapsed -= ReconnectTimer_Elapsed;
                     m_reconnectTimer.Dispose();
@@ -450,7 +444,7 @@ namespace sttp
         /// </summary>
         internal void UpdateKeyIVs()
         {
-            using (AesManaged symmetricAlgorithm = new AesManaged())
+            using (AesManaged symmetricAlgorithm = new())
             {
                 symmetricAlgorithm.KeySize = 256;
                 symmetricAlgorithm.GenerateKey();
@@ -476,12 +470,14 @@ namespace sttp
                 }
                 else
                 {
+                    int oldIndex = m_cipherIndex;
+
                     // Generate a new key set for current cipher index
-                    m_keyIVs[m_cipherIndex][KeyIndex] = symmetricAlgorithm.Key;
-                    m_keyIVs[m_cipherIndex][IVIndex] = symmetricAlgorithm.IV;
+                    m_keyIVs[oldIndex][KeyIndex] = symmetricAlgorithm.Key;
+                    m_keyIVs[oldIndex][IVIndex] = symmetricAlgorithm.IV;
 
                     // Set run-time to the other key set
-                    m_cipherIndex ^= 1;
+                    m_cipherIndex = oldIndex ^ 1;
                 }
             }
 
@@ -500,7 +496,7 @@ namespace sttp
                 {
                     // Since this function cannot be not called more than once per second there
                     // is no real benefit to maintaining these memory streams at a member level
-                    using (BlockAllocatedMemoryStream response = new BlockAllocatedMemoryStream())
+                    using (BlockAllocatedMemoryStream response = new())
                     {
                         byte[] bytes;
 
@@ -511,7 +507,7 @@ namespace sttp
                         response.WriteByte((byte)m_cipherIndex);
 
                         // Serialize new keys
-                        using (BlockAllocatedMemoryStream buffer = new BlockAllocatedMemoryStream())
+                        using (BlockAllocatedMemoryStream buffer = new())
                         {
                             // Write even key
                             byte[] bufferLen = BigEndian.GetBytes(m_keyIVs[EvenKey][KeyIndex].Length);
@@ -581,11 +577,9 @@ namespace sttp
             };
         }
 
-        private void PingTimer_Elapsed(object sender, EventArgs<DateTime> e)
-        {
-            // Send a no-op keep-alive ping to make sure the client is still connected
+        // Send a no-op keep-alive ping to make sure the client is still connected
+        private void PingTimer_Elapsed(object sender, EventArgs<DateTime> e) =>
             m_parent.SendClientResponse(ClientID, ServerResponse.NoOP, ServerCommand.Subscribe);
-        }
 
         private void DataChannel_ClientConnectingException(object sender, EventArgs<Exception> e)
         {
@@ -599,10 +593,8 @@ namespace sttp
             m_parent.OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data channel exception occurred while sending client data to \"{m_connectionID}\": {ex.Message}", ex));
         }
 
-        private void DataChannel_ServerStarted(object sender, EventArgs e)
-        {
+        private void DataChannel_ServerStarted(object sender, EventArgs e) => 
             m_parent.OnStatusMessage(MessageLevel.Info, "Data channel started.");
-        }
 
         private void DataChannel_ServerStopped(object sender, EventArgs e)
         {
@@ -624,7 +616,7 @@ namespace sttp
                 m_parent.OnStatusMessage(MessageLevel.Info, "Attempting to restart data channel...");
                 DataChannel = null;
 
-                UdpServer dataChannel = new UdpServer(m_configurationString);
+                UdpServer dataChannel = new(m_configurationString);
                 dataChannel.Start();
 
                 DataChannel = dataChannel;
@@ -673,7 +665,7 @@ namespace sttp
             // Attempt to lookup remote connection identification for logging purposes
             try
             {
-                if (!(remoteEndPoint is null))
+                if (remoteEndPoint is not null)
                 {
                     ipAddress = remoteEndPoint.Address;
 

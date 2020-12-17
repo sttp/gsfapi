@@ -51,10 +51,8 @@ namespace sttp
         /// </summary>
         /// <param name="dataSource">The source of metadata providing the tables required by the rights logic.</param>
         /// <param name="subscriberID">The ID of the subscriber whose rights are being looked up.</param>
-        public SubscriberRightsLookup(DataSet dataSource, Guid subscriberID)
-        {
+        public SubscriberRightsLookup(DataSet dataSource, Guid subscriberID) => 
             HasRightsFunc = BuildLookup(dataSource, subscriberID);
-        }
 
         #endregion
 
@@ -74,14 +72,12 @@ namespace sttp
         /// </summary>
         /// <param name="signalID">The ID of the signal.</param>
         /// <returns>True if the subscriber has rights; false otherwise.</returns>
-        public bool HasRights(Guid signalID)
-        {
-            return HasRightsFunc(signalID);
-        }
+        public bool HasRights(Guid signalID) => 
+            HasRightsFunc(signalID);
 
         private Func<Guid, bool> BuildLookup(DataSet dataSource, Guid subscriberID)
         {
-            HashSet<Guid> authorizedSignals = new HashSet<Guid>();
+            HashSet<Guid> authorizedSignals = new();
 
             const string FilterRegex = @"(ALLOW|DENY)\s+WHERE\s+([^;]*)";
 

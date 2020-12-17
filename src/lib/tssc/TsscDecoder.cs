@@ -50,10 +50,7 @@ namespace sttp.tssc
         /// <summary>
         /// Creates a decoder for the TSSC protocol.
         /// </summary>
-        public TsscDecoder()
-        {
-            Reset();
-        }
+        public TsscDecoder() => Reset();
 
         /// <summary>
         /// Resets the TSSC Decoder to the initial state. 
@@ -68,7 +65,7 @@ namespace sttp.tssc
         {
             m_points = new IndexedArray<TsscPointMetadata>();
             m_lastPoint = new TsscPointMetadata(null, ReadBit, ReadBits5);
-            m_data = EmptyArray<byte>.Empty;
+            m_data = Array.Empty<byte>();
             m_position = 0;
             m_lastPosition = 0;
             ClearBitStream();
@@ -126,24 +123,27 @@ namespace sttp.tssc
 
             int code = m_lastPoint.ReadCode();
 
-            if (code == TsscCodeWords.EndOfStream)
+            switch (code)
             {
-                ClearBitStream();
-                id = 0;
-                timestamp = 0;
-                quality = 0;
-                value = 0;
+                case TsscCodeWords.EndOfStream:
+                {
+                    ClearBitStream();
+                    id = 0;
+                    timestamp = 0;
+                    quality = 0;
+                    value = 0;
                 
-                return false;
-            }
-
-            if (code <= TsscCodeWords.PointIDXOR32)
-            {
-                DecodePointID(code, m_lastPoint);
-                code = m_lastPoint.ReadCode();
+                    return false;
+                }
+                case <= TsscCodeWords.PointIDXOR32:
+                {
+                    DecodePointID(code, m_lastPoint);
+                    code = m_lastPoint.ReadCode();
                 
-                if (code < TsscCodeWords.TimeDelta1Forward)
-                    throw new Exception($"Expecting code >= {TsscCodeWords.TimeDelta1Forward} Received {code} at position {m_position} with last position { m_lastPosition}");
+                    if (code < TsscCodeWords.TimeDelta1Forward)
+                        throw new Exception($"Expecting code >= {TsscCodeWords.TimeDelta1Forward} Received {code} at position {m_position} with last position { m_lastPosition}");
+                    break;
+                }
             }
 
             id = m_lastPoint.PrevNextPointId1;
@@ -388,31 +388,11 @@ namespace sttp.tssc
             return (m_bitStreamCache >> m_bitStreamCount) & 1;
         }
 
-        private int ReadBits4()
-        {
-            return ReadBit() << 3 | ReadBit() << 2 | ReadBit() << 1 | ReadBit();
+        private int ReadBits4() => 
+            ReadBit() << 3 | ReadBit() << 2 | ReadBit() << 1 | ReadBit();
 
-            //if (m_bitCount < 4)
-            //{
-            //    m_bitCount += 8;
-            //    m_cache = m_cache << 8 | m_parent.m_buffer.Data[m_parent.m_buffer.Position++];
-            //}
-            //m_bitCount -= 4;
-            //return (m_cache >> m_bitCount) & 15;
-        }
-
-        private int ReadBits5()
-        {
-            return ReadBit() << 4 | ReadBit() << 3 | ReadBit() << 2 | ReadBit() << 1 | ReadBit();
-
-            //if (m_bitCount < 5)
-            //{
-            //    m_bitCount += 8;
-            //    m_cache = m_cache << 8 | m_parent.m_buffer.Data[m_parent.m_buffer.Position++];
-            //}
-            //m_bitCount -= 5;
-            //return (m_cache >> m_bitCount) & 31;
-        }
+        private int ReadBits5() => 
+            ReadBit() << 4 | ReadBit() << 3 | ReadBit() << 2 | ReadBit() << 1 | ReadBit();
 
         #endregion
     }

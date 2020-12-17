@@ -38,10 +38,7 @@ namespace sttp
         /// <summary>
         /// Creates a new instance of the <see cref="SubscriptionInfo"/> class.
         /// </summary>
-        public SubscriptionInfo(bool throttled = false)
-        {
-            Throttled = throttled;
-        }
+        public SubscriptionInfo(bool throttled = false) => Throttled = throttled;
 
         #endregion
 
@@ -116,7 +113,7 @@ namespace sttp
         /// <para>
         /// When the <see cref="StartTime"/> or <see cref="StopTime"/> temporal processing constraints are defined (i.e., not <c>null</c>), this
         /// specifies the start and stop time over which the subscriber session will process data. Passing in <c>null</c> for the <see cref="StartTime"/>
-        /// and <see cref="StopTime"/> specifies the the subscriber session will process data in standard, i.e., real-time, operation.
+        /// and <see cref="StopTime"/> specifies the subscriber session will process data in standard, i.e., real-time, operation.
         /// </para>
         /// 
         /// <para>
@@ -164,7 +161,7 @@ namespace sttp
         /// <para>
         /// When the <see cref="StartTime"/> or <see cref="StopTime"/> temporal processing constraints are defined (i.e., not <c>null</c>), this
         /// specifies the start and stop time over which the subscriber session will process data. Passing in <c>null</c> for the <see cref="StartTime"/>
-        /// and <see cref="StopTime"/> specifies the the subscriber session will process data in standard, i.e., real-time, operation.
+        /// and <see cref="StopTime"/> specifies the subscriber session will process data in standard, i.e., real-time, operation.
         /// </para>
         /// 
         /// <para>

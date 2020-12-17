@@ -143,7 +143,7 @@ namespace sttp
             set
             {
                 m_reference = value;
-                IndexedArray<int> signalIDCache = new IndexedArray<int>(-1);
+                IndexedArray<int> signalIDCache = new(-1);
 
                 foreach (KeyValuePair<int, MeasurementKey> pair in value)
                     signalIDCache[pair.Value.RuntimeID] = pair.Key;

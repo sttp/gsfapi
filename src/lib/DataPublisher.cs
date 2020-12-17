@@ -839,6 +839,7 @@ namespace sttp
                     _ => new RoutingTables()
                 };
             }
+
             m_routingTables.ActionAdapters = this;
             m_routingTables.StatusMessage += RoutingTables_StatusMessage;
             m_routingTables.ProcessException += RoutingTables_ProcessException;
@@ -865,8 +866,20 @@ namespace sttp
         /// <summary>
         /// Gets or sets flag that determines whether data sent over the data channel should be encrypted.
         /// </summary>
+        /// <remarks>
+        /// <para>
+        /// If <see cref="SecurityMode"/> is set to <c>TLS</c> and data channel is UDP, set this value to
+        /// <c>true</c> so that data packets published over UDP will be encrypted. AES keys used for UDP
+        /// data packet encryption will be exchanged over the secured TLS command channel.
+        /// </para>
+        /// <para>
+        /// If <see cref="SecurityMode"/> is set to <c>None</c>, setting this value to <c>true</c> will
+        /// encrypt published data packets, but encryption keys will be sent in the clear over the command
+        /// channel -- operating in this mode is not secure.
+        /// </para>
+        /// </remarks>
         [ConnectionStringParameter]
-        [Description("Define the flag that determines whether data sent over the data channel should be encrypted. This value is only relevant when SecurityMode is TLS.")]
+        [Description("Define the flag that determines whether data sent over the data channel should be encrypted.")]
         [DefaultValue(DefaultEncryptPayload)]
         public bool EncryptPayload
         {
@@ -876,7 +889,7 @@ namespace sttp
                 m_encryptPayload = value;
 
                 // Start cipher key rotation timer when encrypting payload
-                if (!(m_cipherKeyRotationTimer is null))
+                if (m_cipherKeyRotationTimer is not null)
                     m_cipherKeyRotationTimer.Enabled = value;
             }
         }
@@ -948,7 +961,7 @@ namespace sttp
         {
             get
             {
-                if (!(m_cipherKeyRotationTimer is null))
+                if (m_cipherKeyRotationTimer is not null)
                     return m_cipherKeyRotationTimer.Interval;
 
                 return double.NaN;
@@ -958,10 +971,10 @@ namespace sttp
                 if (value < 1000.0D)
                     throw new ArgumentOutOfRangeException(nameof(value), "Cipher key rotation period should not be set to less than 1000 milliseconds.");
 
-                if (!(m_cipherKeyRotationTimer is null))
+                if (m_cipherKeyRotationTimer is not null)
                     m_cipherKeyRotationTimer.Interval = (int)value;
-
-                throw new ArgumentException("Cannot assign new cipher rotation period, timer is not defined.");
+                else
+                    throw new ArgumentException("Cannot assign new cipher rotation period, timer is not defined.");
             }
         }
 
@@ -1027,16 +1040,16 @@ namespace sttp
             get => base.DataSource;
             set
             {
-                if (DataSourceChanged(value))
-                {
-                    base.DataSource = value;
+                if (!DataSourceChanged(value))
+                    return;
 
-                    UpdateRights();
-                    UpdateCertificateChecker();
-                    UpdateClientNotifications();
-                    UpdateLatestMeasurementCache();
-                    NotifyClientsOfConfigurationChange();
-                }
+                base.DataSource = value;
+
+                UpdateRights();
+                UpdateCertificateChecker();
+                UpdateClientNotifications();
+                UpdateLatestMeasurementCache();
+                NotifyClientsOfConfigurationChange();
             }
         }
 
@@ -1050,33 +1063,24 @@ namespace sttp
         {
             get
             {
-                StringBuilder status = new StringBuilder();
+                StringBuilder status = new();
 
                 status.Append(m_serverCommandChannel?.Status);
                 status.Append(m_clientCommandChannel?.Status);
 
-                if (!(m_clientCommandChannel is null))
-                {
-                    status.AppendFormat("   Using simple TCP client: {0}", UseSimpleTcpClient);
-                    status.AppendLine();
-                }
+                if (m_clientCommandChannel is not null)
+                    status.AppendLine($"   Using simple TCP client: {UseSimpleTcpClient}");
 
                 status.Append(base.Status);
-                status.AppendFormat("       Mutual Subscription: {0}", MutualSubscription);
-                status.AppendLine();
-                status.AppendFormat("        Reporting interval: {0:N0} per subscriber", MeasurementReportingInterval);
-                status.AppendLine();
-                status.AppendFormat("  Buffer block retransmits: {0:N0}", BufferBlockRetransmissions);
-                status.AppendLine();
-                status.AppendFormat("  Max publication interval: {0}", Time.ToElapsedTimeString(MaxPublishInterval / 1000.0D, 3));
-                status.AppendLine();
+                status.AppendLine($"       Mutual Subscription: {MutualSubscription}");
+                status.AppendLine($"        Reporting interval: {MeasurementReportingInterval:N0} per subscriber");
+                status.AppendLine($"  Buffer block retransmits: {BufferBlockRetransmissions:N0}");
+                status.AppendLine($"  Max publication interval: {Time.ToElapsedTimeString(MaxPublishInterval / 1000.0D, 3)}");
 
                 if (MaxPublishInterval > 0L)
                 {
-                    status.AppendFormat("       Last publish buffer: {0}", SI2.ToScaledString(m_lastPublishBufferSize, 3, "B"));
-                    status.AppendLine();
-                    status.AppendFormat("    Pending publish buffer: {0}", SI2.ToScaledString(m_publishBuffer.Length, 3, "B"));
-                    status.AppendLine();
+                    status.AppendLine($"       Last publish buffer: {SI2.ToScaledString(m_lastPublishBufferSize, 3, "B")}");
+                    status.AppendLine($"    Pending publish buffer: {SI2.ToScaledString(m_publishBuffer.Length, 3, "B")}");
                 }
 
                 return status.ToString();
@@ -1152,7 +1156,7 @@ namespace sttp
             get => m_serverCommandChannel;
             set
             {
-                if (!(m_serverCommandChannel is null))
+                if (m_serverCommandChannel is not null)
                 {
                     // Detach from events on existing command channel reference
                     m_serverCommandChannel.ClientConnected -= ServerCommandChannelClientConnected;
@@ -1171,7 +1175,7 @@ namespace sttp
                 // Assign new command channel reference
                 m_serverCommandChannel = value;
 
-                if (!(m_serverCommandChannel is null))
+                if (m_serverCommandChannel is not null)
                 {
                     // Attach to desired events on new command channel reference
                     m_serverCommandChannel.ClientConnected += ServerCommandChannelClientConnected;
@@ -1197,7 +1201,7 @@ namespace sttp
             get => m_clientCommandChannel;
             set
             {
-                if (!(m_clientCommandChannel is null))
+                if (m_clientCommandChannel is not null)
                 {
                     // Detach from events on existing command channel reference
                     m_clientCommandChannel.ConnectionAttempt -= ClientCommandChannelConnectionAttempt;
@@ -1215,7 +1219,7 @@ namespace sttp
                 // Assign new command channel reference
                 m_clientCommandChannel = value;
 
-                if (!(m_clientCommandChannel is null))
+                if (m_clientCommandChannel is not null)
                 {
                     // Attach to desired events on new command channel reference
                     m_clientCommandChannel.ConnectionAttempt += ClientCommandChannelConnectionAttempt;
@@ -1303,7 +1307,7 @@ namespace sttp
 
                 ClientConnections = null;
 
-                if (!(m_routingTables is null))
+                if (m_routingTables is not null)
                 {
                     m_routingTables.StatusMessage -= RoutingTables_StatusMessage;
                     m_routingTables.ProcessException -= RoutingTables_ProcessException;
@@ -1312,7 +1316,7 @@ namespace sttp
                 m_routingTables = null;
 
                 // Dispose the cipher key rotation timer
-                if (!(m_cipherKeyRotationTimer is null))
+                if (m_cipherKeyRotationTimer is not null)
                 {
                     m_cipherKeyRotationTimer.Elapsed -= CipherKeyRotationTimer_Elapsed;
                     m_cipherKeyRotationTimer.Dispose();
@@ -1403,10 +1407,7 @@ namespace sttp
                 ValidateMeasurementRights = SecurityMode == SecurityMode.TLS;
 
             // Gets any configured flag for client IP validation, otherwise set default value
-            if (settings.TryGetValue(nameof(ValidateClientIPAddress), out setting))
-                ValidateClientIPAddress = setting.ParseBoolean();
-            else
-                ValidateClientIPAddress = ValidateMeasurementRights;
+            ValidateClientIPAddress = settings.TryGetValue(nameof(ValidateClientIPAddress), out setting) ? setting.ParseBoolean() : ValidateMeasurementRights;
 
             if (settings.TryGetValue(nameof(CachedMeasurementExpression), out setting) &&
                 (AdapterBase.ParseInputMeasurementKeys(DataSource, false, setting).Length > 0 ||
@@ -1415,7 +1416,7 @@ namespace sttp
                 CachedMeasurementExpression = setting;
 
                 // Create adapter for caching measurements that have a slower refresh interval
-                LatestMeasurementCache cache = new LatestMeasurementCache($"trackLatestMeasurements=true;lagTime=60;leadTime=60;inputMeasurementKeys={{{CachedMeasurementExpression}}}")
+                LatestMeasurementCache cache = new($"trackLatestMeasurements=true;lagTime=60;leadTime=60;inputMeasurementKeys={{{CachedMeasurementExpression}}}")
                 {
                     DataSource = DataSource
                 };
@@ -1484,7 +1485,7 @@ namespace sttp
                         checkCertificateRevocation = true;
 
                     // Create a new TLS client
-                    TlsClient commandChannel = new TlsClient
+                    TlsClient commandChannel = new()
                     {
                         PayloadAware = true,
                         PayloadMarker = null,
@@ -1505,10 +1506,10 @@ namespace sttp
                 else
                 {
                     // Create a new TLS server
-                    TlsServer commandChannel = new TlsServer
+                    TlsServer commandChannel = new()
                     {
                         SettingsCategory = Name.Replace("!", "").ToLower(),
-                        ConfigurationString = "port=6165",
+                        ConfigurationString = "port=7167",
                         PayloadAware = true,
                         PayloadMarker = null,
                         PayloadEndianOrder = EndianOrder.BigEndian,
@@ -1529,7 +1530,7 @@ namespace sttp
                     if (UseSimpleTcpClient)
                     {
                         // Create a new simple TCP client
-                        TcpSimpleClient commandChannel = new TcpSimpleClient
+                        TcpSimpleClient commandChannel = new()
                         {
                             PayloadAware = true,
                             PayloadMarker = null,
@@ -1547,7 +1548,7 @@ namespace sttp
                     else
                     {
                         // Create a new TCP client
-                        TcpClient commandChannel = new TcpClient
+                        TcpClient commandChannel = new()
                         {
                             PayloadAware = true,
                             PayloadMarker = null,
@@ -1566,10 +1567,10 @@ namespace sttp
                 else
                 {
                     // Create a new TCP server
-                    TcpServer commandChannel = new TcpServer
+                    TcpServer commandChannel = new()
                     {
                         SettingsCategory = Name.Replace("!", "").ToLower(),
-                        ConfigurationString = "port=6165",
+                        ConfigurationString = "port=7165",
                         PayloadAware = true,
                         PayloadMarker = null,
                         PayloadEndianOrder = EndianOrder.BigEndian,
@@ -1603,13 +1604,13 @@ namespace sttp
 
             // Register publisher with the statistics engine
             StatisticsEngine.Register(this, "Publisher", "PUB");
-            StatisticsEngine.Calculated += (sender, args) => ResetMeasurementsPerSecondCounters();
+            StatisticsEngine.Calculated += (_, _) => ResetMeasurementsPerSecondCounters();
 
             Initialized = true;
         }
 
         RoutingPassthroughMethod IOptimizedRoutingConsumer.GetRoutingPassthroughMethods() =>
-            new RoutingPassthroughMethod(QueueMeasurementsForProcessing);
+            new(QueueMeasurementsForProcessing);
 
         /// <summary>
         /// Queues a collection of measurements for processing to each <see cref="IActionAdapter"/> connected to this <see cref="DataPublisher"/>.
@@ -1670,10 +1671,10 @@ namespace sttp
         /// <returns>A short one-line summary of the current status of the <see cref="DataPublisher"/>.</returns>
         public override string GetShortStatus(int maxLength)
         {
-            if (!(m_serverCommandChannel is null))
+            if (m_serverCommandChannel is not null)
                 return $"Publishing data to {m_serverCommandChannel.ClientIDs.Length} clients.".CenterText(maxLength);
 
-            if (!(m_clientCommandChannel is null))
+            if (m_clientCommandChannel is not null)
             {
                 if (m_clientCommandChannel.CurrentState == ClientState.Connected)
                     return "Publishing data to one client via client-based connection.".CenterText(maxLength);
@@ -1698,13 +1699,13 @@ namespace sttp
 
         private string EnumerateClients(bool filterToTemporalSessions)
         {
-            StringBuilder clientEnumeration = new StringBuilder();
+            StringBuilder clientEnumeration = new();
             Guid[] clientIDs = (Guid[])m_serverCommandChannel?.ClientIDs.Clone() ?? new[] { m_proxyClientID };
 
             if (filterToTemporalSessions)
-                clientEnumeration.AppendFormat("\r\nIndices for connected clients with active temporal sessions:\r\n\r\n");
+                clientEnumeration.AppendLine($"{Environment.NewLine}Indices for connected clients with active temporal sessions:{Environment.NewLine}");
             else
-                clientEnumeration.AppendFormat("\r\nIndices for {0:N0} connected clients:\r\n\r\n", clientIDs.Length);
+                clientEnumeration.AppendLine($"{Environment.NewLine}Indices for {clientIDs.Length:N0} connected clients:{Environment.NewLine}");
 
             for (int i = 0; i < clientIDs.Length; i++)
             {
@@ -1715,10 +1716,10 @@ namespace sttp
 
                 if (!filterToTemporalSessions || hasActiveTemporalSession)
                 {
-                    clientEnumeration.Append(
-                        $"  {i,3} - {connection.ConnectionID}\r\n" +
-                        $"          {connection.SubscriberInfo}\r\n" + GetOperationalModes(connection) +
-                        $"          Active Temporal Session = {(hasActiveTemporalSession ? "Yes" : "No")}\r\n\r\n");
+                    clientEnumeration.AppendLine(
+                        $"  {i,3} - {connection.ConnectionID}{Environment.NewLine}" +
+                        $"          {connection.SubscriberInfo}{Environment.NewLine}{GetOperationalModes(connection)}" +
+                        $"          Active Temporal Session = {(hasActiveTemporalSession ? "Yes" : "No")}{Environment.NewLine}");
                 }
             }
 
@@ -1728,7 +1729,7 @@ namespace sttp
 
         private string GetOperationalModes(SubscriberConnection connection)
         {
-            StringBuilder description = new StringBuilder();
+            StringBuilder description = new();
             OperationalModes operationalModes = connection.OperationalModes;
             CompressionModes compressionModes = (CompressionModes)(operationalModes & OperationalModes.CompressionModeMask);
             bool tsscEnabled = (compressionModes & CompressionModes.TSSC) > 0;
@@ -1736,29 +1737,25 @@ namespace sttp
 
             if ((operationalModes & OperationalModes.CompressPayloadData) > 0 && tsscEnabled)
             {
-                description.Append("          CompressPayloadData[TSSC]\r\n");
+                description.AppendLine("          CompressPayloadData[TSSC]");
             }
             else
             {
-                if (connection.Subscription.UseCompactMeasurementFormat)
-                    description.Append("          CompactPayloadData[");
-                else
-                    description.Append("          FullSizePayloadData[");
-
-                description.Append($"{connection.Subscription.TimestampSize}-byte Timestamps]\r\n");
+                description.Append($"          {(connection.Subscription.UseCompactMeasurementFormat ? "Compact" : "FullSize")}PayloadData[");
+                description.AppendLine($"{connection.Subscription.TimestampSize}-byte Timestamps]");
             }
 
             if ((operationalModes & OperationalModes.CompressSignalIndexCache) > 0 && gzipEnabled)
-                description.Append("          CompressSignalIndexCache\r\n");
+                description.AppendLine("          CompressSignalIndexCache");
 
             if ((operationalModes & OperationalModes.CompressMetadata) > 0 && gzipEnabled)
-                description.Append("          CompressMetadata\r\n");
+                description.AppendLine("          CompressMetadata");
 
             if ((operationalModes & OperationalModes.ReceiveExternalMetadata) > 0)
-                description.Append("          ReceiveExternalMetadata\r\n");
+                description.AppendLine("          ReceiveExternalMetadata");
 
             if ((operationalModes & OperationalModes.ReceiveInternalMetadata) > 0)
-                description.Append("          ReceiveInternalMetadata\r\n");
+                description.AppendLine("          ReceiveInternalMetadata");
 
             return description.ToString();
         }
@@ -1849,12 +1846,11 @@ namespace sttp
                 {
                     string temporalStatus = null;
 
-                    if (!(connection.Subscription is null))
+                    if (connection.Subscription is not null)
                     {
-                        if (connection.Subscription.TemporalConstraintIsDefined())
-                            temporalStatus = connection.Subscription.TemporalSessionStatus;
-                        else
-                            temporalStatus = "Subscription does not have an active temporal session.";
+                        temporalStatus = connection.Subscription.TemporalConstraintIsDefined() ? 
+                            connection.Subscription.TemporalSessionStatus :
+                            "Subscription does not have an active temporal session.";
                     }
 
                     if (string.IsNullOrWhiteSpace(temporalStatus))
@@ -1876,7 +1872,7 @@ namespace sttp
         [AdapterCommand("Gets the local certificate currently in use by the data publisher.", "Administrator", "Editor")]
         public virtual byte[] GetLocalCertificate()
         {
-            if (!(m_serverCommandChannel is TlsServer commandChannel))
+            if (m_serverCommandChannel is not TlsServer commandChannel)
                 throw new InvalidOperationException("Certificates can only be exported in TLS security mode with a server-based command channel.");
 
             return File.ReadAllBytes(FilePath.GetAbsolutePath(commandChannel.CertificateFile));
@@ -1891,7 +1887,7 @@ namespace sttp
         [AdapterCommand("Imports a certificate to the trusted certificates path.", "Administrator", "Editor")]
         public virtual string ImportCertificate(string fileName, byte[] certificateData)
         {
-            if (!(m_serverCommandChannel is TlsServer commandChannel))
+            if (m_serverCommandChannel is not TlsServer commandChannel)
                 throw new InvalidOperationException("Certificates can only be imported in TLS security mode with a server-based command channel.");
 
             string trustedCertificatesPath = FilePath.GetAbsolutePath(commandChannel.TrustedCertificatesPath);
@@ -1912,9 +1908,9 @@ namespace sttp
         /// <param name="subscriberID">Guid based subscriber ID for client connection.</param>
         [AdapterCommand("Gets subscriber status for client connection using its subscriber ID.", "Administrator", "Editor", "Viewer")]
         public virtual Tuple<Guid, bool, string> GetSubscriberStatus(Guid subscriberID) => 
-            new Tuple<Guid, bool, string>(subscriberID, 
-                GetConnectionProperty(subscriberID, cc => cc.IsConnected), 
-                GetConnectionProperty(subscriberID, cc => cc.SubscriberInfo));
+            new(subscriberID, 
+                GetConnectionProperty(subscriberID, sc => sc.IsConnected), 
+                GetConnectionProperty(subscriberID, sc => sc.SubscriberInfo));
 
         /// <summary>
         /// Resets the counters for the lifetime statistics without interrupting the adapter's operations.
@@ -1959,11 +1955,11 @@ namespace sttp
         /// <param name="inputMeasurementKeys">Subscribed measurement keys.</param>
         public void UpdateSignalIndexCache(Guid clientID, SignalIndexCache signalIndexCache, MeasurementKey[] inputMeasurementKeys)
         {
-            ConcurrentDictionary<int, MeasurementKey> reference = new ConcurrentDictionary<int, MeasurementKey>();
-            List<Guid> unauthorizedKeys = new List<Guid>();
+            ConcurrentDictionary<int, MeasurementKey> reference = new();
+            List<Guid> unauthorizedKeys = new();
             int index = 0;
 
-            if (!(inputMeasurementKeys is null))
+            if (inputMeasurementKeys is not null)
             {
                 Func<Guid, bool> hasRightsFunc = ValidateMeasurementRights ?
                     new SubscriberRightsLookup(DataSource, signalIndexCache.SubscriberID).HasRightsFunc :
@@ -2001,10 +1997,10 @@ namespace sttp
         {
             try
             {
-                if (!Settings.TryGetValue("cachedMeasurementExpression", out string cachedMeasurementExpression))
+                if (!Settings.TryGetValue(nameof(CachedMeasurementExpression), out string cachedMeasurementExpression))
                     return;
 
-                if (!TryGetAdapterByName("LatestMeasurementCache", out IActionAdapter cache))
+                if (!TryGetAdapterByName(nameof(LatestMeasurementCache), out IActionAdapter cache))
                     return;
 
                 cache.InputMeasurementKeys = AdapterBase.ParseInputMeasurementKeys(DataSource, true, cachedMeasurementExpression);
@@ -2090,7 +2086,6 @@ namespace sttp
         private void DeserializeClientNotifications()
         {
             string notificationsFileName = FilePath.GetAbsolutePath($"{Name}Notifications.txt");
-            string notification;
 
             if (!File.Exists(notificationsFileName))
                 return;
@@ -2099,7 +2094,7 @@ namespace sttp
             using TextReader reader = new StreamReader(fileStream);
             string line = reader.ReadLine();
 
-            while (!(line is null))
+            while (line is not null)
             {
                 int separatorIndex = line.IndexOf(',');
 
@@ -2107,7 +2102,7 @@ namespace sttp
                 {
                     if (m_clientNotifications.TryGetValue(subscriberID, out Dictionary<int, string> notifications))
                     {
-                        notification = line.Substring(separatorIndex + 1);
+                        string notification = line.Substring(separatorIndex + 1);
                         notifications.Add(notification.GetHashCode(), notification);
                     }
                 }
@@ -2124,7 +2119,7 @@ namespace sttp
 
         private void SendNotifications(SubscriberConnection connection)
         {
-            using BlockAllocatedMemoryStream buffer = new BlockAllocatedMemoryStream();
+            using BlockAllocatedMemoryStream buffer = new();
 
             if (!m_clientNotifications.TryGetValue(connection.SubscriberID, out Dictionary<int, string> notifications))
                 return;
@@ -2152,7 +2147,7 @@ namespace sttp
             {
                 Encoding clientEncoding = connection.Encoding;
 
-                if (!(clientEncoding is null))
+                if (clientEncoding is not null)
                     return clientEncoding;
             }
 
@@ -2197,10 +2192,9 @@ namespace sttp
         /// <returns><c>true</c> if send was successful; otherwise <c>false</c>.</returns>
         protected internal virtual bool SendClientResponse(Guid clientID, ServerResponse response, ServerCommand command, string status)
         {
-            if (status is null)
-                return SendClientResponse(clientID, response, command);
-
-            return SendClientResponse(clientID, response, command, GetClientEncoding(clientID).GetBytes(status));
+            return status is null ? 
+                SendClientResponse(clientID, response, command) :
+                SendClientResponse(clientID, response, command, GetClientEncoding(clientID).GetBytes(status));
         }
 
         /// <summary>
@@ -2214,10 +2208,9 @@ namespace sttp
         /// <returns><c>true</c> if send was successful; otherwise <c>false</c>.</returns>
         protected internal virtual bool SendClientResponse(Guid clientID, ServerResponse response, ServerCommand command, string formattedStatus, params object[] args)
         {
-            if (!string.IsNullOrWhiteSpace(formattedStatus))
-                return SendClientResponse(clientID, response, command, GetClientEncoding(clientID).GetBytes(string.Format(formattedStatus, args)));
-
-            return SendClientResponse(clientID, response, command);
+            return string.IsNullOrWhiteSpace(formattedStatus) ? 
+                SendClientResponse(clientID, response, command) : 
+                SendClientResponse(clientID, response, command, GetClientEncoding(clientID).GetBytes(string.Format(formattedStatus, args)));
         }
 
         /// <summary>
@@ -2260,9 +2253,9 @@ namespace sttp
             X509Certificate remoteCertificate;
 
             // If connection is not TLS, there is no X.509 certificate
-            if (!(m_serverCommandChannel is TlsServer serverCommandChannel))
+            if (m_serverCommandChannel is not TlsServer serverCommandChannel)
             {
-                if (!(m_clientCommandChannel is TlsClient clientCommandChannel))
+                if (m_clientCommandChannel is not TlsClient clientCommandChannel)
                     return;
 
                 // Get remote certificate and corresponding trusted certificate
@@ -2281,21 +2274,21 @@ namespace sttp
             if (remoteCertificate is null)
                 return;
 
-            if (m_subscriberIdentities.TryGetValue(m_certificateChecker.GetTrustedCertificate(remoteCertificate), out DataRow subscriber))
-            {
-                // Load client details from subscriber identity
-                connection.SubscriberID = Guid.Parse(subscriber["ID"].ToNonNullString(Guid.Empty.ToString()).Trim());
-                connection.SubscriberAcronym = subscriber["Acronym"].ToNonNullString().Trim();
-                connection.SubscriberName = subscriber["Name"].ToNonNullString().Trim();
-                connection.ValidIPAddresses = ParseAddressList(subscriber["ValidIPAddresses"].ToNonNullString());
-            }
+            if (!m_subscriberIdentities.TryGetValue(m_certificateChecker.GetTrustedCertificate(remoteCertificate), out DataRow subscriber))
+                return;
+
+            // Load client details from subscriber identity
+            connection.SubscriberID = Guid.Parse(subscriber["ID"].ToNonNullString(Guid.Empty.ToString()).Trim());
+            connection.SubscriberAcronym = subscriber["Acronym"].ToNonNullString().Trim();
+            connection.SubscriberName = subscriber["Name"].ToNonNullString().Trim();
+            connection.ValidIPAddresses = ParseAddressList(subscriber["ValidIPAddresses"].ToNonNullString());
         }
 
         // Parses a list of IP addresses.
         private List<IPAddress> ParseAddressList(string addressList)
         {
             string[] splitList = addressList.Split(';', ',');
-            List<IPAddress> ipAddressList = new List<IPAddress>();
+            List<IPAddress> ipAddressList = new();
 
             foreach (string address in splitList)
             {
@@ -2335,7 +2328,7 @@ namespace sttp
                 {
                     try
                     {
-                        CertificatePolicy policy = new CertificatePolicy();
+                        CertificatePolicy policy = new();
                         string remoteCertificateFile = subscriber["RemoteCertificateFile"].ToNonNullString();
 
                         if (Enum.TryParse(subscriber["ValidPolicyErrors"].ToNonNullString(), out SslPolicyErrors validPolicyErrors))
@@ -2374,7 +2367,7 @@ namespace sttp
                 SubscriberAdapter subscription = connection.Subscription;
 
                 // Determine if the connection has been disabled or removed - make sure to set authenticated to false if necessary
-                if (!(DataSource is null) && DataSource.Tables.Contains("Subscribers") &&
+                if (DataSource is not null && DataSource.Tables.Contains("Subscribers") &&
                     !DataSource.Tables["Subscribers"].Select($"ID = '{connection.SubscriberID}' AND Enabled <> 0").Any())
                     connection.Authenticated = false;
 
@@ -2384,7 +2377,7 @@ namespace sttp
                 // It is important here that "SELECT" not be allowed in parsing the input measurement keys expression since this key comes
                 // from the remote subscription - this will prevent possible SQL injection attacks.
                 MeasurementKey[] requestedInputs = AdapterBase.ParseInputMeasurementKeys(DataSource, false, subscription.RequestedInputFilter);
-                HashSet<MeasurementKey> authorizedSignals = new HashSet<MeasurementKey>();
+                HashSet<MeasurementKey> authorizedSignals = new();
 
                 Func<Guid, bool> hasRightsFunc = ValidateMeasurementRights ?
                     new SubscriberRightsLookup(DataSource, subscription.SubscriberID).HasRightsFunc :
@@ -2396,13 +2389,13 @@ namespace sttp
                         authorizedSignals.Add(input);
                 }
 
-                if (!authorizedSignals.SetEquals(subscription.InputMeasurementKeys))
-                {
-                    // Update the subscription associated with this connection based on newly acquired or revoked rights
-                    string message = $"Update to authorized signals caused subscription to change. Now subscribed to {authorizedSignals.Count} signals.";
-                    subscription.InputMeasurementKeys = authorizedSignals.ToArray();
-                    SendClientResponse(subscription.ClientID, ServerResponse.Succeeded, ServerCommand.Subscribe, message);
-                }
+                if (authorizedSignals.SetEquals(subscription.InputMeasurementKeys))
+                    return;
+
+                // Update the subscription associated with this connection based on newly acquired or revoked rights
+                string message = $"Update to authorized signals caused subscription to change. Now subscribed to {authorizedSignals.Count:N0} signals.";
+                subscription.InputMeasurementKeys = authorizedSignals.ToArray();
+                SendClientResponse(subscription.ClientID, ServerResponse.Succeeded, ServerCommand.Subscribe, message);
             }
             catch (Exception ex)
             {
@@ -2445,19 +2438,19 @@ namespace sttp
                 if (data is null || data.Length == 0)
                 {
                     // Add zero sized data buffer to response packet
-                    workingBuffer.Write(ZeroLengthBytes, 0, 4);
+                    workingBuffer.Write(s_zeroLengthBytes, 0, 4);
                 }
                 else
                 {
                     // If response is for a data packet and a connection key is defined, encrypt the data packet payload
-                    if (dataPacketResponse && !(connection.KeyIVs is null))
+                    if (dataPacketResponse && connection.KeyIVs is not null)
                     {
                         // Get a local copy of volatile keyIVs and cipher index since these can change at any time
                         byte[][][] keyIVs = connection.KeyIVs;
                         int cipherIndex = connection.CipherIndex;
 
                         // Reserve space for size of data buffer to go into response packet
-                        workingBuffer.Write(ZeroLengthBytes, 0, 4);
+                        workingBuffer.Write(s_zeroLengthBytes, 0, 4);
 
                         // Get data packet flags
                         DataPacketFlags flags = (DataPacketFlags)data[0];
@@ -2470,7 +2463,7 @@ namespace sttp
                         workingBuffer.WriteByte((byte)flags);
 
                         // Copy source data payload into a memory stream
-                        MemoryStream sourceData = new MemoryStream(data, 1, data.Length - 1);
+                        MemoryStream sourceData = new(data, 1, data.Length - 1);
 
                         // Encrypt payload portion of data packet and copy into the response packet
                         Common.SymmetricAlgorithm.Encrypt(sourceData, workingBuffer, keyIVs[cipherIndex][0], keyIVs[cipherIndex][1]);
@@ -2502,7 +2495,7 @@ namespace sttp
                 {
                     // Data packets and buffer blocks can be published on a UDP data channel, so check for this...
                     IServer publishChannel = useDataChannel ? 
-                        m_clientPublicationChannels.GetOrAdd(clientID, id => connection.ServerPublishChannel) : 
+                        m_clientPublicationChannels.GetOrAdd(clientID, _ => connection.ServerPublishChannel) : 
                         m_serverCommandChannel;
 
                     // Send response packet
@@ -2604,7 +2597,7 @@ namespace sttp
                 }
             }
 
-            if (!(ex is null))
+            if (ex is not null)
                 HandleSocketException(clientID, ex.InnerException);
 
             return false;
@@ -2693,7 +2686,7 @@ namespace sttp
             SubscriberConnection connection = ClientConnections.Values.FirstOrDefault(cc => cc.SubscriberID == subscriberID);
 
             // Extract desired property from client connection using given predicate function
-            if (!(connection is null))
+            if (connection is not null)
                 result = predicate(connection);
 
             return result;
@@ -2756,7 +2749,7 @@ namespace sttp
 
             foreach (SubscriberConnection connection in ClientConnections.Values)
             {
-                if (!(connection is null) && connection.Authenticated)
+                if (connection is not null && connection.Authenticated)
                     connection.RotateCipherKeys();
             }
         }
@@ -2823,11 +2816,11 @@ namespace sttp
                         // Update connection string settings for GSF adapter syntax:
                         Dictionary<string, string> settings = connectionString.ParseKeyValuePairs();
 
-                        if (settings.TryGetValue("throttled", out string setting))
-                            settings["trackLatestMeasurements"] = setting;
+                        if (settings.TryGetValue(nameof(SubscriptionInfo.Throttled), out string setting))
+                            settings[nameof(FacileActionAdapterBase.TrackLatestMeasurements)] = setting;
 
-                        if (settings.TryGetValue("filterExpression", out setting))
-                            settings["inputMeasurementKeys"] = setting;
+                        if (settings.TryGetValue(nameof(SubscriptionInfo.FilterExpression), out setting))
+                            settings[nameof(InputMeasurementKeys)] = setting;
 
                         connectionString = settings.JoinKeyValuePairs();
 
@@ -2850,10 +2843,10 @@ namespace sttp
                             string networkInterface = "::0";
 
                             // Make sure return interface matches incoming client connection
-                            if (!(clientSocket is null))
+                            if (clientSocket is not null)
                                 localEndPoint = clientSocket.LocalEndPoint as IPEndPoint;
 
-                            if (!(localEndPoint is null))
+                            if (localEndPoint is not null)
                             {
                                 networkInterface = localEndPoint.Address.ToString();
 
@@ -2933,7 +2926,7 @@ namespace sttp
                         subscription.Start();
 
                         // If client has subscribed to any cached measurements, queue them up for the client
-                        if (TryGetAdapterByName("LatestMeasurementCache", out IActionAdapter cacheAdapter))
+                        if (TryGetAdapterByName(nameof(LatestMeasurementCache), out IActionAdapter cacheAdapter))
                         {
                             if (cacheAdapter is LatestMeasurementCache cache)
                             {
@@ -2966,10 +2959,9 @@ namespace sttp
                         }
                         else
                         {
-                            if (subscription.InputMeasurementKeys is null)
-                                message = $"Client subscribed as {(useCompactMeasurementFormat ? "" : "non-")}compact, but no signals were specified. Make sure \"inputMeasurementKeys\" setting is properly defined.";
-                            else
-                                message = $"Client subscribed as {(useCompactMeasurementFormat ? "" : "non-")}compact with {subscription.InputMeasurementKeys.Length} signals.";
+                            message = subscription.InputMeasurementKeys is null ? 
+                                $"Client subscribed as {(useCompactMeasurementFormat ? "" : "non-")}compact, but no signals were specified. Make sure \"inputMeasurementKeys\" setting is properly defined." : 
+                                $"Client subscribed as {(useCompactMeasurementFormat ? "" : "non-")}compact with {subscription.InputMeasurementKeys.Length} signals.";
                         }
 
                         connection.IsSubscribed = true;
@@ -2978,10 +2970,9 @@ namespace sttp
                     }
                     else
                     {
-                        if (byteLength > 0) //-V3022
-                            message = "Not enough buffer was provided to parse client data subscription.";
-                        else
-                            message = "Cannot initialize client data subscription without a connection string.";
+                        message = byteLength > 0 ? 
+                            "Not enough buffer was provided to parse client data subscription." :
+                            "Cannot initialize client data subscription without a connection string.";
 
                         SendClientResponse(clientID, ServerResponse.Failed, ServerCommand.Subscribe, message);
                         OnProcessException(MessageLevel.Warning, new InvalidOperationException(message));
@@ -3010,7 +3001,7 @@ namespace sttp
             RemoveClientSubscription(clientID); // This does not disconnect client command channel - nor should it...
 
             // Detach from processing completed notification
-            if (!(connection.Subscription is null))
+            if (connection.Subscription is not null)
             {
                 connection.Subscription.BufferBlockRetransmission -= Subscription_BufferBlockRetransmission;
                 connection.Subscription.ProcessingComplete -= Subscription_ProcessingComplete;
@@ -3031,9 +3022,9 @@ namespace sttp
         /// <returns>Meta-data to be returned to client.</returns>
         protected virtual DataSet AquireMetadata(SubscriberConnection connection, Dictionary<string, Tuple<string, string, int>> filterExpressions)
         {
-            using AdoDataConnection adoDatabase = new AdoDataConnection("systemSettings");
+            using AdoDataConnection adoDatabase = new("systemSettings");
             IDbConnection dbConnection = adoDatabase.Connection;
-            DataSet metadata = new DataSet();
+            DataSet metadata = new();
 
             // Initialize active node ID
             Guid nodeID = Guid.Parse(dbConnection.ExecuteScalar($"SELECT NodeID FROM IaonActionAdapter WHERE ID = {ID}").ToString());
@@ -3059,7 +3050,7 @@ namespace sttp
                 int takeCount = int.MaxValue;
 
                 // Build filter list
-                List<string> filters = new List<string>();
+                List<string> filters = new();
 
                 if (table.Columns.Contains("NodeID"))
                     filters.Add($"NodeID = '{nodeID}'");
@@ -3096,7 +3087,7 @@ namespace sttp
                     // Reduce data to only what the subscriber has rights to
                     if (checkSubscriberRights)
                     {
-                        SubscriberRightsLookup lookup = new SubscriberRightsLookup(DataSource, connection.SubscriberID);
+                        SubscriberRightsLookup lookup = new(DataSource, connection.SubscriberID);
                         filteredRows = filteredRows.Where(row => lookup.HasRights(row.ConvertField<Guid>("SignalID")));
                     }
 
@@ -3127,7 +3118,7 @@ namespace sttp
             // Do some post analysis on the meta-data to be delivered to the client, e.g., if a device exists with no associated measurements - don't send the device.
             if (metadata.Tables.Contains("MeasurementDetail") && metadata.Tables["MeasurementDetail"].Columns.Contains("DeviceAcronym") && metadata.Tables.Contains("DeviceDetail") && metadata.Tables["DeviceDetail"].Columns.Contains("Acronym"))
             {
-                List<DataRow> rowsToRemove = new List<DataRow>();
+                List<DataRow> rowsToRemove = new();
                 string deviceAcronym;
 
                 // Remove device records where no associated measurements records exist
@@ -3158,7 +3149,7 @@ namespace sttp
                             deviceAcronym = row["DeviceAcronym"].ToNonNullString();
                             int? phasorSourceIndex = row.ConvertField<int?>("PhasorSourceIndex");
 
-                            if (!string.IsNullOrEmpty(deviceAcronym) && !(phasorSourceIndex is null) && (int)metadata.Tables["PhasorDetail"].Compute("Count(DeviceAcronym)", $"DeviceAcronym = '{deviceAcronym}' AND SourceIndex = {phasorSourceIndex}") == 0)
+                            if (!string.IsNullOrEmpty(deviceAcronym) && phasorSourceIndex is not null && (int)metadata.Tables["PhasorDetail"].Compute("Count(DeviceAcronym)", $"DeviceAcronym = '{deviceAcronym}' AND SourceIndex = {phasorSourceIndex}") == 0)
                                 rowsToRemove.Add(row);
                         }
                     }
@@ -3182,7 +3173,7 @@ namespace sttp
             OnStatusMessage(MessageLevel.Info, $"Received meta-data refresh request from {connection.ConnectionID}, preparing response...");
 
             Guid clientID = connection.ClientID;
-            Dictionary<string, Tuple<string, string, int>> filterExpressions = new Dictionary<string, Tuple<string, string, int>>(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, Tuple<string, string, int>> filterExpressions = new(StringComparer.OrdinalIgnoreCase);
             Ticks startTime = DateTime.UtcNow.Ticks;
 
             // Attempt to parse out any subscriber provided meta-data filter expressions
@@ -3337,18 +3328,18 @@ namespace sttp
         {
             try
             {
-                List<IMeasurement> measurements = new List<IMeasurement>();
+                List<IMeasurement> measurements = new();
 
                 int index = startIndex;
                 int payloadByteLength = BigEndian.ToInt32(buffer, index);
                 index += sizeof(int);
 
                 string dataString = connection.Encoding.GetString(buffer, index, payloadByteLength);
-                ConnectionStringParser<SettingAttribute> connectionStringParser = new ConnectionStringParser<SettingAttribute>();
+                ConnectionStringParser<SettingAttribute> connectionStringParser = new();
 
                 foreach (string measurementString in dataString.Split(new[] { ";;" }, StringSplitOptions.RemoveEmptyEntries))
                 {
-                    CommandMeasurement measurement = new CommandMeasurement();
+                    CommandMeasurement measurement = new();
                     connectionStringParser.ParseConnectionString(measurementString, measurement);
 
                     measurements.Add(new Measurement()
@@ -3378,42 +3369,43 @@ namespace sttp
         /// <param name="buffer">The buffer containing the entire message from the subscriber.</param>
         /// <param name="startIndex">The index indicating where to start reading from the buffer to skip past the message header.</param>
         /// <param name="length">The total number of bytes in the message, including the header.</param>
+        /// <remarks>
+        /// Derived data publisher implementations should override this method as needed to handle custom user commands.
+        /// </remarks>
         protected virtual void HandleUserCommand(SubscriberConnection connection, ServerCommand command, byte[] buffer, int startIndex, int length) => 
             OnStatusMessage(MessageLevel.Info, $"Received command code for user-defined command \"{command}\".");
 
         private byte[] SerializeSignalIndexCache(Guid clientID, SignalIndexCache signalIndexCache)
         {
-            byte[] serializedSignalIndexCache = null;
+            if (!ClientConnections.TryGetValue(clientID, out SubscriberConnection connection))
+                return null;
 
-            if (ClientConnections.TryGetValue(clientID, out SubscriberConnection connection))
+            OperationalModes operationalModes = connection.OperationalModes;
+            CompressionModes compressionModes = (CompressionModes)(operationalModes & OperationalModes.CompressionModeMask);
+            bool compressSignalIndexCache = (operationalModes & OperationalModes.CompressSignalIndexCache) > 0;
+            GZipStream deflater = null;
+
+            signalIndexCache.Encoding = GetClientEncoding(clientID);
+            byte[] serializedSignalIndexCache = new byte[signalIndexCache.BinaryLength];
+            signalIndexCache.GenerateBinaryImage(serializedSignalIndexCache, 0);
+
+            if (!compressSignalIndexCache || !compressionModes.HasFlag(CompressionModes.GZip))
+                return serializedSignalIndexCache;
+
+            try
             {
-                OperationalModes operationalModes = connection.OperationalModes;
-                CompressionModes compressionModes = (CompressionModes)(operationalModes & OperationalModes.CompressionModeMask);
-                bool compressSignalIndexCache = (operationalModes & OperationalModes.CompressSignalIndexCache) > 0;
-                GZipStream deflater = null;
+                // Compress serialized signal index cache into compressed data buffer
+                using BlockAllocatedMemoryStream compressedData = new();
+                deflater = new GZipStream(compressedData, CompressionMode.Compress, true);
+                deflater.Write(serializedSignalIndexCache, 0, serializedSignalIndexCache.Length);
+                deflater.Close();
+                deflater = null;
 
-                signalIndexCache.Encoding = GetClientEncoding(clientID);
-                serializedSignalIndexCache = new byte[signalIndexCache.BinaryLength];
-                signalIndexCache.GenerateBinaryImage(serializedSignalIndexCache, 0);
-
-                if (compressSignalIndexCache && compressionModes.HasFlag(CompressionModes.GZip))
-                {
-                    try
-                    {
-                        // Compress serialized signal index cache into compressed data buffer
-                        using BlockAllocatedMemoryStream compressedData = new BlockAllocatedMemoryStream();
-                        deflater = new GZipStream(compressedData, CompressionMode.Compress, true);
-                        deflater.Write(serializedSignalIndexCache, 0, serializedSignalIndexCache.Length);
-                        deflater.Close();
-                        deflater = null;
-
-                        serializedSignalIndexCache = compressedData.ToArray();
-                    }
-                    finally
-                    {
-                        deflater?.Close();
-                    }
-                }
+                serializedSignalIndexCache = compressedData.ToArray();
+            }
+            finally
+            {
+                deflater?.Close();
             }
 
             return serializedSignalIndexCache;
@@ -3432,8 +3424,8 @@ namespace sttp
             GZipStream deflater = null;
 
             // Encode XML into encoded data buffer
-            using (BlockAllocatedMemoryStream encodedData = new BlockAllocatedMemoryStream())
-            using (XmlTextWriter xmlWriter = new XmlTextWriter(encodedData, GetClientEncoding(clientID)))
+            using (BlockAllocatedMemoryStream encodedData = new())
+            using (XmlTextWriter xmlWriter = new(encodedData, GetClientEncoding(clientID)))
             {
                 metadata.WriteXml(xmlWriter, XmlWriteMode.WriteSchema);
                 xmlWriter.Flush();
@@ -3442,24 +3434,24 @@ namespace sttp
                 serializedMetadata = encodedData.ToArray();
             }
 
-            if (compressMetadata && compressionModes.HasFlag(CompressionModes.GZip))
-            {
-                try
-                {
-                    // Compress serialized metadata into compressed data buffer
-                    using BlockAllocatedMemoryStream compressedData = new BlockAllocatedMemoryStream();
-                    deflater = new GZipStream(compressedData, CompressionMode.Compress, true);
-                    deflater.Write(serializedMetadata, 0, serializedMetadata.Length);
-                    deflater.Close();
-                    deflater = null;
+            if (!compressMetadata || !compressionModes.HasFlag(CompressionModes.GZip))
+                return serializedMetadata;
 
-                    // Return result of compression
-                    serializedMetadata = compressedData.ToArray();
-                }
-                finally
-                {
-                    deflater?.Close();
-                }
+            try
+            {
+                // Compress serialized metadata into compressed data buffer
+                using BlockAllocatedMemoryStream compressedData = new();
+                deflater = new GZipStream(compressedData, CompressionMode.Compress, true);
+                deflater.Write(serializedMetadata, 0, serializedMetadata.Length);
+                deflater.Close();
+                deflater = null;
+
+                // Return result of compression
+                serializedMetadata = compressedData.ToArray();
+            }
+            finally
+            {
+                deflater?.Close();
             }
 
             return serializedMetadata;
@@ -3510,7 +3502,7 @@ namespace sttp
             string senderType = sender is null ? "N/A" : sender.GetType().Name;
 
             // Send direct notification to associated client
-            if (!(subscription is null))
+            if (subscription is not null)
                 SendClientResponse(subscription.ClientID, ServerResponse.ProcessingComplete, ServerCommand.Subscribe, senderType);
         }
 
@@ -3530,7 +3522,6 @@ namespace sttp
                 if (length <= 0 || buffer is null)
                     return;
 
-                string message;
                 byte commandByte = buffer[index];
                 index++;
 
@@ -3616,7 +3607,7 @@ namespace sttp
                 else
                 {
                     // Handle unrecognized commands
-                    message = $" sent an unrecognized server command: 0x{commandByte.ToString("X").PadLeft(2, '0')}";
+                    string message = $" sent an unrecognized server command: 0x{commandByte.ToString("X").PadLeft(2, '0')}";
                     SendClientResponse(clientID, (byte)ServerResponse.Failed, commandByte, GetClientEncoding(clientID).GetBytes($"Client{message}"));
                     OnProcessException(MessageLevel.Warning, new InvalidOperationException(connection.ConnectionID + message));
                 }
@@ -3631,7 +3622,7 @@ namespace sttp
         {
             Guid clientID = e.Argument;
             
-            SubscriberConnection connection = new SubscriberConnection(this, clientID, m_serverCommandChannel, m_clientCommandChannel)
+            SubscriberConnection connection = new(this, clientID, m_serverCommandChannel, m_clientCommandChannel)
             {
                 ClientNotFoundExceptionOccurred = false
             };
@@ -3796,7 +3787,7 @@ namespace sttp
         // Static Fields
 
         // Constant zero length integer byte array
-        private static readonly byte[] ZeroLengthBytes = { 0, 0, 0, 0 };
+        private static readonly byte[] s_zeroLengthBytes = { 0, 0, 0, 0 };
 
         #endregion
     }
