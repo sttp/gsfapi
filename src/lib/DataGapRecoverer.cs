@@ -490,10 +490,10 @@ namespace sttp
             {
                 StringBuilder status = new();
 
-                status.AppendLine($" Data recovery start delay: {RecoveryStartDelay.ToString(2)}");
-                status.AppendLine($"  Data monitoring interval: {DataMonitoringInterval.ToString(2)}");
-                status.AppendLine($"Minimum data recovery span: {MinimumRecoverySpan.ToString(2)}");
-                status.AppendLine($"Maximum data recovery span: {MaximumRecoverySpan.ToString(2)}");
+                status.AppendLine($" Data recovery start delay: {RecoveryStartDelay.ToString(3)}");
+                status.AppendLine($"  Data monitoring interval: {DataMonitoringInterval.ToString(3)}");
+                status.AppendLine($"Minimum data recovery span: {MinimumRecoverySpan.ToString(3)}");
+                status.AppendLine($"Maximum data recovery span: {MaximumRecoverySpan.ToString(3)}");
                 status.AppendLine($"Recovery filter expression: {FilterExpression.TruncateRight(51)}");
                 status.AppendLine($" Recovery processing speed: {(RecoveryProcessingInterval < 0 ? "Default" : RecoveryProcessingInterval == 0 ? "As fast as possible" : $"{RecoveryProcessingInterval:N0} milliseconds")}");
                 status.AppendLine($"Use millisecond resolution: {UseMillisecondResolution}");

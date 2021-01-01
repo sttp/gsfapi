@@ -1213,7 +1213,7 @@ namespace sttp
 
                 DataLossInterval = 0.0D;
                 ClientCommandChannel = null;
-				ServerCommandChannel = null;
+                ServerCommandChannel = null;
                 DataChannel = null;
 
                 if (m_dataGapRecoverer is not null)
@@ -3206,27 +3206,27 @@ namespace sttp
                                         // restriction to be implemented later to ensure all devices in an output protocol came from the same original source connection, if desired.
                                         originalSource = Internal ? (object)DBNull.Value : string.IsNullOrEmpty(row.Field<string>("ParentAcronym")) ? sourcePrefix + row.Field<string>("Acronym") : sourcePrefix + row.Field<string>("ParentAcronym");
 
-	                                    // Determine if device record already exists
-	                                    if (Convert.ToInt32(command.ExecuteScalar(deviceExistsSql, MetadataSynchronizationTimeout, database.Guid(uniqueID))) == 0)
-	                                    {
-	                                        // Insert new device record
-	                                        command.ExecuteNonQuery(insertDeviceSql, MetadataSynchronizationTimeout, database.Guid(m_nodeID), parentID, historianID, sourcePrefix + row.Field<string>("Acronym"),
-												row.Field<string>("Name"), m_sttpProtocolID, row.ConvertField<int>("FramesPerSecond"),
-	                                            originalSource, accessID, longitude, latitude, contactList.JoinKeyValuePairs());
+                                        // Determine if device record already exists
+                                        if (Convert.ToInt32(command.ExecuteScalar(deviceExistsSql, MetadataSynchronizationTimeout, database.Guid(uniqueID))) == 0)
+                                        {
+                                            // Insert new device record
+                                            command.ExecuteNonQuery(insertDeviceSql, MetadataSynchronizationTimeout, database.Guid(m_nodeID), parentID, historianID, sourcePrefix + row.Field<string>("Acronym"),
+                                                row.Field<string>("Name"), m_sttpProtocolID, row.ConvertField<int>("FramesPerSecond"),
+                                                originalSource, accessID, longitude, latitude, contactList.JoinKeyValuePairs());
 
-	                                        // Guids are normally auto-generated during insert - after insertion update the Guid so that it matches the source data. Most of the database
-	                                        // scripts have triggers that support properly assigning the Guid during an insert, but this code ensures the Guid will always get assigned.
-	                                        command.ExecuteNonQuery(updateDeviceUniqueIDSql, MetadataSynchronizationTimeout, database.Guid(uniqueID), sourcePrefix + row.Field<string>("Acronym"));
-	                                    }
-	                                    else if (recordNeedsUpdating)
-	                                    {
-	                                        // Perform safety check to preserve device records which are not safe to overwrite (e.g., device already exists locally as part of another connection)
-	                                        if (Convert.ToInt32(command.ExecuteScalar(deviceIsUpdatableSql, MetadataSynchronizationTimeout, database.Guid(uniqueID), parentID)) > 0)
+                                            // Guids are normally auto-generated during insert - after insertion update the Guid so that it matches the source data. Most of the database
+                                            // scripts have triggers that support properly assigning the Guid during an insert, but this code ensures the Guid will always get assigned.
+                                            command.ExecuteNonQuery(updateDeviceUniqueIDSql, MetadataSynchronizationTimeout, database.Guid(uniqueID), sourcePrefix + row.Field<string>("Acronym"));
+                                        }
+                                        else if (recordNeedsUpdating)
+                                        {
+                                            // Perform safety check to preserve device records which are not safe to overwrite (e.g., device already exists locally as part of another connection)
+                                            if (Convert.ToInt32(command.ExecuteScalar(deviceIsUpdatableSql, MetadataSynchronizationTimeout, database.Guid(uniqueID), parentID)) > 0)
                                                 continue;
 
                                             // Update existing device record
-											command.ExecuteNonQuery(updateDeviceSql, MetadataSynchronizationTimeout, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),											
-												originalSource, m_sttpProtocolID, row.ConvertField<int>("FramesPerSecond"), historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Guid(uniqueID));
+                                            command.ExecuteNonQuery(updateDeviceSql, MetadataSynchronizationTimeout, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),											
+                                                originalSource, m_sttpProtocolID, row.ConvertField<int>("FramesPerSecond"), historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Guid(uniqueID));
                                         }
                                     }
                                 }
@@ -3584,13 +3584,13 @@ namespace sttp
                             // For mutual subscriptions where this subscription is owner (i.e., internal is true), do not delete any phasor data - it will be managed by owner only
                             if (!MutualSubscription || !Internal)
                             {
-	                            // Remove any phasor records associated with existing devices in this session but no longer exist in the meta-data
-	                            foreach (int id in deviceIDs.Values)
-	                            {
-	                                if (definedSourceIndicies.TryGetValue(id, out List<int> sourceIndicies))
-	                                    command.ExecuteNonQuery($"{deletePhasorSql} AND SourceIndex NOT IN ({string.Join(",", sourceIndicies)})", MetadataSynchronizationTimeout, id);
-	                                else
-	                                    command.ExecuteNonQuery(deletePhasorSql, MetadataSynchronizationTimeout, id);
+                                // Remove any phasor records associated with existing devices in this session but no longer exist in the meta-data
+                                foreach (int id in deviceIDs.Values)
+                                {
+                                    if (definedSourceIndicies.TryGetValue(id, out List<int> sourceIndicies))
+                                        command.ExecuteNonQuery($"{deletePhasorSql} AND SourceIndex NOT IN ({string.Join(",", sourceIndicies)})", MetadataSynchronizationTimeout, id);
+                                    else
+                                        command.ExecuteNonQuery(deletePhasorSql, MetadataSynchronizationTimeout, id);
                                 }
                             }
                         }
@@ -3729,7 +3729,7 @@ namespace sttp
             if (rowCount > 0)
             {
                 Time elapsedTime = (DateTime.UtcNow.Ticks - startTime).ToSeconds();
-                OnStatusMessage(MessageLevel.Info, $"Received a total of {rowCount:N0} records spanning {deserializedMetadata.Tables.Count:N0} tables of meta-data that was {(compressMetadata ? "uncompressed and " : "")}deserialized in {elapsedTime.ToString(2)}...");
+                OnStatusMessage(MessageLevel.Info, $"Received a total of {rowCount:N0} records spanning {deserializedMetadata.Tables.Count:N0} tables of meta-data that was {(compressMetadata ? "uncompressed and " : "")}deserialized in {elapsedTime.ToString(3)}...");
             }
 
             return deserializedMetadata;
