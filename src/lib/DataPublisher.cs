@@ -79,11 +79,13 @@ namespace sttp
         /// <summary>
         /// No security.
         /// </summary>
+        [Description("Internal data transfer mode, data not encrypted.")]
         None,
 
         /// <summary>
         /// Transport Layer Security.
         /// </summary>
+        [Description("Transport layer security data transfer mode, data encrypted using client certificates with public key infrastructure.")]
         TLS
     }
 
