@@ -63,6 +63,7 @@ using sttp.tssc;
 using TcpClient = GSF.Communication.TcpClient;
 using UdpClient = GSF.Communication.UdpClient;
 
+// ReSharper disable BadControlBracesIndent
 namespace sttp
 {
     /// <summary>
@@ -710,6 +711,18 @@ namespace sttp
         public bool UseIdentityInsertsForMetadata { get; set; }
 
         /// <summary>
+        /// Gets or sets flag that determines if CALC signals not defined in metadata should be deleted during synchronizations. Do not set this
+        /// value to <c>true</c> if local calculations are being created, and associated with, data arriving from STTP stream.
+        /// </summary>
+        public bool AutoDeleteCalculatedMeasurements { get; set; }
+
+        /// <summary>
+        /// Gets or sets flag that determines if ALARM signals not defined in metadata should be deleted during synchronizations. Do not set this
+        /// value to <c>true</c> if local alarms are being created, and associated with, data arriving from STTP stream.
+        /// </summary>
+        public bool AutoDeleteAlarmMeasurements { get; set; }
+
+        /// <summary>
         /// Gets or sets flag that determines if statistics engine should be enable for the data subscriber.
         /// </summary>
         public bool BypassStatistics { get; set; }
@@ -978,6 +991,8 @@ namespace sttp
                 status.AppendLine($" Receive external metadata: {ReceiveExternalMetadata}");
                 status.AppendLine($"Filter output measurements: {FilterOutputMeasurements}");
                 status.AppendLine($"  Synchronize metadata IDs: {UseIdentityInsertsForMetadata}");
+                status.AppendLine($"  Auto delete CALC signals: {AutoDeleteCalculatedMeasurements}");
+                status.AppendLine($"  Auto delete ALRM signals: {AutoDeleteAlarmMeasurements}");
                 status.AppendLine($"  Bypass statistics engine: {BypassStatistics}");
                 status.AppendLine($"      Total bytes received: {TotalBytesReceived:N0}");
                 status.AppendLine($"      Data packet security: {(m_securityMode == SecurityMode.TLS && m_dataChannel is null ? "Secured via TLS" : m_keyIVs is null ? "Unencrypted" : "AES Encrypted")}");
@@ -1306,6 +1321,14 @@ namespace sttp
             // Check if user has defined a flag for using identity inserts during meta-data synchronization
             if (settings.TryGetValue(nameof(UseIdentityInsertsForMetadata), out setting))
                 UseIdentityInsertsForMetadata = setting.ParseBoolean();
+
+            // Check if user has defined a flag for auto-deletion of CALC signals during meta-data synchronization
+            if (settings.TryGetValue(nameof(AutoDeleteCalculatedMeasurements), out setting))
+                AutoDeleteCalculatedMeasurements = setting.ParseBoolean();
+
+            // Check if user has defined a flag for auto-deletion of ALRM signals during meta-data synchronization
+            if (settings.TryGetValue(nameof(AutoDeleteAlarmMeasurements), out setting))
+                AutoDeleteAlarmMeasurements = setting.ParseBoolean();
 
             // Check if user wants to request that publisher use millisecond resolution to conserve bandwidth
             #pragma warning disable CS0618 // Type or member is obsolete
@@ -3290,7 +3313,6 @@ namespace sttp
                             }
 
                             // Define local signal type ID deletion exclusion set
-                            List<int> excludedSignalTypeIDs = new();
                             string deleteCondition = "";
 
                             if (MutualSubscription && !Internal)
@@ -3300,14 +3322,16 @@ namespace sttp
                             }
                             else
                             {
+                                List<int> excludedSignalTypeIDs = new();
+
                                 // We are intentionally ignoring CALC and ALRM signals during measurement deletion since if you have subscribed to a device and subsequently created local
                                 // calculations and alarms associated with this device, these signals are locally owned and not part of the publisher subscription stream. As a result any
                                 // CALC or ALRM measurements that are created at source and then removed could be orphaned in subscriber. The best fix would be to have a simple flag that
                                 // clearly designates that a measurement was created locally and is not part of the remote synchronization set.
-                                if (signalTypeIDs.TryGetValue("CALC", out int signalTypeID))
+                                if (!AutoDeleteCalculatedMeasurements && signalTypeIDs.TryGetValue("CALC", out int signalTypeID))
                                     excludedSignalTypeIDs.Add(signalTypeID);
 
-                                if (signalTypeIDs.TryGetValue("ALRM", out signalTypeID))
+                                if (!AutoDeleteAlarmMeasurements && signalTypeIDs.TryGetValue("ALRM", out signalTypeID))
                                     excludedSignalTypeIDs.Add(signalTypeID);
 
                                 if (excludedSignalTypeIDs.Count > 0)
