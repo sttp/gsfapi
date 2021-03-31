@@ -30,6 +30,7 @@ using GSF.IO;
 using GSF.Threading;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
@@ -91,6 +92,8 @@ namespace sttp
             m_subscriberID = clientID;
             m_keyIVs = null;
             m_cipherIndex = 0;
+            CacheUpdateLock = new object();
+            PendingCacheUpdateLock = new object();
 
             // Setup ping timer
             m_pingTimer = Common.TimerScheduler.CreateTimer(5000);
@@ -102,6 +105,8 @@ namespace sttp
             m_reconnectTimer = Common.TimerScheduler.CreateTimer(1000);
             m_reconnectTimer.AutoReset = false;
             m_reconnectTimer.Elapsed += ReconnectTimer_Elapsed;
+
+            Debug.WriteLine($"Creating new subscriber connection {clientID}");
 
             LookupEndPointInfo(clientID, GetCommandChannelSocket().RemoteEndPoint as IPEndPoint, ref m_ipAddress, ref m_hostName, ref m_connectionID);
         }
@@ -122,6 +127,36 @@ namespace sttp
         /// Gets client ID of this <see cref="SubscriberConnection"/>.
         /// </summary>
         public Guid ClientID { get; }
+
+        /// <summary>
+        /// Gets the version of this <see cref="SubscriberConnection"/>.
+        /// </summary>
+        public int Version { get; internal set; }
+
+        /// <summary>
+        /// Gets the current signal index cache of this <see cref="SubscriberAdapter"/>.
+        /// </summary>
+        public SignalIndexCache SignalIndexCache { get; internal set; }
+
+        /// <summary>
+        /// Gets the pending Signal Index Cache.
+        /// </summary>
+        public SignalIndexCache NextSignalIndexCache { get; internal set; }
+
+        /// <summary>
+        /// Gets the lock object for updating Signal Index Cache properties.
+        /// </summary>
+        internal object CacheUpdateLock { get; }
+
+        /// <summary>
+        /// Gets the current Signal Index Cache index, i.e., zero or one.
+        /// </summary>
+        public int CurrentCacheIndex { get; internal set; }
+
+        /// <summary>
+        /// Gets the next Signal Index Cache index, i.e., zero or one.
+        /// </summary>
+        public int NextCacheIndex { get; internal set; }
 
         /// <summary>
         /// Gets or sets reference to <see cref="UdpServer"/> data channel, attaching to or detaching from events as needed, associated with this <see cref="SubscriberConnection"/>.
@@ -303,6 +338,20 @@ namespace sttp
         /// Gets time of last cipher key update.
         /// </summary>
         public Ticks LastCipherKeyUpdateTime { get; private set; }
+
+        /// <summary>
+        /// Gets or sets any pending Signal Index Cache.
+        /// </summary>
+        /// <remarks>
+        /// This cache is for holding any updates while waiting for confirmation of
+        /// receipt of signal index cache updates from the data subscriber.
+        /// </remarks>
+        public SignalIndexCache PendingSignalIndexCache { get; set; }
+
+        /// <summary>
+        /// Gets the lock object for updating Signal Index Cache properties.
+        /// </summary>
+        internal object PendingCacheUpdateLock { get; }
 
         /// <summary>
         /// Gets or sets the list of valid IP addresses that this client can connect from.

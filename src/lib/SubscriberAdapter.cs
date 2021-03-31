@@ -34,9 +34,11 @@ using GSF.TimeSeries.Transport;
 using sttp.tssc;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 
 // ReSharper disable PossibleMultipleEnumeration
 namespace sttp
@@ -67,6 +69,7 @@ namespace sttp
 
         // Fields
         private DataPublisher m_parent;
+        private readonly SubscriberConnection m_connection;
         private volatile bool m_usePayloadCompression;
         private volatile bool m_useCompactMeasurementFormat;
         private readonly CompressionModes m_compressionModes;
@@ -112,10 +115,17 @@ namespace sttp
             ClientID = clientID;
             SubscriberID = subscriberID;
             m_compressionModes = compressionModes;
-            SignalIndexCache = new SignalIndexCache { SubscriberID = subscriberID };
             m_bufferBlockCache = new List<byte[]>();
             m_bufferBlockCacheLock = new object();
             m_tsscSyncLock = new object();
+            m_parent.ClientConnections.TryGetValue(ClientID, out m_connection);
+
+            Debug.WriteLine($"Creating new subscriber adapter {subscriberID}");
+
+            if (m_connection is null)
+                throw new NullReferenceException("Subscriber adapter failed to find associated connection");
+            
+            m_connection.SignalIndexCache = new SignalIndexCache { SubscriberID = subscriberID };
         }
 
         #endregion
@@ -144,11 +154,6 @@ namespace sttp
         /// Gets the <see cref="Guid"/> based subscriber ID of this <see cref="SubscriberAdapter"/>.
         /// </summary>
         public Guid SubscriberID { get; }
-
-        /// <summary>
-        /// Gets the current signal index cache of this <see cref="SubscriberAdapter"/>.
-        /// </summary>
-        public SignalIndexCache SignalIndexCache { get; }
 
         /// <summary>
         /// Gets the input filter requested by the subscriber when establishing this <see cref="SubscriberAdapter"/>.
@@ -237,10 +242,11 @@ namespace sttp
                     // Update signal index cache unless "detaching" from real-time
                     if (value is not null && !(value.Length == 1 && value[0] == MeasurementKey.Undefined))
                     {
-                        m_parent.UpdateSignalIndexCache(ClientID, SignalIndexCache, value);
+                        // Safe: no lock required for signal index cache here
+                        Guid[] authorizedSignalIDs = m_parent.UpdateSignalIndexCache(ClientID, m_connection.SignalIndexCache, value);
 
-                        if (DataSource is not null && SignalIndexCache is not null)
-                            value = ParseInputMeasurementKeys(DataSource, false, string.Join("; ", SignalIndexCache.AuthorizedSignalIDs));
+                        if (DataSource is not null && m_connection.SignalIndexCache is not null)
+                            value = ParseInputMeasurementKeys(DataSource, false, string.Join("; ", authorizedSignalIDs));
                     }
 
                     base.InputMeasurementKeys = value;
@@ -267,11 +273,8 @@ namespace sttp
             {
                 StringBuilder status = new();
 
-                if (m_parent.ClientConnections.TryGetValue(ClientID, out SubscriberConnection connection))
-                {
-                    status.Append(connection.Status);
-                    status.AppendLine();
-                }
+                status.Append(m_connection.Status);
+                status.AppendLine();
 
                 status.Append(base.Status);
 
@@ -400,7 +403,11 @@ namespace sttp
                 m_startTimeSent = false;
 
             // Reset compressor on successful re-subscription
-            m_resetTsscEncoder = true;
+            if (m_connection.Version == 1)
+            {
+                lock (m_tsscSyncLock)
+                    m_resetTsscEncoder = true;
+            }
 
             base.Start();
 
@@ -568,6 +575,55 @@ namespace sttp
             }
         }
 
+        public void ConfirmSignalIndexCache()
+        {
+            // Swap over to next signal index cache
+            lock (m_connection.CacheUpdateLock)
+            {
+                Debug.WriteLine("SIC Receipt Confirmed! Swapping signal index cache:");
+                Debug.WriteLine($"    Old ref count: {m_connection.SignalIndexCache.Reference.Count:N0}");
+                Debug.WriteLine($"    New ref count: {m_connection.NextSignalIndexCache.Reference.Count:N0}");
+                Debug.WriteLine($"  Old cache index: {m_connection.CurrentCacheIndex}");
+                Debug.WriteLine($"  New cache index: {m_connection.NextCacheIndex}");
+
+                m_connection.SignalIndexCache = m_connection.NextSignalIndexCache;
+                m_connection.SignalIndexCache.SubscriberID = SubscriberID;
+                m_connection.CurrentCacheIndex = m_connection.NextCacheIndex;
+                m_connection.NextSignalIndexCache = null;
+
+                lock (m_tsscSyncLock)
+                {
+                    m_resetTsscEncoder = true;
+                }
+            }
+
+            // Check for any pending signal index cache update
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    Guid[] authorizedSignalIDs;
+
+                    lock (m_connection.PendingCacheUpdateLock)
+                    {
+                        if (m_connection.PendingSignalIndexCache is null)
+                            return;
+
+                        SignalIndexCache nextSignalIndexCache = m_connection.PendingSignalIndexCache;
+                        m_connection.PendingSignalIndexCache = null;
+                        authorizedSignalIDs = m_parent.UpdateSignalIndexCache(ClientID, nextSignalIndexCache, InputMeasurementKeys);
+                    }
+
+                    if (DataSource is not null)
+                        base.InputMeasurementKeys = ParseInputMeasurementKeys(DataSource, false, string.Join("; ", authorizedSignalIDs));
+                }
+                catch (Exception ex)
+                {
+                    Logger.SwallowException(ex);
+                }
+            });
+        }
+
         private void ProcessMeasurements(IEnumerable<IMeasurement> measurements)
         {
             if (m_usePayloadCompression && m_compressionModes.HasFlag(CompressionModes.TSSC))
@@ -589,6 +645,14 @@ namespace sttp
 
                 //usePayloadCompression = m_usePayloadCompression;
                 bool useCompactMeasurementFormat = m_useCompactMeasurementFormat;
+                SignalIndexCache signalIndexCache;
+                int currentCacheIndex;
+
+                lock (m_connection.CacheUpdateLock)
+                {
+                    signalIndexCache = m_connection.SignalIndexCache;
+                    currentCacheIndex = m_connection.CurrentCacheIndex;
+                }
 
                 foreach (IMeasurement measurement in measurements)
                 {
@@ -601,18 +665,22 @@ namespace sttp
 
                         // Handle buffer block measurements as a special case - this can be any kind of data,
                         // measurement subscriber will need to know how to interpret buffer
-                        byte[] bufferBlock = new byte[6 + bufferBlockMeasurement.Length];
+                        byte[] bufferBlock = new byte[6 + bufferBlockMeasurement.Length + (m_connection.Version > 1 ? 4 : 0)];
+                        int index = 0;
 
                         // Prepend sequence number
-                        BigEndian.CopyBytes(m_bufferBlockSequenceNumber, bufferBlock, 0);
+                        index += BigEndian.CopyBytes(m_bufferBlockSequenceNumber, bufferBlock, index);
                         m_bufferBlockSequenceNumber++;
 
+                        if (m_connection.Version > 1)
+                            index += BigEndian.CopyBytes(currentCacheIndex, bufferBlock, index);
+
                         // Copy signal index into buffer
-                        int bufferBlockSignalIndex = SignalIndexCache.GetSignalIndex(bufferBlockMeasurement.Key);
-                        BigEndian.CopyBytes(bufferBlockSignalIndex, bufferBlock, 4);
+                        int bufferBlockSignalIndex = signalIndexCache.GetSignalIndex(bufferBlockMeasurement.Key);
+                        index += BigEndian.CopyBytes(bufferBlockSignalIndex, bufferBlock, index);
 
                         // Append measurement data and send
-                        Buffer.BlockCopy(bufferBlockMeasurement.Buffer, 0, bufferBlock, 6, bufferBlockMeasurement.Length);
+                        Buffer.BlockCopy(bufferBlockMeasurement.Buffer, 0, bufferBlock, index, bufferBlockMeasurement.Length);
                         m_parent.SendClientResponse(ClientID, ServerResponse.BufferBlock, ServerCommand.Subscribe, bufferBlock);
 
                         lock (m_bufferBlockCacheLock)
@@ -628,7 +696,7 @@ namespace sttp
                     {
                         // Serialize the current measurement.
                         IBinaryMeasurement binaryMeasurement = useCompactMeasurementFormat ?
-                            (IBinaryMeasurement)new CompactMeasurement(measurement, SignalIndexCache, m_includeTime, m_baseTimeOffsets, m_timeIndex, m_useMillisecondResolution) :
+                            (IBinaryMeasurement)new CompactMeasurement(measurement, signalIndexCache, m_includeTime, m_baseTimeOffsets, m_timeIndex, m_useMillisecondResolution) :
                             new SerializableMeasurement(measurement, m_parent.GetClientEncoding(ClientID));
 
                         // Determine the size of the measurement in bytes.
@@ -638,7 +706,7 @@ namespace sttp
                         // packet size, process the current packet and start a new packet.
                         if (packetSize + binaryLength > m_parent.MaxPacketSize)
                         {
-                            ProcessBinaryMeasurements(packet, useCompactMeasurementFormat);
+                            ProcessBinaryMeasurements(packet, useCompactMeasurementFormat, currentCacheIndex);
                             packet.Clear();
                             packetSize = PacketHeaderSize;
                         }
@@ -651,7 +719,7 @@ namespace sttp
 
                 // Process the remaining measurements.
                 if (packet.Count > 0)
-                    ProcessBinaryMeasurements(packet, useCompactMeasurementFormat);
+                    ProcessBinaryMeasurements(packet, useCompactMeasurementFormat, currentCacheIndex);
 
                 IncrementProcessedMeasurements(measurements.Count());
 
@@ -665,7 +733,7 @@ namespace sttp
             }
         }
 
-        private void ProcessBinaryMeasurements(IEnumerable<IBinaryMeasurement> measurements, bool useCompactMeasurementFormat/*, bool usePayloadCompression*/)
+        private void ProcessBinaryMeasurements(IEnumerable<IBinaryMeasurement> measurements, bool useCompactMeasurementFormat, int currentCacheIndex)
         {
             // Create working buffer
             using BlockAllocatedMemoryStream workingBuffer = new();
@@ -675,6 +743,9 @@ namespace sttp
 
             if (useCompactMeasurementFormat)
                 flags |= DataPacketFlags.Compact;
+
+            if (currentCacheIndex > 0)
+                flags |= DataPacketFlags.CacheIndex;
 
             workingBuffer.WriteByte((byte)flags);
 
@@ -695,8 +766,25 @@ namespace sttp
             m_lastPublishTime = DateTime.UtcNow.Ticks;
         }
 
+        int m_lastIndex;
+
         private void ProcessTSSCMeasurements(IEnumerable<IMeasurement> measurements)
         {
+            SignalIndexCache signalIndexCache;
+            int currentCacheIndex;
+
+            lock (m_connection.CacheUpdateLock)
+            {
+                signalIndexCache = m_connection.SignalIndexCache;
+                currentCacheIndex = m_connection.CurrentCacheIndex;
+
+                if (currentCacheIndex != m_lastIndex)
+                {
+                    Debug.WriteLine($"Publisher TSSC index change from {m_lastIndex} to {currentCacheIndex}");
+                    currentCacheIndex = m_lastIndex;
+                }
+            }
+
             lock (m_tsscSyncLock)
             {
                 try
@@ -720,28 +808,35 @@ namespace sttp
 
                     foreach (IMeasurement measurement in measurements)
                     {
-                        int index = SignalIndexCache.GetSignalIndex(measurement.Key);
+                        int index = signalIndexCache.GetSignalIndex(measurement.Key);
 
-                        if (!m_tsscEncoder.TryAddMeasurement(index, measurement.Timestamp.Value, (uint)measurement.StateFlags, (float)measurement.AdjustedValue))
+                        if (index < int.MaxValue) // Ignore unmapped signal
                         {
-                            SendTSSCPayload(count);
-                            count = 0;
-                            m_tsscEncoder.SetBuffer(m_tsscWorkingBuffer, 0, m_tsscWorkingBuffer.Length);
+                            if (!m_tsscEncoder.TryAddMeasurement(index, measurement.Timestamp.Value, (uint)measurement.StateFlags, (float)measurement.AdjustedValue))
+                            {
+                                SendTSSCPayload(count, currentCacheIndex);
+                                count = 0;
+                                m_tsscEncoder.SetBuffer(m_tsscWorkingBuffer, 0, m_tsscWorkingBuffer.Length);
 
-                            // This will always succeed
-                            m_tsscEncoder.TryAddMeasurement(index, measurement.Timestamp.Value, (uint)measurement.StateFlags, (float)measurement.AdjustedValue);
+                                // This will always succeed
+                                m_tsscEncoder.TryAddMeasurement(index, measurement.Timestamp.Value, (uint)measurement.StateFlags, (float)measurement.AdjustedValue);
+                            }
+
+                            count++;
                         }
-
-                        count++;
+                        else
+                        {
+                            Debug.WriteLine($"Measurement key \"{measurement}\" was unmapped in signal index cache");
+                        }
                     }
 
                     if (count > 0)
-                        SendTSSCPayload(count);
+                        SendTSSCPayload(count, currentCacheIndex);
 
                     IncrementProcessedMeasurements(measurements.Count());
 
                     // Update latency statistics
-                    m_parent.UpdateLatencyStatistics(measurements.Select(m => (long)(m_lastPublishTime - m.Timestamp)));
+                    m_parent?.UpdateLatencyStatistics(measurements.Select(m => (long)(m_lastPublishTime - m.Timestamp)));
                 }
                 catch (Exception ex)
                 {
@@ -751,12 +846,16 @@ namespace sttp
             }
         }
 
-        private void SendTSSCPayload(int count)
+        private void SendTSSCPayload(int count, int currentCacheIndex)
         {
             int length = m_tsscEncoder.FinishBlock();
             byte[] packet = new byte[length + 8];
+            DataPacketFlags flags = DataPacketFlags.Compressed;
 
-            packet[0] = (byte)DataPacketFlags.Compressed;
+            if (currentCacheIndex > 0)
+                flags |= DataPacketFlags.CacheIndex;
+
+            packet[0] = (byte)flags;
 
             // Serialize total number of measurement values to follow
             BigEndian.CopyBytes(count, packet, 1);

@@ -47,6 +47,8 @@ namespace sttp.tssc
         private TsscPointMetadata m_lastPoint;
         private IndexedArray<TsscPointMetadata> m_points;
 
+        internal ushort SequenceNumber;
+
         /// <summary>
         /// Creates a decoder for the TSSC protocol.
         /// </summary>

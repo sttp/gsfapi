@@ -27,12 +27,14 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using GSF;
 using GSF.Collections;
 using GSF.Parsing;
 using GSF.TimeSeries;
+using sttp.tssc;
 
 namespace sttp
 {
@@ -40,12 +42,20 @@ namespace sttp
     /// Represents a serializable <see cref="Guid"/> signal ID to <see cref="int"/> index cross reference.
     /// </summary>
     /// <remarks>
-    /// This class is used to create a runtime index to be used for data exchange so that a 16-bit integer
+    /// This class is used to create a runtime index to be used for data exchange so that a 32-bit integer
     /// is exchanged in the data packets for signal identification instead of the 128-bit Guid signal ID
     /// to reduce bandwidth required for signal exchange. This means the total number of unique signal
-    /// IDs that could be exchanged using this method in a single session is 65,535. This number seems
-    /// reasonable for the currently envisioned use cases, however, multiple sessions each with their own
-    /// runtime signal index cache could be established if this is a limitation for a given data set.
+    /// IDs that could be exchanged using this method in a single session is 2,147,483,647*. This number
+    /// seems reasonable for the currently envisioned use cases, however, multiple sessions each with
+    /// their own runtime signal index cache could be established if this is a limitation for a given
+    /// data set.
+    /// <para>
+    /// * This maximum value is for a signed integer - the value is large enough that even approaching
+    /// this value would swamp most systems; note that most all collections defined in .NET also use a
+    /// signed integer. That said, this could easily move to an unsigned integer in the future as systems
+    /// move towards the ability to manage in-memory collections of this magnitude. In this case the
+    /// upper limit would increase to 4,294,967,295.
+    /// </para>
     /// </remarks>
     [Serializable]
     public class SignalIndexCache : ISupportBinaryImage
@@ -69,6 +79,9 @@ namespace sttp
 
         [NonSerialized]
         private Encoding m_encoding;
+
+        [NonSerialized]
+        internal TsscDecoder TsscDecoder;
 
         #endregion
 
@@ -98,6 +111,9 @@ namespace sttp
                 // Just use remote signal index cache as-is if no local configuration exists
                 m_reference = remoteCache.Reference;
                 m_unauthorizedSignalIDs = remoteCache.UnauthorizedSignalIDs;
+
+                Debug.WriteLine("Signal index cache created with out data source");
+
             }
             else
             {
@@ -118,6 +134,8 @@ namespace sttp
                 }
 
                 m_unauthorizedSignalIDs = remoteCache.UnauthorizedSignalIDs;
+
+                Debug.WriteLine($"Signal index cache created from remote source with {m_reference.Count:N0} signal mappings");
             }
         }
 

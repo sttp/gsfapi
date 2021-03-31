@@ -30,6 +30,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.IO.Compression;
@@ -249,7 +250,7 @@ namespace sttp
         /// <summary>
         /// Defines default value for <see cref="OperationalModes"/> property.
         /// </summary>
-        public const OperationalModes DefaultOperationalModes = (OperationalModes)((uint)OperationalModes.VersionMask & 1u) | OperationalModes.CompressMetadata | OperationalModes.CompressSignalIndexCache | OperationalModes.ReceiveInternalMetadata;
+        public const OperationalModes DefaultOperationalModes = (OperationalModes)((uint)OperationalModes.VersionMask & 2U) | OperationalModes.CompressMetadata | OperationalModes.CompressSignalIndexCache | OperationalModes.ReceiveInternalMetadata;
 
         /// <summary>
         /// Defines the default value for the <see cref="MetadataSynchronizationTimeout"/> property.
@@ -352,13 +353,13 @@ namespace sttp
         private Guid m_activeClientID;
         private string m_connectionID;
         private bool m_tsscResetRequested;
-        private TsscDecoder m_tsscDecoder;
-        private ushort m_tsscSequenceNumber;
         private SharedTimer m_dataStreamMonitor;
         private long m_commandChannelConnectionAttempts;
         private long m_dataChannelConnectionAttempts;
         private volatile SignalIndexCache m_remoteSignalIndexCache;
-        private volatile SignalIndexCache m_signalIndexCache;
+        private volatile SignalIndexCache[] m_signalIndexCache;
+        private readonly object m_signalIndexCacheLock;
+        private volatile int m_cacheIndex;
         private volatile long[] m_baseTimeOffsets;
         private volatile int m_timeIndex;
         private volatile byte[][][] m_keyIVs;
@@ -385,7 +386,6 @@ namespace sttp
         private long m_lastParsingExceptionTime;
 
         private bool m_supportsTemporalProcessing;
-        //private Ticks m_lastMeasurementCheck;
         private volatile Dictionary<Guid, DeviceStatisticsHelper<SubscribedDevice>> m_subscribedDevicesLookup;
         private volatile List<DeviceStatisticsHelper<SubscribedDevice>> m_statisticsHelpers;
         private readonly LongSynchronizedOperation m_registerStatisticsOperation;
@@ -455,9 +455,12 @@ namespace sttp
 
             DataLossInterval = 10.0D;
 
+            Debug.WriteLine("Creating new data subscriber");
+
             m_bufferBlockCache = new List<BufferBlockMeasurement>();
             UseLocalClockAsRealTime = true;
             UseSourcePrefixNames = true;
+            m_signalIndexCacheLock = new object();
         }
 
         #endregion
@@ -773,9 +776,17 @@ namespace sttp
         }
 
         /// <summary>
-        /// Gets the version number of the protocol in use by this subscriber.
+        /// Gets or sets the version number of the protocol in use by this subscriber.
         /// </summary>
-        public int Version => (int)(m_operationalModes & OperationalModes.VersionMask);
+        public int Version
+        {
+            get => (int)(m_operationalModes & OperationalModes.VersionMask);
+            set
+            {
+                m_operationalModes &= ~OperationalModes.VersionMask;
+                m_operationalModes |= (OperationalModes)value;
+            }
+        }
 
         /// <summary>
         /// Gets the character encoding defined by the
@@ -980,6 +991,7 @@ namespace sttp
             {
                 StringBuilder status = new();
 
+                status.AppendLine($"          Protocol version: {Version}");
                 status.AppendLine($"                 Connected: {CommandChannelConnected}");
                 status.AppendLine($"                Subscribed: {m_subscribed}");
                 status.AppendLine($"             Security mode: {SecurityMode}");
@@ -1277,6 +1289,10 @@ namespace sttp
             // Set the security mode if explicitly defined
             if (!settings.TryGetValue(nameof(SecurityMode), out setting) || !Enum.TryParse(setting, true, out m_securityMode))
                 m_securityMode = SecurityMode.None;
+
+            // Apply any version override (e.g., to downgrade to older version)
+            if (settings.TryGetValue(nameof(Version), out setting) && int.TryParse(setting, out int value) && value < 32)
+                Version = value;
 
             // Apply gateway compression mode to operational mode flags
             if (settings.TryGetValue(nameof(CompressionModes), out setting) && Enum.TryParse(setting, true, out CompressionModes compressionModes))
@@ -1998,11 +2014,8 @@ namespace sttp
         /// </summary>
         /// <returns><c>true</c> if unsubscribe command was sent successfully; otherwise <c>false</c>.</returns>
         [AdapterCommand("Unsubscribes from data publisher.", "Administrator", "Editor")]
-        public virtual bool Unsubscribe()
-        {
-            // Send unsubscribe server command
-            return SendServerCommand(ServerCommand.Unsubscribe);
-        }
+        public virtual bool Unsubscribe() => 
+            SendServerCommand(ServerCommand.Unsubscribe);
 
         /// <summary>
         /// Returns the measurements signal IDs that were authorized after the last successful subscription request.
@@ -2010,7 +2023,8 @@ namespace sttp
         [AdapterCommand("Gets authorized signal IDs from last subscription request.", "Administrator", "Editor", "Viewer")]
         public virtual Guid[] GetAuthorizedSignalIDs()
         {
-            return m_signalIndexCache is null ? new Guid[0] : m_signalIndexCache.AuthorizedSignalIDs;
+            lock (m_signalIndexCacheLock)
+                return m_signalIndexCache?[m_cacheIndex] is null ? new Guid[0] : m_signalIndexCache[m_cacheIndex].AuthorizedSignalIDs;
         }
 
         /// <summary>
@@ -2019,7 +2033,8 @@ namespace sttp
         [AdapterCommand("Gets unauthorized signal IDs from last subscription request.", "Administrator", "Editor", "Viewer")]
         public virtual Guid[] GetUnauthorizedSignalIDs()
         {
-            return m_signalIndexCache is null ? new Guid[0] : m_signalIndexCache.UnauthorizedSignalIDs;
+            lock (m_signalIndexCacheLock)
+                return m_signalIndexCache?[m_cacheIndex] is null ? new Guid[0] : m_signalIndexCache[m_cacheIndex].UnauthorizedSignalIDs;
         }
 
         /// <summary>
@@ -2335,6 +2350,8 @@ namespace sttp
             }
         }
 
+        int m_lastIndex;
+
         private void ProcessServerResponse(byte[] buffer, int length)
         {
             // Currently this work is done on the async socket completion thread, make sure work to be done is timely and if the response processing
@@ -2400,13 +2417,12 @@ namespace sttp
                                 m_metadataRefreshPending = false;
                             break;
                         case ServerResponse.DataPacket:
+                        {
                             long now = DateTime.UtcNow.Ticks;
 
                             // Deserialize data packet
                             List<IMeasurement> measurements = new();
-                            DataPacketFlags flags;
-                            Ticks timestamp = 0;
-                            int count;
+                            Ticks timestamp = default;
 
                             if (TotalBytesReceived == 0)
                             {
@@ -2443,14 +2459,25 @@ namespace sttp
                             m_monitoredBytesReceived += m_lastBytesReceived;
 
                             // Get data packet flags
-                            flags = (DataPacketFlags)buffer[responseIndex];
+                            DataPacketFlags flags = (DataPacketFlags)buffer[responseIndex];
                             responseIndex++;
 
+                            SignalIndexCache signalIndexCache;
                             bool compactMeasurementFormat = (byte)(flags & DataPacketFlags.Compact) > 0;
                             bool compressedPayload = (byte)(flags & DataPacketFlags.Compressed) > 0;
                             int cipherIndex = (flags & DataPacketFlags.CipherIndex) > 0 ? 1 : 0;
+                            int cacheIndex = (flags & DataPacketFlags.CacheIndex) > 0 ? 1 : 0;
                             byte[] packet = buffer;
                             int packetLength = responseLength - 1;
+
+                            if (cacheIndex != m_lastIndex)
+                            {
+                                Debug.WriteLine($"Subscriber TSSC index change from {m_lastIndex} to {cacheIndex}");
+                                cacheIndex = m_lastIndex;
+                            }
+
+                            lock (m_signalIndexCacheLock)
+                                signalIndexCache = m_signalIndexCache[cacheIndex];
 
                             // Decrypt data packet payload if keys are available
                             if (m_keyIVs is not null)
@@ -2465,22 +2492,22 @@ namespace sttp
                             }
 
                             // Deserialize number of measurements that follow
-                            count = BigEndian.ToInt32(packet, responseIndex);
+                            int count = BigEndian.ToInt32(packet, responseIndex);
                             responseIndex += 4;
                             packetLength -= 4;
 
                             if (compressedPayload)
                             {
-                                if (CompressionModes.HasFlag(CompressionModes.TSSC))
+                                if (CompressionModes.HasFlag(CompressionModes.TSSC) && signalIndexCache is not null)
                                 {
                                     try
                                     {
                                         // Decompress TSSC serialized measurements from payload
-                                        ParseTSSCMeasurements(packet, packetLength, ref responseIndex, measurements);
+                                        ParseTSSCMeasurements(packet, packetLength, signalIndexCache, ref responseIndex, measurements);
                                     }
                                     catch (Exception ex)
                                     {
-                                        OnProcessException(MessageLevel.Error, new InvalidOperationException($"Decompression failure: (Decoded {measurements.Count} of {count} measurements){ex.Message}", ex));
+                                        OnProcessException(MessageLevel.Error, new InvalidOperationException($"Decompression failure: (Decoded {measurements.Count} of {count} measurements) - {ex.Message}", ex));
                                     }
                                 }
                                 else
@@ -2500,14 +2527,14 @@ namespace sttp
                                         responseIndex += measurement.ParseBinaryImage(packet, responseIndex, length - responseIndex);
                                         measurements.Add(measurement);
                                     }
-                                    else if (m_signalIndexCache is not null)
+                                    else if (signalIndexCache is not null)
                                     {
                                         #pragma warning disable 618
                                         bool useMillisecondResolution = UseMillisecondResolution;
                                         #pragma warning restore 618
 
                                         // Deserialize compact measurement format
-                                        CompactMeasurement measurement = new(m_signalIndexCache, m_includeTime, m_baseTimeOffsets, m_timeIndex, useMillisecondResolution);
+                                        CompactMeasurement measurement = new(signalIndexCache, m_includeTime, m_baseTimeOffsets, m_timeIndex, useMillisecondResolution);
                                         responseIndex += measurement.ParseBinaryImage(packet, responseIndex, length - responseIndex);
 
                                         // Apply timestamp from frame if not included in transmission
@@ -2649,27 +2676,36 @@ namespace sttp
                                 m_lifetimeLatencyMeasurements++;
                             }
                             break;
+                        }
                         case ServerResponse.BufferBlock:
+                        {
                             // Buffer block received - wrap as a buffer block measurement and expose back to consumer
                             uint sequenceNumber = BigEndian.ToUInt32(buffer, responseIndex);
-                            int cacheIndex = (int)(sequenceNumber - m_expectedBufferBlockSequenceNumber);
-                            BufferBlockMeasurement bufferBlockMeasurement;
-                            int signalIndex;
+                            int bufferCacheIndex = (int)(sequenceNumber - m_expectedBufferBlockSequenceNumber);
+                            int signalCacheIndex = Version > 1 ? BigEndian.ToInt32(buffer, responseIndex + 4) : 0;
 
                             // Check if this buffer block has already been processed (e.g., mistaken retransmission due to timeout)
-                            if (cacheIndex >= 0 && (cacheIndex >= m_bufferBlockCache.Count || m_bufferBlockCache[cacheIndex] is null))
+                            if (bufferCacheIndex >= 0 && (bufferCacheIndex >= m_bufferBlockCache.Count || m_bufferBlockCache[bufferCacheIndex] is null))
                             {
                                 // Send confirmation that buffer block is received
                                 SendServerCommand(ServerCommand.ConfirmBufferBlock, buffer.BlockCopy(responseIndex, 4));
 
-                                // Get measurement key from signal index cache
-                                signalIndex = BigEndian.ToUInt16(buffer, responseIndex + 4);
+                                if (Version > 1)
+                                    responseIndex += 4;
 
-                                if (!m_signalIndexCache.Reference.TryGetValue(signalIndex, out MeasurementKey measurementKey))
+                                // Get measurement key from signal index cache
+                                int signalIndex = BigEndian.ToInt32(buffer, responseIndex + 4);
+
+                                SignalIndexCache signalIndexCache;
+
+                                lock (m_signalIndexCacheLock)
+                                    signalIndexCache = m_signalIndexCache?[signalCacheIndex];
+
+                                if (signalIndexCache is null || !signalIndexCache.Reference.TryGetValue(signalIndex, out MeasurementKey measurementKey))
                                     throw new InvalidOperationException($"Failed to find associated signal identification for runtime ID {signalIndex}");
 
                                 // Skip the sequence number and signal index when creating the buffer block measurement
-                                bufferBlockMeasurement = new BufferBlockMeasurement(buffer, responseIndex + 6, responseLength - 6)
+                                BufferBlockMeasurement bufferBlockMeasurement = new BufferBlockMeasurement(buffer, responseIndex + 8, responseLength - 8)
                                 {
                                     Metadata = measurementKey.Metadata
                                 };
@@ -2705,17 +2741,18 @@ namespace sttp
                                 {
                                     // Ensure that the list has at least as many
                                     // elements as it needs to cache this measurement
-                                    for (int i = m_bufferBlockCache.Count; i <= cacheIndex; i++)
+                                    for (int i = m_bufferBlockCache.Count; i <= bufferCacheIndex; i++)
                                         m_bufferBlockCache.Add(null);
 
                                     // Insert this buffer block into the proper location in the list
-                                    m_bufferBlockCache[cacheIndex] = bufferBlockMeasurement;
+                                    m_bufferBlockCache[bufferCacheIndex] = bufferBlockMeasurement;
                                 }
                             }
 
                             LifetimeMeasurements += 1;
                             UpdateMeasurementsPerSecond(DateTime.UtcNow, 1);
                             break;
+                        }
                         case ServerResponse.DataStartTime:
                             // Raise data start time event
                             OnDataStartTime(BigEndian.ToInt64(buffer, responseIndex));
@@ -2725,9 +2762,35 @@ namespace sttp
                             OnProcessingComplete(InterpretResponseMessage(buffer, responseIndex, responseLength));
                             break;
                         case ServerResponse.UpdateSignalIndexCache:
-                            // Deserialize new signal index cache
-                            m_remoteSignalIndexCache = DeserializeSignalIndexCache(buffer.BlockCopy(responseIndex, responseLength));
-                            m_signalIndexCache = new SignalIndexCache(DataSource, m_remoteSignalIndexCache);
+                            int version = Version;
+
+                            lock (m_signalIndexCacheLock)
+                            {
+                                if (version > 1)
+                                {
+                                    // Get active cache index
+                                    m_cacheIndex = BigEndian.ToInt32(buffer, responseIndex);
+                                    responseIndex += 4;
+                                }
+
+                                Debug.WriteLine($"Deserializing cache index {m_cacheIndex}");
+
+                                // Deserialize new signal index cache
+                                m_remoteSignalIndexCache = DeserializeSignalIndexCache(buffer.BlockCopy(responseIndex, responseLength));
+
+                                Debug.WriteLine($"    Reference count = {m_remoteSignalIndexCache.Reference.Count:N0}");
+
+                                if (m_signalIndexCache is null)
+                                    m_signalIndexCache = new SignalIndexCache[version > 1 ? 2 : 1];
+
+                                m_signalIndexCache[m_cacheIndex] = new SignalIndexCache(DataSource, m_remoteSignalIndexCache);
+
+                                Debug.WriteLine($"    Processed reference count = {m_remoteSignalIndexCache.Reference.Count:N0}");
+                            }
+
+                            if (version > 1)
+                                SendServerCommand(ServerCommand.ConfirmSignalIndexCache);
+
                             FixExpectedMeasurementCounts();
                             break;
                         case ServerResponse.UpdateBaseTimes:
@@ -2825,13 +2888,17 @@ namespace sttp
             }
         }
 
-        private void ParseTSSCMeasurements(byte[] buffer, int packetLength, ref int responseIndex, List<IMeasurement> measurements)
+        private void ParseTSSCMeasurements(byte[] buffer, int packetLength, SignalIndexCache signalIndexCache, ref int responseIndex, List<IMeasurement> measurements)
         {
+            TsscDecoder decoder = signalIndexCache.TsscDecoder;
+            bool newDecoder = false;
+
             // Use TSSC compression to decompress measurements                                            
-            if (m_tsscDecoder is null)
+            if (decoder is null)
             {
-                m_tsscDecoder = new TsscDecoder();
-                m_tsscSequenceNumber = 0;
+                decoder = signalIndexCache.TsscDecoder = new TsscDecoder();
+                decoder.SequenceNumber = 0;
+                newDecoder = true;
             }
 
             if (buffer[responseIndex] != 85)
@@ -2844,37 +2911,40 @@ namespace sttp
 
             if (sequenceNumber == 0)
             {
-                OnStatusMessage(MessageLevel.Info, $"TSSC algorithm reset before sequence number: {m_tsscSequenceNumber}", "TSSC");
-                m_tsscDecoder = new TsscDecoder();
-                m_tsscSequenceNumber = 0;
+                if (!newDecoder)
+                {
+                    if (decoder.SequenceNumber > 0)
+                        OnStatusMessage(MessageLevel.Info, $"TSSC algorithm reset before sequence number: {decoder.SequenceNumber}", "TSSC");
+
+                    decoder = signalIndexCache.TsscDecoder = new TsscDecoder();
+                    decoder.SequenceNumber = 0;
+                }
+
                 m_tsscResetRequested = false;
             }
 
-            if (m_tsscSequenceNumber != sequenceNumber)
+            if (decoder.SequenceNumber != sequenceNumber)
             {
                 if (!m_tsscResetRequested)
-                    throw new Exception($"TSSC is out of sequence. Expecting: {m_tsscSequenceNumber}, Received: {sequenceNumber}");
+                    throw new Exception($"TSSC is out of sequence. Expecting: {decoder.SequenceNumber}, Received: {sequenceNumber}");
 
                 // Ignore packets until the reset has occurred.
                 LogEventPublisher publisher = Log.RegisterEvent(MessageLevel.Debug, "TSSC", 0, MessageRate.EveryFewSeconds(1), 5);
                 publisher.ShouldRaiseMessageSupressionNotifications = false;
-                publisher.Publish($"TSSC is out of sequence. Expecting: {m_tsscSequenceNumber}, Received: {sequenceNumber}");
+                publisher.Publish($"TSSC is out of sequence. Expecting: {decoder.SequenceNumber}, Received: {sequenceNumber}");
                 return;
             }
 
-            m_tsscDecoder.SetBuffer(buffer, responseIndex, packetLength - 3);
+            decoder.SetBuffer(buffer, responseIndex, packetLength - 3);
 
-            Measurement measurement;
-            MeasurementKey key = null;
-
-            while (m_tsscDecoder.TryGetMeasurement(out int id, out long time, out uint quality, out float value))
+            while (decoder.TryGetMeasurement(out int id, out long time, out uint quality, out float value))
             {
-                if (!(m_signalIndexCache?.Reference.TryGetValue(id, out key) ?? false))
+                if (!signalIndexCache.Reference.TryGetValue(id, out MeasurementKey key) || key is null)
                     continue;
 
-                measurement = new Measurement
+                Measurement measurement = new Measurement
                 {
-                    Metadata = key?.Metadata,
+                    Metadata = key.Metadata,
                     Timestamp = time,
                     StateFlags = (MeasurementStateFlags)quality,
                     Value = value
@@ -2883,14 +2953,14 @@ namespace sttp
                 measurements.Add(measurement);
             }
 
-            m_tsscSequenceNumber++;
+            decoder.SequenceNumber++;
 
             // Do not increment to 0 on roll-over
-            if (m_tsscSequenceNumber == 0)
-                m_tsscSequenceNumber = 1;
+            if (decoder.SequenceNumber == 0)
+                decoder.SequenceNumber = 1;
         }
 
-        private bool IsUserCommand(ServerCommand command)
+        private static bool IsUserCommand(ServerCommand command)
         {
             ServerCommand[] userCommands =
             {
@@ -2950,16 +3020,7 @@ namespace sttp
 
             if (outputMeasurementKeys is not null && outputMeasurementKeys.Length > 0)
             {
-                // TODO: Determine best way to handle reduced connection string size
-                //if (Settings.TryGetValue("outputMeasurements", out string setting))
-                //{
-                //    // Subscribing with original filter expression
-                //    filterExpression.Append(setting);
-                //}
-                //else
-                //{
-                //    OnStatusMessage(MessageLevel.Warning, "Cannot find \"outputMeasurements\" in connection string, executing subscription with Guid list");
-
+                // TODO: Handle "continued" subscribe operations so connection string size can be fixed
                 foreach (MeasurementKey measurementKey in outputMeasurementKeys)
                 {
                     if (filterExpression.Length > 0)
@@ -2968,8 +3029,6 @@ namespace sttp
                     // Subscribe by associated Guid...
                     filterExpression.Append(measurementKey.SignalID);
                 }
-
-                //}
 
                 // Start unsynchronized subscription
                 #pragma warning disable 618
@@ -3068,10 +3127,7 @@ namespace sttp
                         string sourcePrefix = UseSourcePrefixNames ? $"{Name}!" : "";
                         Dictionary<string, int> deviceIDs = new(StringComparer.OrdinalIgnoreCase);
                         DateTime updateTime;
-                        string deviceAcronym, signalTypeAcronym;
-                        decimal longitude, latitude;
-                        decimal? location;
-                        object originalSource;
+                        string deviceAcronym;
                         int deviceID;
 
                         // Check to see if data for the "DeviceDetail" table was included in the meta-data
@@ -3127,7 +3183,6 @@ namespace sttp
                             bool vendorDeviceNameFieldExists = deviceDetailColumns.Contains("VendorDeviceName");
                             bool interconnectionNameFieldExists = deviceDetailColumns.Contains("InterconnectionName");
                             bool updatedOnFieldExists = deviceDetailColumns.Contains("UpdatedOn");
-
                             int accessID = 0;
 
                             List<Guid> uniqueIDs = deviceRows
@@ -3183,8 +3238,9 @@ namespace sttp
                                         accessID = row.ConvertField<int>("AccessID");
 
                                     // Get longitude and latitude values if they are defined
-                                    longitude = 0M;
-                                    latitude = 0M;
+                                    decimal longitude = 0M;
+                                    decimal latitude = 0M;
+                                    decimal? location;
 
                                     if (longitudeFieldExists)
                                     {
@@ -3227,7 +3283,7 @@ namespace sttp
                                         // ownership is inferred by setting 'OriginalSource' to null. When gateway doesn't own device records (i.e., the "internal" flag is false), this means the device's measurements can only be consumed
                                         // locally - from a device record perspective this means the 'OriginalSource' field is set to the acronym of the PDC or PMU that generated the source measurements. This field allows a mirrored source
                                         // restriction to be implemented later to ensure all devices in an output protocol came from the same original source connection, if desired.
-                                        originalSource = Internal ? (object)DBNull.Value : string.IsNullOrEmpty(row.Field<string>("ParentAcronym")) ? sourcePrefix + row.Field<string>("Acronym") : sourcePrefix + row.Field<string>("ParentAcronym");
+                                        object originalSource = Internal ? (object)DBNull.Value : string.IsNullOrEmpty(row.Field<string>("ParentAcronym")) ? sourcePrefix + row.Field<string>("Acronym") : sourcePrefix + row.Field<string>("ParentAcronym");
 
                                         // Determine if device record already exists
                                         if (Convert.ToInt32(command.ExecuteScalar(deviceExistsSql, MetadataSynchronizationTimeout, database.Guid(uniqueID))) == 0)
@@ -3303,6 +3359,8 @@ namespace sttp
 
                             // Load signal type ID's from local database associated with their acronym for proper signal type translation
                             Dictionary<string, int> signalTypeIDs = new(StringComparer.OrdinalIgnoreCase);
+
+                            string signalTypeAcronym;
 
                             foreach (DataRow row in command.RetrieveData(database.AdapterType, "SELECT ID, Acronym FROM SignalType", MetadataSynchronizationTimeout).Rows)
                             {
@@ -3649,8 +3707,18 @@ namespace sttp
                 }
 
                 // New signals may have been defined, take original remote signal index cache and apply changes
-                if (m_remoteSignalIndexCache is not null)
-                    m_signalIndexCache = new SignalIndexCache(DataSource, m_remoteSignalIndexCache);
+                lock (m_signalIndexCacheLock)
+                {
+                    if (m_remoteSignalIndexCache is not null)
+                    {
+                        SignalIndexCache signalIndexCache = m_signalIndexCache[m_cacheIndex];
+
+                        m_signalIndexCache[m_cacheIndex] = new SignalIndexCache(DataSource, m_remoteSignalIndexCache)
+                        {
+                            TsscDecoder = signalIndexCache.TsscDecoder
+                        };
+                    }
+                }
 
                 m_lastMetaDataRefreshTime = latestUpdateTime > DateTime.MinValue ? latestUpdateTime : DateTime.UtcNow;
 
@@ -3972,11 +4040,13 @@ namespace sttp
         {
             Dictionary<Guid, DeviceStatisticsHelper<SubscribedDevice>> subscribedDevicesLookup = m_subscribedDevicesLookup;
             List<DeviceStatisticsHelper<SubscribedDevice>> statisticsHelpers = m_statisticsHelpers;
-            SignalIndexCache signalIndexCache = m_signalIndexCache;
             DataSet dataSource = DataSource;
-
+            SignalIndexCache signalIndexCache;
             DataTable measurementTable;
             IEnumerable<IGrouping<DeviceStatisticsHelper<SubscribedDevice>, Guid>> groups;
+
+            lock (m_signalIndexCacheLock)
+                signalIndexCache = m_signalIndexCache?[m_cacheIndex];
 
             try
             {
