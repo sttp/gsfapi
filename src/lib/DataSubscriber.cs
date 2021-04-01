@@ -165,7 +165,7 @@ namespace sttp
 
             #region [ Methods ]
 
-            public override bool Equals(object obj) => 
+            public override bool Equals(object obj) =>
                 obj is SubscribedDevice subscribedDevice && Name.Equals(subscribedDevice.Name);
 
             public override int GetHashCode() => Name.GetHashCode();
@@ -962,7 +962,7 @@ namespace sttp
                     IPEndPoint endPoint = GetCommandChannelSocket()?.RemoteEndPoint as IPEndPoint;
                     m_connectionID = SubscriberConnection.GetEndPointConnectionID(clientID, endPoint);
                 }
-                
+
                 string commandChannelServerUri = m_clientCommandChannel?.ServerUri ?? m_connectionID;
                 string dataChannelServerUri = m_dataChannel?.ServerUri;
 
@@ -1038,7 +1038,7 @@ namespace sttp
                     status.AppendLine("Command Channel Status".CenterText(50));
                     status.AppendLine("----------------------".CenterText(50));
                     status.Append(m_clientCommandChannel.Status);
-                    
+
                     status.AppendLine($"   Using simple TCP client: {UseSimpleTcpClient}");
                 }
 
@@ -1621,7 +1621,7 @@ namespace sttp
                             // Note that the data gap recoverer will connect on the same command channel port as
                             // the real-time subscriber (TCP only)
                             m_dataGapRecoveryEnabled = true;
-                            
+
                             m_dataGapRecoverer = new DataGapRecoverer
                             {
                                 SourceConnectionName = Name,
@@ -1887,7 +1887,7 @@ namespace sttp
             if (!string.IsNullOrWhiteSpace(dataChannel))
             {
                 Dictionary<string, string> settings = dataChannel.ParseKeyValuePairs();
-                
+
                 if (settings.TryGetValue("port", out string setting) || settings.TryGetValue("localPort", out setting))
                     int.TryParse(setting, out port);
             }
@@ -2014,7 +2014,7 @@ namespace sttp
         /// </summary>
         /// <returns><c>true</c> if unsubscribe command was sent successfully; otherwise <c>false</c>.</returns>
         [AdapterCommand("Unsubscribes from data publisher.", "Administrator", "Editor")]
-        public virtual bool Unsubscribe() => 
+        public virtual bool Unsubscribe() =>
             SendServerCommand(ServerCommand.Unsubscribe);
 
         /// <summary>
@@ -2117,7 +2117,7 @@ namespace sttp
 
             if (m_dataGapRecoverer?.RemoveDataGap(start, end) ?? false)
                 return "Data gap successfully removed.";
-            
+
             return "Data gap not found.";
         }
 
@@ -2765,35 +2765,38 @@ namespace sttp
                             OnProcessingComplete(InterpretResponseMessage(buffer, responseIndex, responseLength));
                             break;
                         case ServerResponse.UpdateSignalIndexCache:
+                        {
                             int version = Version;
 
-                            lock (m_signalIndexCacheLock)
+                            if (version > 1)
                             {
-                                if (version > 1)
+                                // Get active cache index
+                                m_cacheIndex = BigEndian.ToInt32(buffer, responseIndex);
+                                responseIndex += 4;
+                            }
+
+                            Debug.WriteLine($"DataSubscriber: Deserializing cache index {m_cacheIndex}");
+
+                            // Deserialize new signal index cache
+                            SignalIndexCache remoteSignalIndexCache = DeserializeSignalIndexCache(buffer.BlockCopy(responseIndex, responseLength));
+
+                            if (remoteSignalIndexCache.Reference.Count == 0)
+                            {
+                                Debug.WriteLine("DataSubscriber: !! Deserialized signal index cache with zero references !!");
+                            }
+                            else
+                            {
+                                Debug.WriteLine($"DataSubscriber:     Reference count = {remoteSignalIndexCache.Reference.Count:N0}");
+
+                                SignalIndexCache signalIndexCache = new SignalIndexCache(DataSource, remoteSignalIndexCache);
+
+                                lock (m_signalIndexCacheLock)
                                 {
-                                    // Get active cache index
-                                    m_cacheIndex = BigEndian.ToInt32(buffer, responseIndex);
-                                    responseIndex += 4;
-                                }
-
-                                Debug.WriteLine($"DataSubscriber: Deserializing cache index {m_cacheIndex}");
-
-                                // Deserialize new signal index cache
-                                var signalIndexCache = DeserializeSignalIndexCache(buffer.BlockCopy(responseIndex, responseLength));
-
-                                if (signalIndexCache.Reference.Count == 0)
-                                {
-                                    Debug.WriteLine("DataSubscriber: !! Deserialized signal index cache with zero references !!");
-                                }
-                                else
-                                {
-                                    Debug.WriteLine($"DataSubscriber:     Reference count = {signalIndexCache.Reference.Count:N0}");
-
                                     if (m_signalIndexCache is null)
                                         m_signalIndexCache = new SignalIndexCache[version > 1 ? 2 : 1];
 
-                                    m_signalIndexCache[m_cacheIndex] = new SignalIndexCache(DataSource, signalIndexCache);
-                                    m_remoteSignalIndexCache = signalIndexCache;
+                                    m_signalIndexCache[m_cacheIndex] = signalIndexCache;
+                                    m_remoteSignalIndexCache = remoteSignalIndexCache;
 
                                     Debug.WriteLine($"DataSubscriber:     Processed reference count = {m_signalIndexCache[m_cacheIndex].Reference.Count:N0}");
                                 }
@@ -2804,6 +2807,7 @@ namespace sttp
 
                             FixExpectedMeasurementCounts();
                             break;
+                        }
                         case ServerResponse.UpdateBaseTimes:
                             // Get active time index
                             m_timeIndex = BigEndian.ToInt32(buffer, responseIndex);
@@ -3042,9 +3046,9 @@ namespace sttp
                 }
 
                 // Start unsynchronized subscription
-                #pragma warning disable 618
+#pragma warning disable 618
                 return Subscribe(true, Throttled, filterExpression.ToString(), dataChannel, startTime: startTimeConstraint, stopTime: stopTimeConstraint, processingInterval: processingInterval, publishInterval: PublishInterval);
-                #pragma warning restore 618
+#pragma warning restore 618
             }
 
             Unsubscribe();
@@ -3315,7 +3319,7 @@ namespace sttp
                                                 continue;
 
                                             // Update existing device record
-                                            command.ExecuteNonQuery(updateDeviceSql, MetadataSynchronizationTimeout, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),											
+                                            command.ExecuteNonQuery(updateDeviceSql, MetadataSynchronizationTimeout, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
                                                 originalSource, m_sttpProtocolID, row.ConvertField<int>("FramesPerSecond"), historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Guid(uniqueID));
                                         }
                                     }
@@ -3718,16 +3722,28 @@ namespace sttp
                 }
 
                 // New signals may have been defined, take original remote signal index cache and apply changes
-                lock (m_signalIndexCacheLock)
+                if (m_remoteSignalIndexCache is not null && m_signalIndexCache is not null)
                 {
-                    if (m_remoteSignalIndexCache is not null)
-                    {
-                        SignalIndexCache signalIndexCache = m_signalIndexCache[m_cacheIndex];
+                    SignalIndexCache originalReference, remoteSignalIndexCache;
 
-                        m_signalIndexCache[m_cacheIndex] = new SignalIndexCache(DataSource, m_remoteSignalIndexCache)
+                    lock (m_signalIndexCacheLock)
+                    {
+                        originalReference = m_signalIndexCache[m_cacheIndex];
+                        remoteSignalIndexCache = m_remoteSignalIndexCache;
+                    }
+                    
+                    SignalIndexCache signalIndexCache = new SignalIndexCache(DataSource, remoteSignalIndexCache);
+
+                    if (signalIndexCache.Reference.Count > 0)
+                    {
+                        lock (m_signalIndexCacheLock)
                         {
-                            TsscDecoder = signalIndexCache.TsscDecoder
-                        };
+                            if (ReferenceEquals(originalReference, m_signalIndexCache[m_cacheIndex]))
+                            {
+                                signalIndexCache.TsscDecoder = m_signalIndexCache[m_cacheIndex].TsscDecoder;
+                                m_signalIndexCache[m_cacheIndex] = signalIndexCache;
+                            }
+                        }
                     }
                 }
 
@@ -4456,7 +4472,7 @@ namespace sttp
 
             if (m_dataChannel is null && m_metadataRefreshPending)
             {
-                if (m_lastReceivedAt > DateTime.MinValue)   
+                if (m_lastReceivedAt > DateTime.MinValue)
                     dataReceived = (DateTime.UtcNow - m_lastReceivedAt).Seconds < DataLossInterval;
             }
 
