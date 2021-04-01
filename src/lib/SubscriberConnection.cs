@@ -106,7 +106,7 @@ namespace sttp
             m_reconnectTimer.AutoReset = false;
             m_reconnectTimer.Elapsed += ReconnectTimer_Elapsed;
 
-            Debug.WriteLine($"Creating new subscriber connection {clientID}");
+            Debug.WriteLine($"SubscriberConnection: Creating new subscriber connection {clientID}");
 
             LookupEndPointInfo(clientID, GetCommandChannelSocket().RemoteEndPoint as IPEndPoint, ref m_ipAddress, ref m_hostName, ref m_connectionID);
         }

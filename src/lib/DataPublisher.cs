@@ -801,8 +801,6 @@ namespace sttp
         private IClient m_clientCommandChannel;
         private CertificatePolicyChecker m_certificateChecker;
         private Dictionary<X509Certificate, DataRow> m_subscriberIdentities;
-        private readonly LongSynchronizedOperation m_handleSubscribeRequests;
-        private readonly ConcurrentQueue<Tuple<SubscriberConnection, byte[]>> m_subscribeRequests;
         private readonly ConcurrentDictionary<Guid, IServer> m_clientPublicationChannels;
         private readonly Dictionary<Guid, Dictionary<int, string>> m_clientNotifications;
         private readonly object m_clientNotificationsLock;
@@ -840,8 +838,6 @@ namespace sttp
             m_clientPublicationChannels = new ConcurrentDictionary<Guid, IServer>();
             m_clientNotifications = new Dictionary<Guid, Dictionary<int, string>>();
             m_clientNotificationsLock = new object();
-            m_handleSubscribeRequests = new LongSynchronizedOperation(HandleSubscribeRequest, ex => OnProcessException(MessageLevel.Error, ex));
-            m_subscribeRequests = new ConcurrentQueue<Tuple<SubscriberConnection, byte[]>>();
             m_publishBuffer = new BlockAllocatedMemoryStream();
             SecurityMode = DefaultSecurityMode;
             m_encryptPayload = DefaultEncryptPayload;
@@ -2017,14 +2013,36 @@ namespace sttp
 
                     lock (connection.CacheUpdateLock)
                     {
+                        // Update primary signal cache index at startup
+                        if (connection.SignalIndexCache.Reference.Count == 0)
+                        {
+                            connection.SignalIndexCache.Reference = reference;
+                            connection.SignalIndexCache.UnauthorizedSignalIDs = unauthorizedKeys.ToArray();
+                        }
+
                         // If next signal index cache is not null, then publisher is still awaiting subscriber confirmation
                         if (connection.NextSignalIndexCache is null)
                         {
-                            connection.NextSignalIndexCache = nextSignalIndexCache;
-                            connection.NextCacheIndex = connection.CurrentCacheIndex ^ 1;
-                            byte[] serializedSignalIndexCache = SerializeSignalIndexCache(clientID, connection.NextSignalIndexCache, connection.NextCacheIndex);
-                            SendClientResponse(clientID, ServerResponse.UpdateSignalIndexCache, ServerCommand.Subscribe, serializedSignalIndexCache);
-                            processed = true;
+                            if (nextSignalIndexCache.Reference.Count == 0)
+                            {
+                                Debug.WriteLine("DataPublisher: !! No references were defined in index cache !!");
+                            }
+                            else
+                            {
+                                connection.NextSignalIndexCache = nextSignalIndexCache;
+                                connection.NextCacheIndex = connection.CurrentCacheIndex ^ 1;
+                                byte[] serializedSignalIndexCache = SerializeSignalIndexCache(clientID, connection.NextSignalIndexCache, connection.NextCacheIndex);
+
+                                if (serializedSignalIndexCache?.Length == 0)
+                                {
+                                    Debug.WriteLine("DataPublisher: !! No index cache was serialized !!");
+                                }
+                                else
+                                {
+                                    SendClientResponse(clientID, ServerResponse.UpdateSignalIndexCache, ServerCommand.Subscribe, serializedSignalIndexCache);
+                                    processed = true;
+                                }
+                            }
                         }
                     }
 
@@ -2826,17 +2844,6 @@ namespace sttp
 
         #region [ Server Command Request Handlers ]
 
-        private void HandleSubscribeRequest()
-        {
-            // Force handling of subscribe request serially
-            while (m_subscribeRequests.TryDequeue(out Tuple<SubscriberConnection, byte[]> request))
-            {
-                SubscriberConnection connection = request.Item1;
-                byte[] buffer = request.Item2;
-                HandleSubscribeRequest(connection, buffer, 0, buffer.Length);
-            }
-        }
-
         // Handles subscribe request
         private void HandleSubscribeRequest(SubscriberConnection connection, byte[] buffer, int startIndex, int length)
         {
@@ -2863,7 +2870,7 @@ namespace sttp
                     int byteLength = BigEndian.ToInt32(buffer, startIndex);
                     startIndex += 4;
 
-                    if (byteLength > 0 && length >= 6 + byteLength - 1)
+                    if (byteLength > 0 && length >= 6 + byteLength)
                     {
                         string connectionString = GetClientEncoding(clientID).GetString(buffer, startIndex, byteLength);
                         //startIndex += byteLength;
@@ -2879,7 +2886,7 @@ namespace sttp
                             // Client subscription not established yet, so we create a new one
                             subscription = new SubscriberAdapter(this, clientID, connection.SubscriberID, compressionModes);
                             addSubscription = true;
-                            Debug.WriteLine("*** New subscription encountered! ***");
+                            Debug.WriteLine("DataPublisher: *** New subscription encountered! ***");
                         }
 
                         // Update connection string settings for GSF adapter syntax:
@@ -3461,14 +3468,23 @@ namespace sttp
         private byte[] SerializeSignalIndexCache(Guid clientID, SignalIndexCache signalIndexCache, int currentCacheIndex)
         {
             if (!ClientConnections.TryGetValue(clientID, out SubscriberConnection connection) || connection is null)
+            {
+                Debug.WriteLine($"DataPublisher: Failed to find client ID {clientID} for signal index cache serialization");
                 return null;
+            }
+
+            if (signalIndexCache.Reference.Count == 0)
+            {
+                Debug.WriteLine("DataPublisher: !! Attempt to serialize signal index cache with zero references !!");
+                return null;
+            }
 
             OperationalModes operationalModes = connection.OperationalModes;
             CompressionModes compressionModes = (CompressionModes)(operationalModes & OperationalModes.CompressionModeMask);
             bool compressSignalIndexCache = (operationalModes & OperationalModes.CompressSignalIndexCache) > 0;
             using BlockAllocatedMemoryStream compressedData = new();
 
-            Debug.WriteLine($"Serializing cache index {currentCacheIndex}");
+            Debug.WriteLine($"DataPublisher: Serializing cache index {currentCacheIndex}");
 
             if (connection.Version > 1)
                 compressedData.Write(BigEndian.GetBytes(currentCacheIndex));
@@ -3638,8 +3654,7 @@ namespace sttp
                     {
                         case ServerCommand.Subscribe:
                             // Handle subscribe
-                            m_subscribeRequests.Enqueue(new Tuple<SubscriberConnection, byte[]>(connection, buffer.BlockCopy(index, length)));
-                            m_handleSubscribeRequests.RunOnceAsync();
+                            HandleSubscribeRequest(connection, buffer, index, length);
                             break;
 
                         case ServerCommand.Unsubscribe:

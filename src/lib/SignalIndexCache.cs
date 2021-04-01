@@ -109,16 +109,16 @@ namespace sttp
             if (dataSource is null || !dataSource.Tables.Contains("ActiveMeasurements"))
             {
                 // Just use remote signal index cache as-is if no local configuration exists
-                m_reference = remoteCache.Reference;
+                Reference = remoteCache.Reference;
                 m_unauthorizedSignalIDs = remoteCache.UnauthorizedSignalIDs;
 
-                Debug.WriteLine("Signal index cache created with out data source");
+                Debug.WriteLine("SignalIndexCache: cache created with out data source");
 
             }
             else
             {
                 DataTable activeMeasurements = dataSource.Tables["ActiveMeasurements"];
-                m_reference = new ConcurrentDictionary<int, MeasurementKey>();
+                ConcurrentDictionary<int, MeasurementKey> reference = new ConcurrentDictionary<int, MeasurementKey>();
 
                 foreach (KeyValuePair<int, MeasurementKey> signalIndex in remoteCache.Reference)
                 {
@@ -130,12 +130,13 @@ namespace sttp
 
                     DataRow row = filteredRows[0];
                     MeasurementKey key = MeasurementKey.LookUpOrCreate(signalID, row["ID"].ToNonNullString(MeasurementKey.Undefined.ToString()));
-                    m_reference.TryAdd(signalIndex.Key, key);
+                    reference.TryAdd(signalIndex.Key, key);
                 }
 
                 m_unauthorizedSignalIDs = remoteCache.UnauthorizedSignalIDs;
+                Reference = reference;
 
-                Debug.WriteLine($"Signal index cache created from remote source with {m_reference.Count:N0} signal mappings");
+                Debug.WriteLine($"SignalIndexCache: cache created from remote source with {Reference.Count:N0} signal mappings");
             }
         }
 

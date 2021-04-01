@@ -455,7 +455,7 @@ namespace sttp
 
             DataLossInterval = 10.0D;
 
-            Debug.WriteLine("Creating new data subscriber");
+            Debug.WriteLine("DataSubscriber: Creating new data subscriber");
 
             m_bufferBlockCache = new List<BufferBlockMeasurement>();
             UseLocalClockAsRealTime = true;
@@ -2472,8 +2472,8 @@ namespace sttp
 
                             if (cacheIndex != m_lastIndex)
                             {
-                                Debug.WriteLine($"Subscriber TSSC index change from {m_lastIndex} to {cacheIndex}");
-                                cacheIndex = m_lastIndex;
+                                Debug.WriteLine($"DataSubscriber: TSSC index change from {m_lastIndex} to {cacheIndex}");
+                                m_lastIndex = cacheIndex;
                             }
 
                             lock (m_signalIndexCacheLock)
@@ -2498,16 +2498,19 @@ namespace sttp
 
                             if (compressedPayload)
                             {
-                                if (CompressionModes.HasFlag(CompressionModes.TSSC) && signalIndexCache is not null)
+                                if (CompressionModes.HasFlag(CompressionModes.TSSC))
                                 {
-                                    try
+                                    if (signalIndexCache is not null)
                                     {
-                                        // Decompress TSSC serialized measurements from payload
-                                        ParseTSSCMeasurements(packet, packetLength, signalIndexCache, ref responseIndex, measurements);
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        OnProcessException(MessageLevel.Error, new InvalidOperationException($"Decompression failure: (Decoded {measurements.Count} of {count} measurements) - {ex.Message}", ex));
+                                        try
+                                        {
+                                            // Decompress TSSC serialized measurements from payload
+                                            ParseTSSCMeasurements(packet, packetLength, signalIndexCache, ref responseIndex, measurements);
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            OnProcessException(MessageLevel.Error, new InvalidOperationException($"Decompression failure: (Decoded {measurements.Count} of {count} measurements) - {ex.Message}", ex));
+                                        }
                                     }
                                 }
                                 else
@@ -2773,19 +2776,27 @@ namespace sttp
                                     responseIndex += 4;
                                 }
 
-                                Debug.WriteLine($"Deserializing cache index {m_cacheIndex}");
+                                Debug.WriteLine($"DataSubscriber: Deserializing cache index {m_cacheIndex}");
 
                                 // Deserialize new signal index cache
-                                m_remoteSignalIndexCache = DeserializeSignalIndexCache(buffer.BlockCopy(responseIndex, responseLength));
+                                var signalIndexCache = DeserializeSignalIndexCache(buffer.BlockCopy(responseIndex, responseLength));
 
-                                Debug.WriteLine($"    Reference count = {m_remoteSignalIndexCache.Reference.Count:N0}");
+                                if (signalIndexCache.Reference.Count == 0)
+                                {
+                                    Debug.WriteLine("DataSubscriber: !! Deserialized signal index cache with zero references !!");
+                                }
+                                else
+                                {
+                                    Debug.WriteLine($"DataSubscriber:     Reference count = {signalIndexCache.Reference.Count:N0}");
 
-                                if (m_signalIndexCache is null)
-                                    m_signalIndexCache = new SignalIndexCache[version > 1 ? 2 : 1];
+                                    if (m_signalIndexCache is null)
+                                        m_signalIndexCache = new SignalIndexCache[version > 1 ? 2 : 1];
 
-                                m_signalIndexCache[m_cacheIndex] = new SignalIndexCache(DataSource, m_remoteSignalIndexCache);
+                                    m_signalIndexCache[m_cacheIndex] = new SignalIndexCache(DataSource, signalIndexCache);
+                                    m_remoteSignalIndexCache = signalIndexCache;
 
-                                Debug.WriteLine($"    Processed reference count = {m_remoteSignalIndexCache.Reference.Count:N0}");
+                                    Debug.WriteLine($"DataSubscriber:     Processed reference count = {m_signalIndexCache[m_cacheIndex].Reference.Count:N0}");
+                                }
                             }
 
                             if (version > 1)

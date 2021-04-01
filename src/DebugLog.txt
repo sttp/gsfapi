@@ -1,0 +1,206 @@
+*** Existing Connection Initialization ***
+
+DataSubscriber: Creating new data subscriber
+DataSubscriber: Creating new data subscriber
+SubscriberConnection: Creating new subscriber connection eb19b8ae-d9e8-4620-a407-6f37dd36370d
+SubscriberConnection: Creating new subscriber connection eb19b8ae-d9e8-4620-a407-6f37dd36370d
+SubscriberAdapter: Creating new subscriber adapter eb19b8ae-d9e8-4620-a407-6f37dd36370d
+SubscriberAdapter: Creating new subscriber adapter eb19b8ae-d9e8-4620-a407-6f37dd36370d
+DataPublisher: *** New subscription encountered! ***
+DataPublisher: *** New subscription encountered! ***
+SubscriberAdapter: Input measurement keys update causing update subscriber adapter signal index cache
+SubscriberAdapter: Input measurement keys update causing update subscriber adapter signal index cache
+DataPublisher: Serializing cache index 0
+DataPublisher: Serializing cache index 0
+SubscriberAdapter: TSSC index change from 0 to 1
+DataSubscriber: Deserializing cache index 0
+SubscriberAdapter: TSSC index change from 0 to 1
+DataSubscriber: Deserializing cache index 0
+DataSubscriber:     Reference count = 49
+DataSubscriber:     Reference count = 49
+SignalIndexCache: cache created from remote source with 49 signal mappings
+SignalIndexCache: cache created from remote source with 49 signal mappings
+DataSubscriber:     Processed reference count = 49
+DataSubscriber:     Processed reference count = 49
+DataSubscriber: TSSC index change from 0 to 1
+DataSubscriber: TSSC index change from 0 to 1
+SubscriberAdapter: Received confirmation of updated subscriber signal index cache. Next signal index cache ready
+SubscriberAdapter: Received confirmation of updated subscriber signal index cache. Next signal index cache ready
+SubscriberAdapter: SIC Receipt Confirmed! Swapping signal index cache:
+SubscriberAdapter: SIC Receipt Confirmed! Swapping signal index cache:
+SubscriberAdapter:     Old ref count: 49
+SubscriberAdapter:     Old ref count: 49
+SubscriberAdapter:     New ref count: 49
+SubscriberAdapter:     New ref count: 49
+SubscriberAdapter:   Old cache index: 1
+SubscriberAdapter:   Old cache index: 1
+SubscriberAdapter:   New cache index: 0
+SubscriberAdapter:   New cache index: 0
+SubscriberAdapter: TSSC index change from 1 to 0
+SubscriberAdapter: TSSC index change from 1 to 0
+DataSubscriber: TSSC index change from 1 to 0
+DataSubscriber: TSSC index change from 1 to 0
+SignalIndexCache: cache created from remote source with 49 signal mappings
+SignalIndexCache: cache created from remote source with 49 signal mappings
+
+*** Add New Signal  ***
+
+SignalIndexCache: cache created from remote source with 49 signal mappings
+SignalIndexCache: cache created from remote source with 49 signal mappings
+SubscriberAdapter: Input measurement keys update causing update subscriber adapter signal index cache
+SubscriberAdapter: Input measurement keys update causing update subscriber adapter signal index cache
+DataPublisher: Serializing cache index 1
+DataPublisher: Serializing cache index 1
+DataSubscriber: Deserializing cache index 1
+DataSubscriber: Deserializing cache index 1
+DataSubscriber:     Reference count = 50
+DataSubscriber:     Reference count = 50
+SignalIndexCache: cache created from remote source with 50 signal mappings
+SignalIndexCache: cache created from remote source with 50 signal mappings
+DataSubscriber:     Processed reference count = 50
+DataSubscriber:     Processed reference count = 50
+SubscriberAdapter: Received confirmation of updated subscriber signal index cache. Next signal index cache ready
+SubscriberAdapter: Received confirmation of updated subscriber signal index cache. Next signal index cache ready
+SubscriberAdapter: SIC Receipt Confirmed! Swapping signal index cache:
+SubscriberAdapter: SIC Receipt Confirmed! Swapping signal index cache:
+SubscriberAdapter:     Old ref count: 49
+SubscriberAdapter:     Old ref count: 49
+SubscriberAdapter:     New ref count: 50
+SubscriberAdapter:     New ref count: 50
+SubscriberAdapter:   Old cache index: 0
+SubscriberAdapter:   Old cache index: 0
+SubscriberAdapter:   New cache index: 1
+SubscriberAdapter:   New cache index: 1
+SubscriberAdapter: TSSC index change from 0 to 1
+SubscriberAdapter: TSSC index change from 0 to 1
+DataSubscriber: TSSC index change from 0 to 1
+DataSubscriber: TSSC index change from 0 to 1
+
+*** Remove Signal ***
+
+SignalIndexCache: cache created from remote source with 50 signal mappings
+SignalIndexCache: cache created from remote source with 50 signal mappings
+SubscriberAdapter: Input measurement keys update causing update subscriber adapter signal index cache
+SubscriberAdapter: Input measurement keys update causing update subscriber adapter signal index cache
+DataPublisher: Serializing cache index 0
+DataPublisher: Serializing cache index 0
+DataSubscriber: Deserializing cache index 0
+DataSubscriber: Deserializing cache index 0
+DataSubscriber:     Reference count = 49
+DataSubscriber:     Reference count = 49
+SignalIndexCache: cache created from remote source with 49 signal mappings
+SignalIndexCache: cache created from remote source with 49 signal mappings
+DataSubscriber:     Processed reference count = 49
+DataSubscriber:     Processed reference count = 49
+SubscriberAdapter: Received confirmation of updated subscriber signal index cache. Next signal index cache ready
+SubscriberAdapter: Received confirmation of updated subscriber signal index cache. Next signal index cache ready
+SubscriberAdapter: SIC Receipt Confirmed! Swapping signal index cache:
+SubscriberAdapter: SIC Receipt Confirmed! Swapping signal index cache:
+SubscriberAdapter:     Old ref count: 50
+SubscriberAdapter:     Old ref count: 50
+SubscriberAdapter:     New ref count: 49
+SubscriberAdapter:     New ref count: 49
+SubscriberAdapter:   Old cache index: 1
+SubscriberAdapter:   Old cache index: 1
+SubscriberAdapter:   New cache index: 0
+SubscriberAdapter:   New cache index: 0
+SubscriberAdapter: TSSC index change from 1 to 0
+SubscriberAdapter: TSSC index change from 1 to 0
+DataSubscriber: TSSC index change from 1 to 0
+DataSubscriber: TSSC index change from 1 to 0
+
+*** Add New Device ***
+
+SignalIndexCache: cache created from remote source with 49 signal mappings
+SignalIndexCache: cache created from remote source with 49 signal mappings
+SubscriberAdapter: Input measurement keys update causing update subscriber adapter signal index cache
+SubscriberAdapter: Input measurement keys update causing update subscriber adapter signal index cache
+DataPublisher: Serializing cache index 1
+DataPublisher: Serializing cache index 1
+DataSubscriber: Deserializing cache index 1
+DataSubscriber: Deserializing cache index 1
+DataSubscriber:     Reference count = 111
+DataSubscriber:     Reference count = 111
+SignalIndexCache: cache created from remote source with 111 signal mappings
+SignalIndexCache: cache created from remote source with 111 signal mappings
+DataSubscriber:     Processed reference count = 111
+DataSubscriber:     Processed reference count = 111
+SubscriberAdapter: Received confirmation of updated subscriber signal index cache. Next signal index cache ready
+SubscriberAdapter: Received confirmation of updated subscriber signal index cache. Next signal index cache ready
+SubscriberAdapter: SIC Receipt Confirmed! Swapping signal index cache:
+SubscriberAdapter: SIC Receipt Confirmed! Swapping signal index cache:
+SubscriberAdapter:     Old ref count: 49
+SubscriberAdapter:     Old ref count: 49
+SubscriberAdapter:     New ref count: 111
+SubscriberAdapter:     New ref count: 111
+SubscriberAdapter:   Old cache index: 0
+SubscriberAdapter:   Old cache index: 0
+SubscriberAdapter:   New cache index: 1
+SubscriberAdapter:   New cache index: 1
+SubscriberAdapter: TSSC index change from 0 to 1
+SubscriberAdapter: TSSC index change from 0 to 1
+DataSubscriber: TSSC index change from 0 to 1
+DataSubscriber: TSSC index change from 0 to 1
+SignalIndexCache: cache created from remote source with 111 signal mappings
+SignalIndexCache: cache created from remote source with 111 signal mappings
+SubscriberAdapter: Input measurement keys update causing update subscriber adapter signal index cache
+SubscriberAdapter: Input measurement keys update causing update subscriber adapter signal index cache
+DataPublisher: Serializing cache index 0
+DataPublisher: Serializing cache index 0
+DataSubscriber: Deserializing cache index 0
+DataSubscriber: Deserializing cache index 0
+DataSubscriber:     Reference count = 146
+DataSubscriber:     Reference count = 146
+SignalIndexCache: cache created from remote source with 146 signal mappings
+SignalIndexCache: cache created from remote source with 146 signal mappings
+DataSubscriber:     Processed reference count = 146
+DataSubscriber:     Processed reference count = 146
+SubscriberAdapter: Received confirmation of updated subscriber signal index cache. Next signal index cache ready
+SubscriberAdapter: Received confirmation of updated subscriber signal index cache. Next signal index cache ready
+SubscriberAdapter: SIC Receipt Confirmed! Swapping signal index cache:
+SubscriberAdapter: SIC Receipt Confirmed! Swapping signal index cache:
+SubscriberAdapter:     Old ref count: 111
+SubscriberAdapter:     Old ref count: 111
+SubscriberAdapter:     New ref count: 146
+SubscriberAdapter:     New ref count: 146
+SubscriberAdapter:   Old cache index: 1
+SubscriberAdapter:   Old cache index: 1
+SubscriberAdapter:   New cache index: 0
+SubscriberAdapter:   New cache index: 0
+SubscriberAdapter: TSSC index change from 1 to 0
+SubscriberAdapter: TSSC index change from 1 to 0
+DataSubscriber: TSSC index change from 1 to 0
+DataSubscriber: TSSC index change from 1 to 0
+
+*** Remove Device ***
+
+SignalIndexCache: cache created from remote source with 146 signal mappings
+SignalIndexCache: cache created from remote source with 146 signal mappings
+SubscriberAdapter: Input measurement keys update causing update subscriber adapter signal index cache
+SubscriberAdapter: Input measurement keys update causing update subscriber adapter signal index cache
+DataPublisher: Serializing cache index 1
+DataPublisher: Serializing cache index 1
+DataSubscriber: Deserializing cache index 1
+DataSubscriber: Deserializing cache index 1
+DataSubscriber:     Reference count = 49
+DataSubscriber:     Reference count = 49
+SignalIndexCache: cache created from remote source with 49 signal mappings
+SignalIndexCache: cache created from remote source with 49 signal mappings
+DataSubscriber:     Processed reference count = 49
+DataSubscriber:     Processed reference count = 49
+SubscriberAdapter: Received confirmation of updated subscriber signal index cache. Next signal index cache ready
+SubscriberAdapter: Received confirmation of updated subscriber signal index cache. Next signal index cache ready
+SubscriberAdapter: SIC Receipt Confirmed! Swapping signal index cache:
+SubscriberAdapter: SIC Receipt Confirmed! Swapping signal index cache:
+SubscriberAdapter:     Old ref count: 146
+SubscriberAdapter:     Old ref count: 146
+SubscriberAdapter:     New ref count: 49
+SubscriberAdapter:     New ref count: 49
+SubscriberAdapter:   Old cache index: 0
+SubscriberAdapter:   Old cache index: 0
+SubscriberAdapter:   New cache index: 1
+SubscriberAdapter:   New cache index: 1
+SubscriberAdapter: TSSC index change from 0 to 1
+SubscriberAdapter: TSSC index change from 0 to 1
+DataSubscriber: TSSC index change from 0 to 1
+DataSubscriber: TSSC index change from 0 to 1
