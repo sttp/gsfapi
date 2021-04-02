@@ -39,7 +39,6 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Configuration;
 using System.Data;
-using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.IO.Compression;
@@ -1457,11 +1456,10 @@ namespace sttp
                 cache.Start();
             }
 
-            Dictionary<string, string> commandChannelSettings;
             bool clientBasedConnection = false;
 
             // Attempt to retrieve any defined command channel settings
-            commandChannelSettings = settings.TryGetValue("commandChannel", out string commandChannelConnectionString) ?
+            Dictionary<string, string> commandChannelSettings = settings.TryGetValue("commandChannel", out string commandChannelConnectionString) ?
                 commandChannelConnectionString.ParseKeyValuePairs() :
                 settings;
 
@@ -1745,39 +1743,6 @@ namespace sttp
             return clientEnumeration.ToString();
         }
 
-        private string GetOperationalModes(SubscriberConnection connection)
-        {
-            StringBuilder description = new();
-            OperationalModes operationalModes = connection.OperationalModes;
-            CompressionModes compressionModes = (CompressionModes)(operationalModes & OperationalModes.CompressionModeMask);
-            bool tsscEnabled = (compressionModes & CompressionModes.TSSC) > 0;
-            bool gzipEnabled = (compressionModes & CompressionModes.GZip) > 0;
-
-            if ((operationalModes & OperationalModes.CompressPayloadData) > 0 && tsscEnabled)
-            {
-                description.AppendLine("          CompressPayloadData[TSSC]");
-            }
-            else
-            {
-                description.Append($"          {(connection.Subscription.UseCompactMeasurementFormat ? "Compact" : "FullSize")}PayloadData[");
-                description.AppendLine($"{connection.Subscription.TimestampSize}-byte Timestamps]");
-            }
-
-            if ((operationalModes & OperationalModes.CompressSignalIndexCache) > 0 && gzipEnabled)
-                description.AppendLine("          CompressSignalIndexCache");
-
-            if ((operationalModes & OperationalModes.CompressMetadata) > 0 && gzipEnabled)
-                description.AppendLine("          CompressMetadata");
-
-            if ((operationalModes & OperationalModes.ReceiveExternalMetadata) > 0)
-                description.AppendLine("          ReceiveExternalMetadata");
-
-            if ((operationalModes & OperationalModes.ReceiveInternalMetadata) > 0)
-                description.AppendLine("          ReceiveInternalMetadata");
-
-            return description.ToString();
-        }
-
         /// <summary>
         /// Rotates cipher keys for specified client connection.
         /// </summary>
@@ -2001,7 +1966,7 @@ namespace sttp
             // Send client updated signal index cache
             if (ClientConnections.TryGetValue(clientID, out SubscriberConnection connection))
             {
-                if (connection.Version > 1 && reference.Count > 0)
+                if (connection.Version > 1)
                 {
                     SignalIndexCache nextSignalIndexCache = new SignalIndexCache
                     {
@@ -2009,6 +1974,7 @@ namespace sttp
                         UnauthorizedSignalIDs = unauthorizedKeys.ToArray()
                     };
 
+                    byte[] serializedSignalIndexCache = SerializeSignalIndexCache(clientID, nextSignalIndexCache);
                     bool processed = false;
 
                     lock (connection.CacheUpdateLock)
@@ -2025,38 +1991,38 @@ namespace sttp
                         {
                             if (nextSignalIndexCache.Reference.Count == 0)
                             {
-                                Debug.WriteLine("DataPublisher: !! No references were defined in index cache !!");
+                                OnProcessException(MessageLevel.Info, new InvalidOperationException("Cannot update signal index cache: no references were defined"));
                             }
                             else
                             {
-                                connection.NextSignalIndexCache = nextSignalIndexCache;
                                 connection.NextCacheIndex = connection.CurrentCacheIndex ^ 1;
-                                byte[] serializedSignalIndexCache = SerializeSignalIndexCache(clientID, connection.NextSignalIndexCache, connection.NextCacheIndex);
+                                connection.NextSignalIndexCache = nextSignalIndexCache;
 
-                                if (serializedSignalIndexCache?.Length == 0)
-                                {
-                                    Debug.WriteLine("DataPublisher: !! No index cache was serialized !!");
-                                }
-                                else
-                                {
-                                    SendClientResponse(clientID, ServerResponse.UpdateSignalIndexCache, ServerCommand.Subscribe, serializedSignalIndexCache);
-                                    processed = true;
-                                }
+                                // Update serialized cache with proper index
+                                serializedSignalIndexCache[0] = (byte)connection.NextCacheIndex;
                             }
+
+                            processed = true;
                         }
                     }
 
-                    lock (connection.PendingCacheUpdateLock)
+                    if (processed)
                     {
-                        // Queue any pending update to be processed after current item
-                        connection.PendingSignalIndexCache = processed ? null : nextSignalIndexCache;
+                        if (serializedSignalIndexCache?.Length == 0)
+                            OnProcessException(MessageLevel.Info, new InvalidOperationException("Cannot update subscriber signal index cache: cache failed to serialize"));
+                        else
+                            SendClientResponse(clientID, ServerResponse.UpdateSignalIndexCache, ServerCommand.Subscribe, serializedSignalIndexCache);
                     }
+
+                    // Queue any pending update to be processed after current item
+                    lock (connection.PendingCacheUpdateLock)
+                        connection.PendingSignalIndexCache = processed ? null : nextSignalIndexCache;
                 }
                 else if (connection.IsSubscribed)
                 {
                     signalIndexCache.Reference = reference;
                     signalIndexCache.UnauthorizedSignalIDs = unauthorizedKeys.ToArray();
-                    byte[] serializedSignalIndexCache = SerializeSignalIndexCache(clientID, signalIndexCache, 0);
+                    byte[] serializedSignalIndexCache = SerializeSignalIndexCache(clientID, signalIndexCache);
                     SendClientResponse(clientID, ServerResponse.UpdateSignalIndexCache, ServerCommand.Subscribe, serializedSignalIndexCache);
                 }
             }
@@ -2265,12 +2231,10 @@ namespace sttp
         /// <param name="command">In response to command.</param>
         /// <param name="status">Status message to return.</param>
         /// <returns><c>true</c> if send was successful; otherwise <c>false</c>.</returns>
-        protected internal virtual bool SendClientResponse(Guid clientID, ServerResponse response, ServerCommand command, string status)
-        {
-            return status is null ?
+        protected internal virtual bool SendClientResponse(Guid clientID, ServerResponse response, ServerCommand command, string status) =>
+            status is null ?
                 SendClientResponse(clientID, response, command) :
                 SendClientResponse(clientID, response, command, GetClientEncoding(clientID).GetBytes(status));
-        }
 
         /// <summary>
         /// Sends response back to specified client with a formatted message.
@@ -2281,12 +2245,10 @@ namespace sttp
         /// <param name="formattedStatus">Formatted status message to return.</param>
         /// <param name="args">Arguments for <paramref name="formattedStatus"/>.</param>
         /// <returns><c>true</c> if send was successful; otherwise <c>false</c>.</returns>
-        protected internal virtual bool SendClientResponse(Guid clientID, ServerResponse response, ServerCommand command, string formattedStatus, params object[] args)
-        {
-            return string.IsNullOrWhiteSpace(formattedStatus) ?
+        protected internal virtual bool SendClientResponse(Guid clientID, ServerResponse response, ServerCommand command, string formattedStatus, params object[] args) =>
+            string.IsNullOrWhiteSpace(formattedStatus) ?
                 SendClientResponse(clientID, response, command) :
                 SendClientResponse(clientID, response, command, GetClientEncoding(clientID).GetBytes(string.Format(formattedStatus, args)));
-        }
 
         /// <summary>
         /// Sends response back to specified client with attached data.
@@ -2357,35 +2319,6 @@ namespace sttp
             connection.SubscriberAcronym = subscriber["Acronym"].ToNonNullString().Trim();
             connection.SubscriberName = subscriber["Name"].ToNonNullString().Trim();
             connection.ValidIPAddresses = ParseAddressList(subscriber["ValidIPAddresses"].ToNonNullString());
-        }
-
-        // Parses a list of IP addresses.
-        private static List<IPAddress> ParseAddressList(string addressList)
-        {
-            string[] splitList = addressList.Split(';', ',');
-            List<IPAddress> ipAddressList = new();
-
-            foreach (string address in splitList)
-            {
-                // Attempt to parse the IP address
-                if (!IPAddress.TryParse(address.Trim(), out IPAddress ipAddress))
-                    continue;
-
-                // Add the parsed address to the list
-                ipAddressList.Add(ipAddress);
-
-                // IPv4 addresses may connect as an IPv6 dual-stack equivalent,
-                // so attempt to add that equivalent address to the list as well
-                if (ipAddress.AddressFamily == AddressFamily.InterNetwork)
-                {
-                    string dualStackAddress = $"::ffff:{address.Trim()}";
-
-                    if (IPAddress.TryParse(dualStackAddress, out ipAddress))
-                        ipAddressList.Add(ipAddress);
-                }
-            }
-
-            return ipAddressList;
         }
 
         // Update certificate validation routine.
@@ -2886,7 +2819,6 @@ namespace sttp
                             // Client subscription not established yet, so we create a new one
                             subscription = new SubscriberAdapter(this, clientID, connection.SubscriberID, compressionModes);
                             addSubscription = true;
-                            Debug.WriteLine("DataPublisher: *** New subscription encountered! ***");
                         }
 
                         // Update connection string settings for GSF adapter syntax:
@@ -2992,7 +2924,7 @@ namespace sttp
                         if (connection.Version == 1)
                         {
                             // Send updated signal index cache to client with validated rights of the selected input measurement keys
-                            byte[] serializedSignalIndexCache = SerializeSignalIndexCache(clientID, connection.SignalIndexCache, 0);
+                            byte[] serializedSignalIndexCache = SerializeSignalIndexCache(clientID, connection.SignalIndexCache);
                             SendClientResponse(clientID, ServerResponse.UpdateSignalIndexCache, ServerCommand.Subscribe, serializedSignalIndexCache);
                         }
 
@@ -3411,7 +3343,7 @@ namespace sttp
 
         private void HandleConfirmSignalIndexCache(SubscriberConnection connection)
         {
-            connection.Subscription.ConfirmSignalIndexCache();
+            connection.Subscription.ConfirmSignalIndexCache(connection.ClientID);
         }
 
         private void HandlePublishCommandMeasurements(SubscriberConnection connection, byte[] buffer, int startIndex)
@@ -3465,29 +3397,21 @@ namespace sttp
         protected virtual void HandleUserCommand(SubscriberConnection connection, ServerCommand command, byte[] buffer, int startIndex, int length) =>
             OnStatusMessage(MessageLevel.Info, $"Received command code for user-defined command \"{command}\".");
 
-        private byte[] SerializeSignalIndexCache(Guid clientID, SignalIndexCache signalIndexCache, int currentCacheIndex)
+        private byte[] SerializeSignalIndexCache(Guid clientID, SignalIndexCache signalIndexCache)
         {
             if (!ClientConnections.TryGetValue(clientID, out SubscriberConnection connection) || connection is null)
-            {
-                Debug.WriteLine($"DataPublisher: Failed to find client ID {clientID} for signal index cache serialization");
                 return null;
-            }
 
             if (signalIndexCache.Reference.Count == 0)
-            {
-                Debug.WriteLine("DataPublisher: !! Attempt to serialize signal index cache with zero references !!");
                 return null;
-            }
 
             OperationalModes operationalModes = connection.OperationalModes;
             CompressionModes compressionModes = (CompressionModes)(operationalModes & OperationalModes.CompressionModeMask);
             bool compressSignalIndexCache = (operationalModes & OperationalModes.CompressSignalIndexCache) > 0;
             using BlockAllocatedMemoryStream compressedData = new();
 
-            Debug.WriteLine($"DataPublisher: Serializing cache index {currentCacheIndex}");
-
             if (connection.Version > 1)
-                compressedData.Write(BigEndian.GetBytes(currentCacheIndex));
+                compressedData.Write(byte.MaxValue); // Place-holder - actual value updated inside lock
 
             signalIndexCache.Encoding = GetClientEncoding(clientID);
             byte[] serializedSignalIndexCache = new byte[signalIndexCache.BinaryLength];
@@ -3907,6 +3831,70 @@ namespace sttp
 
         // Constant zero length integer byte array
         private static readonly byte[] s_zeroLengthBytes = { 0, 0, 0, 0 };
+
+        // Static Methods
+
+        // Parses a list of IP addresses.
+        private static List<IPAddress> ParseAddressList(string addressList)
+        {
+            string[] splitList = addressList.Split(';', ',');
+            List<IPAddress> ipAddressList = new();
+
+            foreach (string address in splitList)
+            {
+                // Attempt to parse the IP address
+                if (!IPAddress.TryParse(address.Trim(), out IPAddress ipAddress))
+                    continue;
+
+                // Add the parsed address to the list
+                ipAddressList.Add(ipAddress);
+
+                // IPv4 addresses may connect as an IPv6 dual-stack equivalent,
+                // so attempt to add that equivalent address to the list as well
+                if (ipAddress.AddressFamily == AddressFamily.InterNetwork)
+                {
+                    string dualStackAddress = $"::ffff:{address.Trim()}";
+
+                    if (IPAddress.TryParse(dualStackAddress, out ipAddress))
+                        ipAddressList.Add(ipAddress);
+                }
+            }
+
+            return ipAddressList;
+        }
+
+        private static string GetOperationalModes(SubscriberConnection connection)
+        {
+            StringBuilder description = new();
+            OperationalModes operationalModes = connection.OperationalModes;
+            CompressionModes compressionModes = (CompressionModes)(operationalModes & OperationalModes.CompressionModeMask);
+            bool tsscEnabled = (compressionModes & CompressionModes.TSSC) > 0;
+            bool gzipEnabled = (compressionModes & CompressionModes.GZip) > 0;
+
+            if ((operationalModes & OperationalModes.CompressPayloadData) > 0 && tsscEnabled)
+            {
+                description.AppendLine("          CompressPayloadData[TSSC]");
+            }
+            else
+            {
+                description.Append($"          {(connection.Subscription.UseCompactMeasurementFormat ? "Compact" : "FullSize")}PayloadData[");
+                description.AppendLine($"{connection.Subscription.TimestampSize}-byte Timestamps]");
+            }
+
+            if ((operationalModes & OperationalModes.CompressSignalIndexCache) > 0 && gzipEnabled)
+                description.AppendLine("          CompressSignalIndexCache");
+
+            if ((operationalModes & OperationalModes.CompressMetadata) > 0 && gzipEnabled)
+                description.AppendLine("          CompressMetadata");
+
+            if ((operationalModes & OperationalModes.ReceiveExternalMetadata) > 0)
+                description.AppendLine("          ReceiveExternalMetadata");
+
+            if ((operationalModes & OperationalModes.ReceiveInternalMetadata) > 0)
+                description.AppendLine("          ReceiveInternalMetadata");
+
+            return description.ToString();
+        }
 
         #endregion
     }

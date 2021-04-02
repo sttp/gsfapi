@@ -30,7 +30,6 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
-using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.IO.Compression;
@@ -454,9 +453,6 @@ namespace sttp
             }
 
             DataLossInterval = 10.0D;
-
-            Debug.WriteLine("DataSubscriber: Creating new data subscriber");
-
             m_bufferBlockCache = new List<BufferBlockMeasurement>();
             UseLocalClockAsRealTime = true;
             UseSourcePrefixNames = true;
@@ -2350,8 +2346,6 @@ namespace sttp
             }
         }
 
-        int m_lastIndex;
-
         private void ProcessServerResponse(byte[] buffer, int length)
         {
             // Currently this work is done on the async socket completion thread, make sure work to be done is timely and if the response processing
@@ -2469,12 +2463,6 @@ namespace sttp
                             int cacheIndex = (flags & DataPacketFlags.CacheIndex) > 0 ? 1 : 0;
                             byte[] packet = buffer;
                             int packetLength = responseLength - 1;
-
-                            if (cacheIndex != m_lastIndex)
-                            {
-                                Debug.WriteLine($"DataSubscriber: TSSC index change from {m_lastIndex} to {cacheIndex}");
-                                m_lastIndex = cacheIndex;
-                            }
 
                             lock (m_signalIndexCacheLock)
                                 signalIndexCache = m_signalIndexCache[cacheIndex];
@@ -2685,7 +2673,7 @@ namespace sttp
                             // Buffer block received - wrap as a buffer block measurement and expose back to consumer
                             uint sequenceNumber = BigEndian.ToUInt32(buffer, responseIndex);
                             int bufferCacheIndex = (int)(sequenceNumber - m_expectedBufferBlockSequenceNumber);
-                            int signalCacheIndex = Version > 1 ? BigEndian.ToInt32(buffer, responseIndex + 4) : 0;
+                            int signalCacheIndex = Version > 1 ? buffer[responseIndex + 4] : 0;
 
                             // Check if this buffer block has already been processed (e.g., mistaken retransmission due to timeout)
                             if (bufferCacheIndex >= 0 && (bufferCacheIndex >= m_bufferBlockCache.Count || m_bufferBlockCache[bufferCacheIndex] is null))
@@ -2694,7 +2682,7 @@ namespace sttp
                                 SendServerCommand(ServerCommand.ConfirmBufferBlock, buffer.BlockCopy(responseIndex, 4));
 
                                 if (Version > 1)
-                                    responseIndex += 4;
+                                    responseIndex += 1;
 
                                 // Get measurement key from signal index cache
                                 int signalIndex = BigEndian.ToInt32(buffer, responseIndex + 4);
@@ -2768,26 +2756,19 @@ namespace sttp
                         {
                             int version = Version;
 
+                            // Get active cache index
                             if (version > 1)
-                            {
-                                // Get active cache index
-                                m_cacheIndex = BigEndian.ToInt32(buffer, responseIndex);
-                                responseIndex += 4;
-                            }
-
-                            Debug.WriteLine($"DataSubscriber: Deserializing cache index {m_cacheIndex}");
+                                m_cacheIndex = buffer[responseIndex++];
 
                             // Deserialize new signal index cache
                             SignalIndexCache remoteSignalIndexCache = DeserializeSignalIndexCache(buffer.BlockCopy(responseIndex, responseLength));
 
                             if (remoteSignalIndexCache.Reference.Count == 0)
                             {
-                                Debug.WriteLine("DataSubscriber: !! Deserialized signal index cache with zero references !!");
+                                OnProcessException(MessageLevel.Info, new InvalidOperationException("Cannot update subscriber signal index cache: deserialized cache with zero references"));
                             }
                             else
                             {
-                                Debug.WriteLine($"DataSubscriber:     Reference count = {remoteSignalIndexCache.Reference.Count:N0}");
-
                                 SignalIndexCache signalIndexCache = new SignalIndexCache(DataSource, remoteSignalIndexCache);
 
                                 lock (m_signalIndexCacheLock)
@@ -2797,8 +2778,6 @@ namespace sttp
 
                                     m_signalIndexCache[m_cacheIndex] = signalIndexCache;
                                     m_remoteSignalIndexCache = remoteSignalIndexCache;
-
-                                    Debug.WriteLine($"DataSubscriber:     Processed reference count = {m_signalIndexCache[m_cacheIndex].Reference.Count:N0}");
                                 }
                             }
 

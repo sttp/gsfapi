@@ -34,7 +34,6 @@ using GSF.TimeSeries.Transport;
 using sttp.tssc;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -119,8 +118,6 @@ namespace sttp
             m_bufferBlockCacheLock = new object();
             m_tsscSyncLock = new object();
             m_parent.ClientConnections.TryGetValue(ClientID, out m_connection);
-
-            Debug.WriteLine($"SubscriberAdapter: Creating new subscriber adapter {subscriberID}");
 
             if (m_connection is null)
                 throw new NullReferenceException("Subscriber adapter failed to find associated connection");
@@ -244,7 +241,6 @@ namespace sttp
                         value.Length > 0 && !new HashSet<MeasurementKey>(base.InputMeasurementKeys).SetEquals(value))
                     {
                         // Safe: no lock required for signal index cache here
-                        Debug.WriteLine("SubscriberAdapter: Input measurement keys update causing update subscriber adapter signal index cache");
                         Guid[] authorizedSignalIDs = m_parent.UpdateSignalIndexCache(ClientID, m_connection.SignalIndexCache, value);
 
                         if (DataSource is not null && m_connection.SignalIndexCache is not null)
@@ -577,20 +573,14 @@ namespace sttp
             }
         }
 
-        public void ConfirmSignalIndexCache()
+        public void ConfirmSignalIndexCache(Guid clientID)
         {
-            // Swap over to next signal index cache
-            Debug.WriteLine($"SubscriberAdapter: Received confirmation of updated subscriber signal index cache. Next signal index cache {(m_connection.NextSignalIndexCache is null ? "null" : "ready")}");
-
-            if (m_connection.NextSignalIndexCache is not null)
+            lock (m_connection.CacheUpdateLock)
             {
-                lock (m_connection.CacheUpdateLock)
+                // Swap over to next signal index cache
+                if (m_connection.NextSignalIndexCache is not null)
                 {
-                    Debug.WriteLine("SubscriberAdapter: SIC Receipt Confirmed! Swapping signal index cache:");
-                    Debug.WriteLine($"SubscriberAdapter:     Old ref count: {m_connection.SignalIndexCache.Reference.Count:N0}");
-                    Debug.WriteLine($"SubscriberAdapter:     New ref count: {m_connection.NextSignalIndexCache.Reference.Count:N0}");
-                    Debug.WriteLine($"SubscriberAdapter:   Old cache index: {m_connection.CurrentCacheIndex}");
-                    Debug.WriteLine($"SubscriberAdapter:   New cache index: {m_connection.NextCacheIndex}");
+                    OnStatusMessage(MessageLevel.Info, $"Received confirmation of signal index cache update for subscriber {clientID}. Transitioning from cache index {m_connection.CurrentCacheIndex} with {m_connection.SignalIndexCache?.Reference?.Count ?? 0:N0} records to cache index {m_connection.NextCacheIndex} with {m_connection.NextSignalIndexCache.Reference?.Count ?? 0:N0} records...", nameof(ConfirmSignalIndexCache));
 
                     m_connection.SignalIndexCache = m_connection.NextSignalIndexCache;
                     m_connection.SignalIndexCache.SubscriberID = SubscriberID;
@@ -613,13 +603,13 @@ namespace sttp
 
                     lock (m_connection.PendingCacheUpdateLock)
                     {
-                        if (m_connection.PendingSignalIndexCache is null && InputMeasurementKeys.Length > 0)
+                        if (m_connection.PendingSignalIndexCache is null)
                             return;
 
                         SignalIndexCache nextSignalIndexCache = m_connection.PendingSignalIndexCache;
                         m_connection.PendingSignalIndexCache = null;
 
-                        Debug.WriteLine("SubscriberAdapter: Pending update causing update subscriber adapter signal index cache");
+                        OnStatusMessage(MessageLevel.Info, $"Applying pending signal cache update for subscriber {{{clientID}}} with {nextSignalIndexCache.Reference.Count:N0} records...", nameof(ConfirmSignalIndexCache));
                         authorizedSignalIDs = m_parent.UpdateSignalIndexCache(ClientID, nextSignalIndexCache, InputMeasurementKeys);
                     }
 
@@ -664,10 +654,7 @@ namespace sttp
                 }
 
                 if (signalIndexCache is null)
-                {
-                    Debug.WriteLine("SubscriberAdapter: !! Attempting to use null signal index cache !!");
                     return;
-                }
 
                 foreach (IMeasurement measurement in measurements)
                 {
@@ -688,7 +675,7 @@ namespace sttp
                         m_bufferBlockSequenceNumber++;
 
                         if (m_connection.Version > 1)
-                            index += BigEndian.CopyBytes(currentCacheIndex, bufferBlock, index);
+                            bufferBlock[index++] = (byte)currentCacheIndex;
 
                         // Copy signal index into buffer
                         int bufferBlockSignalIndex = signalIndexCache.GetSignalIndex(bufferBlockMeasurement.Key);
@@ -781,8 +768,6 @@ namespace sttp
             m_lastPublishTime = DateTime.UtcNow.Ticks;
         }
 
-        int m_lastIndex;
-
         private void ProcessTSSCMeasurements(IEnumerable<IMeasurement> measurements)
         {
             SignalIndexCache signalIndexCache;
@@ -793,23 +778,9 @@ namespace sttp
                 signalIndexCache = m_connection.SignalIndexCache;
                 currentCacheIndex = m_connection.CurrentCacheIndex;
 
-                if (currentCacheIndex != m_lastIndex)
-                {
-                    Debug.WriteLine($"SubscriberAdapter: TSSC index change from {m_lastIndex} to {currentCacheIndex}");
-                    m_lastIndex = currentCacheIndex;
-                }
-
-                if (signalIndexCache is null)
-                {
-                    Debug.WriteLine("!! TSSC attempting to use null signal index cache !!");
+                // Cache not available while initializing
+                if (signalIndexCache is null || signalIndexCache.Reference.Count == 0)
                     return;
-                }
-
-                if (signalIndexCache.Reference.Count == 0)
-                {
-                    Debug.WriteLine("!! TSSC attempting to use signal index cache with no references !!");
-                    return;
-                }
             }
 
             lock (m_tsscSyncLock)
@@ -850,10 +821,6 @@ namespace sttp
                             }
 
                             count++;
-                        }
-                        else
-                        {
-                            Debug.WriteLine($"SubscriberAdapter: Measurement key \"{measurement}\" was unmapped in signal index cache");
                         }
                     }
 

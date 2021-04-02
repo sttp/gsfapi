@@ -30,7 +30,6 @@ using GSF.IO;
 using GSF.Threading;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
@@ -105,8 +104,6 @@ namespace sttp
             m_reconnectTimer = Common.TimerScheduler.CreateTimer(1000);
             m_reconnectTimer.AutoReset = false;
             m_reconnectTimer.Elapsed += ReconnectTimer_Elapsed;
-
-            Debug.WriteLine($"SubscriberConnection: Creating new subscriber connection {clientID}");
 
             LookupEndPointInfo(clientID, GetCommandChannelSocket().RemoteEndPoint as IPEndPoint, ref m_ipAddress, ref m_hostName, ref m_connectionID);
         }
@@ -424,6 +421,24 @@ namespace sttp
                 status.AppendLine($"        Subscriber acronym: {SubscriberAcronym}");
                 status.AppendLine($"  Publish channel protocol: {ServerPublishChannel?.TransportProtocol.ToString() ?? "Not configured"}");
                 status.AppendLine($"      Data packet security: {(m_parent?.SecurityMode == SecurityMode.TLS && m_dataChannel is null ? "Secured via TLS" : m_keyIVs is null ? "Unencrypted" : "AES Encrypted")}");
+                status.AppendLine($"       Current cache index: {CurrentCacheIndex}");
+                status.AppendLine($"Signal index cache records: {SignalIndexCache?.Reference?.Count ?? 0:N0}");
+
+                IServer serverCommandChannel = ServerCommandChannel;
+
+                if (serverCommandChannel is not null)
+                {
+                    status.AppendLine();
+                    status.Append(serverCommandChannel.Status);
+                }
+
+                IClient clientCommandChannel = ClientCommandChannel;
+
+                if (clientCommandChannel is not null)
+                {
+                    status.AppendLine();
+                    status.Append(clientCommandChannel.Status);
+                }
 
                 if (m_dataChannel is not null)
                 {

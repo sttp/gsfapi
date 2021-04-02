@@ -27,7 +27,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data;
-using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using GSF;
@@ -111,9 +110,6 @@ namespace sttp
                 // Just use remote signal index cache as-is if no local configuration exists
                 Reference = remoteCache.Reference;
                 m_unauthorizedSignalIDs = remoteCache.UnauthorizedSignalIDs;
-
-                Debug.WriteLine("SignalIndexCache: cache created with out data source");
-
             }
             else
             {
@@ -135,8 +131,6 @@ namespace sttp
 
                 m_unauthorizedSignalIDs = remoteCache.UnauthorizedSignalIDs;
                 Reference = reference;
-
-                Debug.WriteLine($"SignalIndexCache: cache created from remote source with {Reference.Count:N0} signal mappings");
             }
         }
 
