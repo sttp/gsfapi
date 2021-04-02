@@ -609,7 +609,7 @@ namespace sttp
                         SignalIndexCache nextSignalIndexCache = m_connection.PendingSignalIndexCache;
                         m_connection.PendingSignalIndexCache = null;
 
-                        OnStatusMessage(MessageLevel.Info, $"Applying pending signal cache update for subscriber {{{clientID}}} with {nextSignalIndexCache.Reference.Count:N0} records...", nameof(ConfirmSignalIndexCache));
+                        OnStatusMessage(MessageLevel.Info, $"Applying pending signal cache update for subscriber {clientID} with {nextSignalIndexCache.Reference.Count:N0} records...", nameof(ConfirmSignalIndexCache));
                         authorizedSignalIDs = m_parent.UpdateSignalIndexCache(ClientID, nextSignalIndexCache, InputMeasurementKeys);
                     }
 
