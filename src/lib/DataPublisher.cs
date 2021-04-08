@@ -1975,48 +1975,43 @@ namespace sttp
                     };
 
                     byte[] serializedSignalIndexCache = SerializeSignalIndexCache(clientID, nextSignalIndexCache);
-                    bool processed = false;
 
-                    lock (connection.CacheUpdateLock)
+                    if (serializedSignalIndexCache is null || serializedSignalIndexCache.Length == 0)
                     {
-                        // Update primary signal cache index at startup
-                        if (connection.SignalIndexCache.Reference.Count == 0)
+                        OnProcessException(MessageLevel.Info, new InvalidOperationException("Cannot update subscriber signal index cache: cache failed to serialize"));
+                    }
+                    else
+                    {
+                        lock (connection.CacheUpdateLock)
                         {
-                            connection.SignalIndexCache.Reference = reference;
-                            connection.SignalIndexCache.UnauthorizedSignalIDs = unauthorizedKeys.ToArray();
-                        }
-
-                        // If next signal index cache is not null, then publisher is still awaiting subscriber confirmation
-                        if (connection.NextSignalIndexCache is null)
-                        {
-                            if (nextSignalIndexCache.Reference.Count == 0)
+                            // Update primary signal cache index at startup
+                            if (connection.SignalIndexCache.RefreshCount == 0)
                             {
-                                OnProcessException(MessageLevel.Info, new InvalidOperationException("Cannot update signal index cache: no references were defined"));
+                                connection.SignalIndexCache.Reference = reference;
+                                connection.SignalIndexCache.UnauthorizedSignalIDs = unauthorizedKeys.ToArray();
                             }
-                            else
+
+                            // If next signal index cache is not null, then publisher is still awaiting subscriber confirmation
+                            if (connection.NextSignalIndexCache is null)
                             {
                                 connection.NextCacheIndex = connection.CurrentCacheIndex ^ 1;
                                 connection.NextSignalIndexCache = nextSignalIndexCache;
 
                                 // Update serialized cache with proper index
                                 serializedSignalIndexCache[0] = (byte)connection.NextCacheIndex;
-                            }
+                                SendClientResponse(clientID, ServerResponse.UpdateSignalIndexCache, ServerCommand.Subscribe, serializedSignalIndexCache);
 
-                            processed = true;
+                                lock (connection.PendingCacheUpdateLock)
+                                    connection.PendingSignalIndexCache = null;
+                            }
+                            else
+                            {
+                                // Queue any pending update to be processed after current item
+                                lock (connection.PendingCacheUpdateLock)
+                                    connection.PendingSignalIndexCache = nextSignalIndexCache;
+                            }
                         }
                     }
-
-                    if (processed)
-                    {
-                        if (serializedSignalIndexCache?.Length == 0)
-                            OnProcessException(MessageLevel.Info, new InvalidOperationException("Cannot update subscriber signal index cache: cache failed to serialize"));
-                        else
-                            SendClientResponse(clientID, ServerResponse.UpdateSignalIndexCache, ServerCommand.Subscribe, serializedSignalIndexCache);
-                    }
-
-                    // Queue any pending update to be processed after current item
-                    lock (connection.PendingCacheUpdateLock)
-                        connection.PendingSignalIndexCache = processed ? null : nextSignalIndexCache;
                 }
                 else if (connection.IsSubscribed)
                 {
