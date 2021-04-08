@@ -2755,10 +2755,11 @@ namespace sttp
                         case ServerResponse.UpdateSignalIndexCache:
                         {
                             int version = Version;
+                            int cacheIndex = 0;
 
                             // Get active cache index
                             if (version > 1)
-                                m_cacheIndex = buffer[responseIndex++];
+                                cacheIndex = buffer[responseIndex++];
 
                             // Deserialize new signal index cache
                             SignalIndexCache remoteSignalIndexCache = DeserializeSignalIndexCache(buffer.BlockCopy(responseIndex, responseLength));
@@ -2769,8 +2770,9 @@ namespace sttp
                                 if (m_signalIndexCache is null)
                                     m_signalIndexCache = new SignalIndexCache[version > 1 ? 2 : 1];
 
-                                m_signalIndexCache[m_cacheIndex] = signalIndexCache;
+                                m_signalIndexCache[cacheIndex] = signalIndexCache;
                                 m_remoteSignalIndexCache = remoteSignalIndexCache;
+                                m_cacheIndex = cacheIndex;
                             }
 
                             if (version > 1)
