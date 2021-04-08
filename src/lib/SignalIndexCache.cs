@@ -148,6 +148,11 @@ namespace sttp
         }
 
         /// <summary>
+        /// Gets the total number of times the signal index cache has been refreshed.
+        /// </summary>
+        public long RefreshCount { get; private set; }
+
+        /// <summary>
         /// Gets or sets integer signal index cross reference dictionary.
         /// </summary>
         public ConcurrentDictionary<int, MeasurementKey> Reference
@@ -162,6 +167,7 @@ namespace sttp
                     signalIDCache[pair.Value.RuntimeID] = pair.Key;
 
                 m_signalIDCache = signalIDCache;
+                RefreshCount++;
             }
         }
 
