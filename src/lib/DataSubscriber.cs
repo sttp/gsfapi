@@ -2465,7 +2465,7 @@ namespace sttp
                             int packetLength = responseLength - 1;
 
                             lock (m_signalIndexCacheLock)
-                                signalIndexCache = m_signalIndexCache[cacheIndex];
+                                signalIndexCache = m_signalIndexCache?[cacheIndex];
 
                             // Decrypt data packet payload if keys are available
                             if (m_keyIVs is not null)
@@ -2762,23 +2762,15 @@ namespace sttp
 
                             // Deserialize new signal index cache
                             SignalIndexCache remoteSignalIndexCache = DeserializeSignalIndexCache(buffer.BlockCopy(responseIndex, responseLength));
+                            SignalIndexCache signalIndexCache = new SignalIndexCache(DataSource, remoteSignalIndexCache);
 
-                            if (remoteSignalIndexCache.Reference.Count == 0)
+                            lock (m_signalIndexCacheLock)
                             {
-                                OnProcessException(MessageLevel.Info, new InvalidOperationException("Cannot update subscriber signal index cache: deserialized cache with zero references"));
-                            }
-                            else
-                            {
-                                SignalIndexCache signalIndexCache = new SignalIndexCache(DataSource, remoteSignalIndexCache);
+                                if (m_signalIndexCache is null)
+                                    m_signalIndexCache = new SignalIndexCache[version > 1 ? 2 : 1];
 
-                                lock (m_signalIndexCacheLock)
-                                {
-                                    if (m_signalIndexCache is null)
-                                        m_signalIndexCache = new SignalIndexCache[version > 1 ? 2 : 1];
-
-                                    m_signalIndexCache[m_cacheIndex] = signalIndexCache;
-                                    m_remoteSignalIndexCache = remoteSignalIndexCache;
-                                }
+                                m_signalIndexCache[m_cacheIndex] = signalIndexCache;
+                                m_remoteSignalIndexCache = remoteSignalIndexCache;
                             }
 
                             if (version > 1)
