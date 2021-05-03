@@ -4099,7 +4099,10 @@ namespace sttp
             {
                 "FLAG" => 0,
                 "STAT" => 0,
-                _ => row.ConvertField<int>("FramesPerSecond")
+                "CALC" => 0,
+                "ALRM" => 0,
+                "QUAL" => 0,
+                _      => row.ConvertField<int>("FramesPerSecond")
             };
         }
 
