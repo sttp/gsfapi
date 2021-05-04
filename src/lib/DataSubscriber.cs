@@ -2612,19 +2612,24 @@ namespace sttp
 
                                         // Zero is not a valid value for frequency.
                                         // If frequency is zero, invalidate both frequency and delta frequency
-                                        if (frequency is not null && frequency.Value == 0.0D)
+                                        if (frequency is not null)
                                         {
-                                            if (deltaFrequency is null || double.IsNaN(deltaFrequency.Value))
-                                                measurementsReceived--;
-                                            else
-                                                measurementsReceived -= 2;
+                                            statisticsHelper.MarkDeviceTimestamp(frequency.Timestamp);
 
-                                            if (hasError(frequency.StateFlags))
+                                            if (frequency.Value == 0.0D)
                                             {
                                                 if (deltaFrequency is null || double.IsNaN(deltaFrequency.Value))
-                                                    measurementsWithError--;
+                                                    measurementsReceived--;
                                                 else
-                                                    measurementsWithError -= 2;
+                                                    measurementsReceived -= 2;
+
+                                                if (hasError(frequency.StateFlags))
+                                                {
+                                                    if (deltaFrequency is null || double.IsNaN(deltaFrequency.Value))
+                                                        measurementsWithError--;
+                                                    else
+                                                        measurementsWithError -= 2;
+                                                }
                                             }
                                         }
 
