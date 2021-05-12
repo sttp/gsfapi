@@ -780,6 +780,11 @@ namespace sttp
         public const int DefaultMaxPacketSize = ushort.MaxValue / 2;
 
         /// <summary>
+        /// Default value for <see cref="BufferSize"/>.
+        /// </summary>
+        public const int DefaultBufferSize = ushort.MaxValue;
+
+        /// <summary>
         /// Default value for <see cref="MaxPublishInterval"/>.
         /// </summary>
         public const long DefaultMaxPublishInterval = 0L;
@@ -967,6 +972,11 @@ namespace sttp
         [Description("Defines the maximum packet size to use for data publications. This number should be set as small as possible to reduce fragmentation, but large enough to keep large data flows from falling behind.")]
         [DefaultValue(DefaultMaxPacketSize)]
         public int MaxPacketSize { get; set; } = DefaultMaxPacketSize;
+
+        [ConnectionStringParameter]
+        [Description("The size of the buffer used for sending and receiving data from clients.")]
+        [DefaultValue(DefaultBufferSize)]
+        public int BufferSize { get; set; } = DefaultBufferSize;
 
         /// <summary>
         /// Gets or sets the cipher key rotation period.
@@ -1398,6 +1408,9 @@ namespace sttp
             if (settings.TryGetValue(nameof(MaxPacketSize), out setting) && int.TryParse(setting, out int maxPacketSize))
                 MaxPacketSize = maxPacketSize;
 
+            if (settings.TryGetValue(nameof(BufferSize), out setting) && int.TryParse(setting, out int bufferSize))
+                BufferSize = bufferSize;
+
             if (settings.TryGetValue(nameof(MeasurementReportingInterval), out setting) && int.TryParse(setting, out int measurementReportingInterval))
                 MeasurementReportingInterval = measurementReportingInterval;
             else
@@ -1466,8 +1479,11 @@ namespace sttp
             if (commandChannelSettings.TryGetValue("server", out string server))
                 clientBasedConnection = !string.IsNullOrWhiteSpace(server);
 
-            if (!commandChannelSettings.TryGetValue("bufferSize", out setting) || !int.TryParse(setting, out int bufferSize))
-                bufferSize = ClientBase.DefaultReceiveBufferSize;
+            if (!commandChannelSettings.TryGetValue("bufferSize", out setting) || !int.TryParse(setting, out bufferSize))
+                bufferSize = DefaultBufferSize;
+
+            if (bufferSize == default)
+                bufferSize = BufferSize;
 
             if (settings.TryGetValue(nameof(UseSimpleTcpClient), out setting))
                 UseSimpleTcpClient = setting.ParseBoolean();
@@ -1511,8 +1527,8 @@ namespace sttp
                         CertificateFile = FilePath.GetAbsolutePath(localCertificate),
                         CheckCertificateRevocation = checkCertificateRevocation,
                         CertificateChecker = m_certificateChecker,
+                        SendBufferSize = BufferSize,
                         ReceiveBufferSize = bufferSize,
-                        SendBufferSize = bufferSize,
                         NoDelay = true
                     };
 
@@ -1532,6 +1548,8 @@ namespace sttp
                         RequireClientCertificate = true,
                         CertificateChecker = m_certificateChecker,
                         PersistSettings = true,
+                        SendBufferSize = BufferSize,
+                        ReceiveBufferSize = BufferSize,
                         NoDelay = true
                     };
 
@@ -1553,8 +1571,8 @@ namespace sttp
                             PayloadEndianOrder = EndianOrder.BigEndian,
                             PersistSettings = false,
                             MaxConnectionAttempts = -1,
+                            SendBufferSize = BufferSize,
                             ReceiveBufferSize = bufferSize,
-                            SendBufferSize = bufferSize,
                             NoDelay = true
                         };
 
@@ -1571,8 +1589,8 @@ namespace sttp
                             PayloadEndianOrder = EndianOrder.BigEndian,
                             PersistSettings = false,
                             MaxConnectionAttempts = -1,
+                            SendBufferSize = BufferSize,
                             ReceiveBufferSize = bufferSize,
-                            SendBufferSize = bufferSize,
                             NoDelay = true
                         };
 
@@ -1591,6 +1609,8 @@ namespace sttp
                         PayloadMarker = null,
                         PayloadEndianOrder = EndianOrder.BigEndian,
                         PersistSettings = true,
+                        SendBufferSize = BufferSize,
+                        ReceiveBufferSize = BufferSize,
                         NoDelay = true
                     };
 

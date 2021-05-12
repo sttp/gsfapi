@@ -1384,7 +1384,7 @@ namespace sttp
 
             // Define buffer size
             if (!settings.TryGetValue("bufferSize", out setting) || !int.TryParse(setting, out int bufferSize))
-                bufferSize = ClientBase.DefaultReceiveBufferSize;
+                bufferSize = DataPublisher.DefaultBufferSize;
 
             if (settings.TryGetValue(nameof(UseLocalClockAsRealTime), out setting))
                 UseLocalClockAsRealTime = setting.ParseBoolean();
