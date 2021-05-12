@@ -1634,7 +1634,14 @@ namespace sttp
         /// <param name="measurements">Measurements to queue for processing.</param>
         public override void QueueMeasurementsForProcessing(IEnumerable<IMeasurement> measurements)
         {
+            if (measurements is null)
+                return;
+
             IList<IMeasurement> measurementList = measurements as IList<IMeasurement> ?? measurements.ToList();
+
+            if (measurementList.Count == 0)
+                return;
+
             m_routingTables.InjectMeasurements(this, new EventArgs<ICollection<IMeasurement>>(measurementList));
 
             int measurementCount = measurementList.Count;
@@ -1648,6 +1655,9 @@ namespace sttp
         /// <param name="measurements">Measurements to queue for processing.</param>
         private void QueueMeasurementsForProcessing(List<IMeasurement> measurements)
         {
+            if (measurements?.Count == 0)
+                return;
+
             m_routingTables.InjectMeasurements(this, new EventArgs<ICollection<IMeasurement>>(measurements));
 
             int measurementCount = measurements.Count;
