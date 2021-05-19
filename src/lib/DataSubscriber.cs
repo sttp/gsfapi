@@ -2614,7 +2614,8 @@ namespace sttp
                                         // If frequency is zero, invalidate both frequency and delta frequency
                                         if (frequency is not null)
                                         {
-                                            statisticsHelper.MarkDeviceTimestamp(frequency.Timestamp);
+                                            if (!this.TemporalConstraintIsDefined())
+                                                statisticsHelper.MarkDeviceTimestamp(frequency.Timestamp);
 
                                             if (frequency.Value == 0.0D)
                                             {
