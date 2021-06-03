@@ -2043,12 +2043,16 @@ namespace sttp
                         }
                     }
                 }
-                else if (connection.IsSubscribed)
+                else
                 {
                     signalIndexCache.Reference = reference;
                     signalIndexCache.UnauthorizedSignalIDs = unauthorizedKeys.ToArray();
-                    byte[] serializedSignalIndexCache = SerializeSignalIndexCache(clientID, signalIndexCache);
-                    SendClientResponse(clientID, ServerResponse.UpdateSignalIndexCache, ServerCommand.Subscribe, serializedSignalIndexCache);
+                    
+                    if (connection.IsSubscribed)
+                    {
+                        byte[] serializedSignalIndexCache = SerializeSignalIndexCache(clientID, signalIndexCache);
+                        SendClientResponse(clientID, ServerResponse.UpdateSignalIndexCache, ServerCommand.Subscribe, serializedSignalIndexCache);
+                    }
                 }
             }
 
