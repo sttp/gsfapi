@@ -3084,7 +3084,7 @@ namespace sttp
                     IDbTransaction transaction = null;
 
                     if (UseTransactionForMetadata)
-                        transaction = database.Connection.BeginTransaction(database.DefaultIsloationLevel);
+                        transaction = database.Connection.BeginTransaction(database.DefaultIsolationLevel);
 
                     try
                     {
