@@ -519,7 +519,7 @@ namespace sttp
         /// Mask to get version number of protocol.
         /// </summary>
         /// <remarks>
-        /// Version number is currently set to 1.
+        /// Version number is currently set to 2.
         /// </remarks>
         VersionMask = (uint)(Bits.Bit04 | Bits.Bit03 | Bits.Bit02 | Bits.Bit01 | Bits.Bit00),
         /// <summary>
