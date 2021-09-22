@@ -352,6 +352,7 @@ namespace sttp
         private Guid m_activeClientID;
         private string m_connectionID;
         private bool m_tsscResetRequested;
+        private long m_tsscLastOOSReport;
         private SharedTimer m_dataStreamMonitor;
         private long m_commandChannelConnectionAttempts;
         private long m_dataChannelConnectionAttempts;
@@ -1989,7 +1990,10 @@ namespace sttp
 
             // Reset decompresser on successful re-subscription
             if (success)
+            {
                 m_tsscResetRequested = true;
+                m_tsscLastOOSReport = 0L;
+            }
 
             return success;
         }
@@ -2915,12 +2919,16 @@ namespace sttp
                 }
 
                 m_tsscResetRequested = false;
+                m_tsscLastOOSReport = 0L;
             }
 
             if (decoder.SequenceNumber != sequenceNumber)
             {
-                if (!m_tsscResetRequested)
-                    throw new Exception($"TSSC is out of sequence. Expecting: {decoder.SequenceNumber}, Received: {sequenceNumber}");
+                if (!m_tsscResetRequested && Ticks.ToSeconds(DateTime.UtcNow.Ticks - m_tsscLastOOSReport) > 2.0)
+                {
+                    OnProcessException(MessageLevel.Info, new InvalidDataException($"TSSC is out of sequence. Expecting: {decoder.SequenceNumber}, Received: {sequenceNumber}"));
+                    m_tsscLastOOSReport = DateTime.UtcNow.Ticks;
+                }
 
                 // Ignore packets until the reset has occurred.
                 LogEventPublisher publisher = Log.RegisterEvent(MessageLevel.Debug, "TSSC", 0, MessageRate.EveryFewSeconds(1), 5);
