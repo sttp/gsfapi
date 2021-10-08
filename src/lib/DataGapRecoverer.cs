@@ -165,7 +165,7 @@ namespace sttp
             Log = Logger.CreatePublisher(GetType(), MessageClass.Framework);
             Log.InitialStackMessages = Log.InitialStackMessages.Union("ComponentName", GetType().Name);
 
-            m_dataGapRecoveryCompleted = new ManualResetEventSlim(true);
+            m_dataGapRecoveryCompleted = new(true);
 
             m_recoveryStartDelay = DefaultRecoveryStartDelay;
             m_minimumRecoverySpan = DefaultMinimumRecoverySpan;
@@ -178,7 +178,7 @@ namespace sttp
             if (Directory.Exists(loggingPath))
                 m_loggingPath = loggingPath;
 
-            m_subscriptionInfo = new SubscriptionInfo()
+            m_subscriptionInfo = new()
             {
                 FilterExpression = DefaultFilterExpression, 
                 ProcessingInterval = DefaultRecoveryProcessingInterval, 
@@ -655,7 +655,7 @@ namespace sttp
                 throw new NullReferenceException("Source connection name must defined - it is used to create outage log file name.");
 
             // Setup a new temporal data subscriber that will be used to query historical data
-            m_temporalSubscription = new DataSubscriber
+            m_temporalSubscription = new()
             {
                 Name = m_sourceConnectionName + "!" + GetType().Name,
                 DataSource = m_dataSource,
@@ -671,7 +671,7 @@ namespace sttp
             m_temporalSubscription.Initialize();
 
             // Setup data gap outage log to persist unprocessed outages between class life-cycles
-            DataGapLog = new OutageLog
+            DataGapLog = new()
             {
                 FileName = GetLoggingPath(m_sourceConnectionName + "_OutageLog.txt")
             };
@@ -680,7 +680,7 @@ namespace sttp
             DataGapLog.Initialize();
 
             // Setup data gap processor to process items one at a time, a 5-second minimum period is established between each gap processing
-            DataGapLogProcessor = new OutageLogProcessor(DataGapLog, ProcessDataGap, CanProcessDataGap, ex => OnProcessException(MessageLevel.Warning, ex), GSF.Common.Max(5000, (int)(m_recoveryStartDelay * 1000.0D)));
+            DataGapLogProcessor = new(DataGapLog, ProcessDataGap, CanProcessDataGap, ex => OnProcessException(MessageLevel.Warning, ex), GSF.Common.Max(5000, (int)(m_recoveryStartDelay * 1000.0D)));
         }
 
         /// <summary>
@@ -710,7 +710,7 @@ namespace sttp
             if (forceLog || dataGapSpan >= m_minimumRecoverySpan && dataGapSpan <= m_maximumRecoverySpan)
             {
                 // Since local clock may float we add some buffer around recovery window
-                DataGapLog.Add(new Outage(startTime.AddSeconds(StartRecoveryBuffer), endTime.AddSeconds(EndRecoveryBuffer)));
+                DataGapLog.Add(new(startTime.AddSeconds(StartRecoveryBuffer), endTime.AddSeconds(EndRecoveryBuffer)));
                 return true;
             }
 
@@ -748,7 +748,7 @@ namespace sttp
                 throw new InvalidOperationException("Data gap recoverer has not been initialized. Cannot log data gap for processing.");
 
             // Since local clock may float we add some buffer around recovery window
-            return DataGapLog.Remove(new Outage(startTime, endTime));
+            return DataGapLog.Remove(new(startTime, endTime));
         }
 
         /// <summary>
@@ -814,7 +814,7 @@ namespace sttp
             if (m_abnormalTermination)
             {
                 // Make sure any data recovered so far doesn't get unnecessarily re-recovered, this requires that source historian report data in time-sorted order
-                dataGap = new Outage(new DateTime(GSF.Common.Max((Ticks)dataGap.Start.Ticks, m_mostRecentRecoveredTime - (m_subscriptionInfo.UseMillisecondResolution ? Ticks.PerMillisecond : 1L)), DateTimeKind.Utc), dataGap.End);
+                dataGap = new(new DateTime(GSF.Common.Max((Ticks)dataGap.Start.Ticks, m_mostRecentRecoveredTime - (m_subscriptionInfo.UseMillisecondResolution ? Ticks.PerMillisecond : 1L)), DateTimeKind.Utc), dataGap.End);
 
                 // Re-insert adjusted data gap at the top of the processing queue
                 DataGapLog.Add(dataGap);
@@ -841,7 +841,7 @@ namespace sttp
         {
             try
             {
-                RecoveredMeasurements?.Invoke(this, new EventArgs<ICollection<IMeasurement>>(measurements));
+                RecoveredMeasurements?.Invoke(this, new(measurements));
             }
             catch (Exception ex)
             {
@@ -869,7 +869,7 @@ namespace sttp
                 Log.Publish(level, flags, eventName ?? "DataGapRecovery", status);
 
                 using (Logger.SuppressLogMessages())
-                    StatusMessage?.Invoke(this, new EventArgs<string>(AdapterBase.GetStatusWithMessageLevelPrefix(status, level)));
+                    StatusMessage?.Invoke(this, new(AdapterBase.GetStatusWithMessageLevelPrefix(status, level)));
             }
             catch (Exception ex)
             {
@@ -897,7 +897,7 @@ namespace sttp
                 Log.Publish(level, flags, eventName ?? "DataGapRecovery", exception?.Message, null, exception);
 
                 using (Logger.SuppressLogMessages())
-                    ProcessException?.Invoke(this, new EventArgs<Exception>(exception));
+                    ProcessException?.Invoke(this, new(exception));
             }
             catch (Exception ex)
             {

@@ -421,12 +421,12 @@ namespace sttp
         /// </summary>
         public DataSubscriber()
         {
-            m_registerStatisticsOperation = new LongSynchronizedOperation(HandleDeviceStatisticsRegistration)
+            m_registerStatisticsOperation = new(HandleDeviceStatisticsRegistration)
             {
                 IsBackground = true
             };
 
-            m_synchronizeMetadataOperation = new LongSynchronizedOperation(SynchronizeMetadata)
+            m_synchronizeMetadataOperation = new(SynchronizeMetadata)
             {
                 IsBackground = true
             };
@@ -454,10 +454,10 @@ namespace sttp
             }
 
             DataLossInterval = 10.0D;
-            m_bufferBlockCache = new List<BufferBlockMeasurement>();
+            m_bufferBlockCache = new();
             UseLocalClockAsRealTime = true;
             UseSourcePrefixNames = true;
-            m_signalIndexCacheLock = new object();
+            m_signalIndexCacheLock = new();
         }
 
         #endregion
@@ -1619,7 +1619,7 @@ namespace sttp
                             // the real-time subscriber (TCP only)
                             m_dataGapRecoveryEnabled = true;
 
-                            m_dataGapRecoverer = new DataGapRecoverer
+                            m_dataGapRecoverer = new()
                             {
                                 SourceConnectionName = Name,
                                 DataSource = DataSource,
@@ -1889,7 +1889,7 @@ namespace sttp
                     int.TryParse(setting, out port);
             }
 
-            return Subscribe(new SubscriptionInfo
+            return Subscribe(new()
             {
                 UseCompactMeasurementFormat = compactFormat,
                 Throttled = throttled,
@@ -1943,7 +1943,7 @@ namespace sttp
                             CompressionModes &= ~CompressionModes.TSSC;
                         }
 
-                        dataChannel = new UdpClient(setting)
+                        dataChannel = new(setting)
                         {
                             ReceiveBufferSize = ushort.MaxValue,
                             MaxConnectionAttempts = -1
@@ -2433,7 +2433,7 @@ namespace sttp
                                 {
                                     if (m_runTimeLog is null)
                                     {
-                                        m_runTimeLog = new RunTimeLog { FileName = GetLoggingPath($"{Name}_RunTimeLog.txt") };
+                                        m_runTimeLog = new() { FileName = GetLoggingPath($"{Name}_RunTimeLog.txt") };
                                         m_runTimeLog.ProcessException += RunTimeLog_ProcessException;
                                         m_runTimeLog.Initialize();
                                     }
@@ -2894,13 +2894,13 @@ namespace sttp
             // Use TSSC compression to decompress measurements                                            
             if (decoder is null)
             {
-                decoder = signalIndexCache.TsscDecoder = new TsscDecoder();
+                decoder = signalIndexCache.TsscDecoder = new();
                 decoder.SequenceNumber = 0;
                 newDecoder = true;
             }
 
             if (buffer[responseIndex] != 85)
-                throw new Exception($"TSSC version not recognized: {buffer[responseIndex]}");
+                throw new($"TSSC version not recognized: {buffer[responseIndex]}");
 
             responseIndex++;
 
@@ -2914,7 +2914,7 @@ namespace sttp
                     if (decoder.SequenceNumber > 0)
                         OnStatusMessage(MessageLevel.Info, $"TSSC algorithm reset before sequence number: {decoder.SequenceNumber}", "TSSC");
 
-                    decoder = signalIndexCache.TsscDecoder = new TsscDecoder();
+                    decoder = signalIndexCache.TsscDecoder = new();
                     decoder.SequenceNumber = 0;
                 }
 
@@ -3651,7 +3651,7 @@ namespace sttp
                                     }
 
                                     // Track defined phasors for each device
-                                    definedSourceIndicies.GetOrAdd(deviceID, _ => new List<int>()).Add(sourceIndex);
+                                    definedSourceIndicies.GetOrAdd(deviceID, _ => new()).Add(sourceIndex);
                                 }
 
                                 // Periodically notify user about synchronization progress
@@ -3783,7 +3783,7 @@ namespace sttp
                 try
                 {
                     using MemoryStream compressedData = new(buffer);
-                    inflater = new GZipStream(compressedData, CompressionMode.Decompress, true);
+                    inflater = new(compressedData, CompressionMode.Decompress, true);
                     buffer = inflater.ReadStream();
                 }
                 finally
@@ -3812,7 +3812,7 @@ namespace sttp
                 {
                     // Insert compressed data into compressed buffer
                     using MemoryStream compressedData = new(buffer);
-                    inflater = new GZipStream(compressedData, CompressionMode.Decompress, true);
+                    inflater = new(compressedData, CompressionMode.Decompress, true);
                     buffer = inflater.ReadStream();
                 }
                 finally
@@ -3826,7 +3826,7 @@ namespace sttp
             using (XmlTextReader xmlReader = new(encodedData))
             {
                 // Read encoded data into data set as XML
-                deserializedMetadata = new DataSet();
+                deserializedMetadata = new();
                 deserializedMetadata.ReadXml(xmlReader, XmlReadMode.ReadSchema);
             }
 
@@ -3945,8 +3945,8 @@ namespace sttp
                             statisticsHelper.Device.Dispose();
                     }
 
-                    m_statisticsHelpers = new List<DeviceStatisticsHelper<SubscribedDevice>>();
-                    m_subscribedDevicesLookup = new Dictionary<Guid, DeviceStatisticsHelper<SubscribedDevice>>();
+                    m_statisticsHelpers = new();
+                    m_subscribedDevicesLookup = new();
                 }
                 else
                 {
@@ -3979,7 +3979,7 @@ namespace sttp
                         if (subscribedDeviceNames.Contains(definedDeviceName))
                             continue;
 
-                        DeviceStatisticsHelper<SubscribedDevice> statisticsHelper = new(new SubscribedDevice(definedDeviceName));
+                        DeviceStatisticsHelper<SubscribedDevice> statisticsHelper = new(new(definedDeviceName));
                         subscribedDevices.Add(statisticsHelper);
                         statisticsHelper.Reset(now);
                     }
@@ -4041,8 +4041,8 @@ namespace sttp
                 foreach (DeviceStatisticsHelper<SubscribedDevice> statisticsHelper in m_statisticsHelpers)
                     statisticsHelper.Device.Dispose();
 
-                m_statisticsHelpers = new List<DeviceStatisticsHelper<SubscribedDevice>>();
-                m_subscribedDevicesLookup = new Dictionary<Guid, DeviceStatisticsHelper<SubscribedDevice>>();
+                m_statisticsHelpers = new();
+                m_subscribedDevicesLookup = new();
             }
             catch (Exception ex)
             {
@@ -4201,7 +4201,7 @@ namespace sttp
         {
             try
             {
-                ReceivedServerResponse?.Invoke(this, new EventArgs<ServerResponse, ServerCommand>(responseCode, commandCode));
+                ReceivedServerResponse?.Invoke(this, new(responseCode, commandCode));
             }
             catch (Exception ex)
             {
@@ -4240,7 +4240,7 @@ namespace sttp
         {
             try
             {
-                MetaDataReceived?.Invoke(this, new EventArgs<DataSet>(metadata));
+                MetaDataReceived?.Invoke(this, new(metadata));
             }
             catch (Exception ex)
             {
@@ -4257,7 +4257,7 @@ namespace sttp
         {
             try
             {
-                DataStartTime?.Invoke(this, new EventArgs<Ticks>(startTime));
+                DataStartTime?.Invoke(this, new(startTime));
             }
             catch (Exception ex)
             {
@@ -4274,7 +4274,7 @@ namespace sttp
         {
             try
             {
-                ProcessingComplete?.Invoke(this, new EventArgs<string>(source));
+                ProcessingComplete?.Invoke(this, new(source));
 
                 // Also raise base class event in case this event has been subscribed
                 OnProcessingComplete();
@@ -4294,7 +4294,7 @@ namespace sttp
         {
             try
             {
-                NotificationReceived?.Invoke(this, new EventArgs<string>(message));
+                NotificationReceived?.Invoke(this, new(message));
             }
             catch (Exception ex)
             {
@@ -4589,7 +4589,7 @@ namespace sttp
 
         private void ServerCommandChannelReceiveClientData(object sender, EventArgs<Guid, int> e)
         {
-            ClientCommandChannelReceiveData(sender, new EventArgs<int>(e.Argument2));
+            ClientCommandChannelReceiveData(sender, new(e.Argument2));
         }
 
         private void ServerCommandChannelClientConnected(object sender, EventArgs<Guid> e)

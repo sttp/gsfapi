@@ -91,8 +91,8 @@ namespace sttp
             m_subscriberID = clientID;
             m_keyIVs = null;
             m_cipherIndex = 0;
-            CacheUpdateLock = new object();
-            PendingCacheUpdateLock = new object();
+            CacheUpdateLock = new();
+            PendingCacheUpdateLock = new();
 
             // Setup ping timer
             m_pingTimer = Common.TimerScheduler.CreateTimer(5000);

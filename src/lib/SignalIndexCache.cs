@@ -91,8 +91,8 @@ namespace sttp
         /// </summary>
         public SignalIndexCache()
         {
-            m_reference = new ConcurrentDictionary<int, MeasurementKey>();
-            m_signalIDCache = new IndexedArray<int>(-1);
+            m_reference = new();
+            m_signalIDCache = new(-1);
         }
 
         /// <summary>
