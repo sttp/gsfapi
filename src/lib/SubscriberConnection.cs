@@ -268,7 +268,7 @@ namespace sttp
 
                 // When connection ID is just a Guid, prefer subscriber ID over client ID when available
                 if (m_connectionID.Equals(ClientID.ToString(), StringComparison.OrdinalIgnoreCase) && m_subscriberID != Guid.Empty)
-                    m_connectionID =  m_subscriberID.ToString();
+                    m_connectionID = m_subscriberID.ToString();
             }
         }
 
