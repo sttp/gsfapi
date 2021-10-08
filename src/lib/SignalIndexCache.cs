@@ -225,7 +225,7 @@ namespace sttp
                 binaryLength += 4;
 
                 // Each unauthorized ID
-                binaryLength += 16 * (m_unauthorizedSignalIDs ?? new Guid[0]).Length;
+                binaryLength += 16 * (m_unauthorizedSignalIDs ?? Array.Empty<Guid>()).Length;
 
                 return binaryLength;
             }
@@ -257,7 +257,7 @@ namespace sttp
             if (m_encoding is null)
                 throw new InvalidOperationException("Attempt to generate binary image of signal index cache without setting a character encoding.");
 
-            Guid[] unauthorizedSignalIDs = m_unauthorizedSignalIDs ?? new Guid[0];
+            Guid[] unauthorizedSignalIDs = m_unauthorizedSignalIDs ?? Array.Empty<Guid>();
             int binaryLength = BinaryLength;
             int offset = startIndex;
 

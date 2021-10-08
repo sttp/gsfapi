@@ -346,7 +346,7 @@ namespace sttp
             }
             else
             {
-                inputMeasurementKeys = new MeasurementKey[0];
+                inputMeasurementKeys = Array.Empty<MeasurementKey>();
                 RequestedInputFilter = null;
             }
 

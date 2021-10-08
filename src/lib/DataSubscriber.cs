@@ -916,7 +916,7 @@ namespace sttp
             get => base.RequestedOutputMeasurementKeys;
             set
             {
-                MeasurementKey[] oldKeys = base.RequestedOutputMeasurementKeys ?? new MeasurementKey[0];
+                MeasurementKey[] oldKeys = base.RequestedOutputMeasurementKeys ?? Array.Empty<MeasurementKey>();
                 MeasurementKey[] newKeys = value ?? Array.Empty<MeasurementKey>();
                 HashSet<MeasurementKey> oldKeySet = new(oldKeys);
 
@@ -2024,7 +2024,7 @@ namespace sttp
         public virtual Guid[] GetAuthorizedSignalIDs()
         {
             lock (m_signalIndexCacheLock)
-                return m_signalIndexCache?[m_cacheIndex] is null ? new Guid[0] : m_signalIndexCache[m_cacheIndex].AuthorizedSignalIDs;
+                return m_signalIndexCache?[m_cacheIndex] is null ? Array.Empty<Guid>() : m_signalIndexCache[m_cacheIndex].AuthorizedSignalIDs;
         }
 
         /// <summary>
@@ -2034,7 +2034,7 @@ namespace sttp
         public virtual Guid[] GetUnauthorizedSignalIDs()
         {
             lock (m_signalIndexCacheLock)
-                return m_signalIndexCache?[m_cacheIndex] is null ? new Guid[0] : m_signalIndexCache[m_cacheIndex].UnauthorizedSignalIDs;
+                return m_signalIndexCache?[m_cacheIndex] is null ? Array.Empty<Guid>() : m_signalIndexCache[m_cacheIndex].UnauthorizedSignalIDs;
         }
 
         /// <summary>
@@ -3172,7 +3172,7 @@ namespace sttp
                             else if (ReceiveExternalMetadata)
                                 deviceRows = deviceDetail.Select("OriginalSource IS NOT NULL");
                             else
-                                deviceRows = new DataRow[0];
+                                deviceRows = Array.Empty<DataRow>();
 
                             // Check existence of optional meta-data fields
                             DataColumnCollection deviceDetailColumns = deviceDetail.Columns;
@@ -3409,7 +3409,7 @@ namespace sttp
                             else if (ReceiveExternalMetadata)
                                 measurementRows = measurementDetail.Select("Internal = 0");
                             else
-                                measurementRows = new DataRow[0];
+                                measurementRows = Array.Empty<DataRow>();
 
                             // Check existence of optional meta-data fields
                             DataColumnCollection measurementDetailColumns = measurementDetail.Columns;
