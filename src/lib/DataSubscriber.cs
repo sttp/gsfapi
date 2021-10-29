@@ -3033,9 +3033,9 @@ namespace sttp
                 }
 
                 // Start unsynchronized subscription
-#pragma warning disable 618
+                #pragma warning disable 618
                 return Subscribe(true, Throttled, filterExpression.ToString(), dataChannel, startTime: startTimeConstraint, stopTime: stopTimeConstraint, processingInterval: processingInterval, publishInterval: PublishInterval);
-#pragma warning restore 618
+                #pragma warning restore 618
             }
 
             Unsubscribe();
@@ -3541,7 +3541,7 @@ namespace sttp
                                         // If the unknown measurement is directly associated with a device that exists in the meta-data it is assumed that this measurement
                                         // was removed from the publishing system and no longer exists therefore we remove it from the local measurement cache. If the user
                                         // needs custom local measurements associated with a remote device, they should be associated with the parent device only.
-                                        if (measurementDeviceID is not null && !(measurementDeviceID is DBNull) && deviceIDs.ContainsValue(Convert.ToInt32(measurementDeviceID)))
+                                        if (measurementDeviceID is not null && measurementDeviceID is not DBNull && deviceIDs.ContainsValue(Convert.ToInt32(measurementDeviceID)))
                                             command.ExecuteNonQuery(deleteMeasurementSql, MetadataSynchronizationTimeout, database.Guid(signalID));
                                     }
                                 }
@@ -4550,7 +4550,7 @@ namespace sttp
         {
             Exception ex = e.Argument;
 
-            if (!HandleSocketException(ex) && !(ex is ObjectDisposedException))
+            if (!HandleSocketException(ex) && ex is not ObjectDisposedException)
                 OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data subscriber encountered an exception while sending command channel data to publisher connection: {ex.Message}", ex));
         }
 
@@ -4579,7 +4579,7 @@ namespace sttp
         {
             Exception ex = e.Argument;
 
-            if (!HandleSocketException(ex) && !(ex is ObjectDisposedException))
+            if (!HandleSocketException(ex) && ex is not ObjectDisposedException)
                 OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data subscriber encountered an exception while receiving command channel data from publisher connection: {ex.Message}", ex));
         }
 
@@ -4645,7 +4645,7 @@ namespace sttp
         {
             Exception ex = e.Argument2;
 
-            if (!HandleSocketException(ex) && !(ex is NullReferenceException) && !(ex is ObjectDisposedException))
+            if (!HandleSocketException(ex) && ex is not NullReferenceException && ex is not ObjectDisposedException)
                 OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data subscriber encountered an exception while sending command channel data to client-based publisher connection: {ex.Message}", ex));
         }
 
@@ -4653,7 +4653,7 @@ namespace sttp
         {
             Exception ex = e.Argument2;
 
-            if (!HandleSocketException(ex) && !(ex is NullReferenceException) && !(ex is ObjectDisposedException))
+            if (!HandleSocketException(ex) && ex is not NullReferenceException && ex is not ObjectDisposedException)
                 OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data subscriber encountered an exception while receiving command channel data from client-based publisher connection: {ex.Message}", ex));
         }
 
@@ -4699,7 +4699,7 @@ namespace sttp
         {
             Exception ex = e.Argument;
 
-            if (!HandleSocketException(ex) && !(ex is ObjectDisposedException))
+            if (!HandleSocketException(ex) && ex is not ObjectDisposedException)
                 OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data subscriber encountered an exception while receiving UDP data from publisher connection: {ex.Message}", ex));
         }
 

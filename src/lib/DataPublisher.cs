@@ -1675,7 +1675,7 @@ namespace sttp
         /// <param name="measurements">Measurements to queue for processing.</param>
         private void QueueMeasurementsForProcessing(List<IMeasurement> measurements)
         {
-            if (measurements?.Count == 0)
+            if (measurements is null || measurements.Count == 0)
                 return;
 
             m_routingTables.InjectMeasurements(this, new(measurements));
@@ -3784,7 +3784,7 @@ namespace sttp
         {
             Exception ex = e.Argument2;
 
-            if (!HandleSocketException(e.Argument1, ex) && !(ex is NullReferenceException) && !(ex is ObjectDisposedException))
+            if (!HandleSocketException(e.Argument1, ex) && ex is not NullReferenceException && ex is not ObjectDisposedException)
                 OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data publisher encountered an exception while sending command channel data to client connection: {ex.Message}", ex));
         }
 
@@ -3792,7 +3792,7 @@ namespace sttp
         {
             Exception ex = e.Argument2;
 
-            if (!HandleSocketException(e.Argument1, ex) && !(ex is NullReferenceException) && !(ex is ObjectDisposedException))
+            if (!HandleSocketException(e.Argument1, ex) && ex is not NullReferenceException && ex is not ObjectDisposedException)
                 OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data publisher encountered an exception while receiving command channel data from client connection: {ex.Message}", ex));
         }
 
@@ -3846,7 +3846,7 @@ namespace sttp
         {
             Exception ex = e.Argument;
 
-            if (!HandleSocketException(m_proxyClientID, ex) && !(ex is ObjectDisposedException))
+            if (!HandleSocketException(m_proxyClientID, ex) && ex is not ObjectDisposedException)
                 OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data publisher encountered an exception while sending client-based command channel data to subscriber connection: {ex.Message}", ex));
         }
 
@@ -3857,7 +3857,7 @@ namespace sttp
         {
             Exception ex = e.Argument;
 
-            if (!HandleSocketException(m_proxyClientID, ex) && !(ex is ObjectDisposedException))
+            if (!HandleSocketException(m_proxyClientID, ex) && ex is not ObjectDisposedException)
                 OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data publisher encountered an exception while receiving client-based command channel data from subscriber connection: {ex.Message}", ex));
         }
 

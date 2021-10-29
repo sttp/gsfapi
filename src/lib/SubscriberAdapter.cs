@@ -464,7 +464,7 @@ namespace sttp
             {
                 m_startTimeSent = true;
 
-                IMeasurement measurement = measurements.FirstOrDefault(m => !(m is null));
+                IMeasurement measurement = measurements.FirstOrDefault(m => m is not null);
                 Ticks timestamp = 0;
 
                 if (measurement is not null)
