@@ -3802,19 +3802,15 @@ namespace sttp
 
         private void ClientCommandChannelConnectionEstablished(object sender, EventArgs e)
         {
-            m_proxyClientID = Guid.NewGuid();
-
-            ThreadPool.QueueUserWorkItem(_ =>
+            try
             {
-                try
-                {
-                    ServerCommandChannelClientConnected(sender, new(m_proxyClientID));
-                }
-                catch (Exception ex)
-                {
-                    OnProcessException(MessageLevel.Error, new InvalidOperationException($"Failed to establish client connection session: {ex.Message}", ex));
-                }
-            });
+                m_proxyClientID = Guid.NewGuid();
+                ServerCommandChannelClientConnected(sender, new(m_proxyClientID));
+            }
+            catch (Exception ex)
+            {
+                OnProcessException(MessageLevel.Error, new InvalidOperationException($"Failed to establish client connection session: {ex.Message}", ex));
+            }
         }
 
         private void ClientCommandChannelConnectionTerminated(object sender, EventArgs e)
