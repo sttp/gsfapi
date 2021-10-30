@@ -774,7 +774,7 @@ namespace sttp
             }
 
             if (string.IsNullOrWhiteSpace(connectionID))
-                connectionID = "unavailable";
+                connectionID = null;
 
             if (string.IsNullOrWhiteSpace(hostName))
                 hostName = ipAddress is null ? connectionID : ipAddress.ToString();
