@@ -2303,9 +2303,7 @@ namespace sttp
             }
 
             m_activeClientID = Guid.Empty;
-
             m_subscribedDevicesTimer?.Stop();
-
             m_metadataRefreshPending = false;
         }
 
@@ -2424,9 +2422,9 @@ namespace sttp
 
                             if (TotalBytesReceived == 0)
                             {
-                                // At the point when data is being received, data monitor should be enabled (when not a server-based connection)
+                                // At the point when data is being received, data monitor should be enabled
                                 if (!m_dataStreamMonitor?.Enabled ?? false)
-                                    m_dataStreamMonitor.Enabled = m_serverCommandChannel is null;
+                                    m_dataStreamMonitor.Enabled = true;
 
                                 // Establish run-time log for subscriber
                                 if (AutoConnect || m_dataGapRecoveryEnabled)
@@ -3749,7 +3747,7 @@ namespace sttp
             {
                 // Restart data stream monitor after meta-data synchronization if it was originally enabled
                 if (dataMonitoringEnabled && m_dataStreamMonitor is not null)
-                    m_dataStreamMonitor.Enabled = m_serverCommandChannel is null;
+                    m_dataStreamMonitor.Enabled = true;
             }
         }
 
@@ -3857,15 +3855,12 @@ namespace sttp
         // Socket exception handler
         private bool HandleSocketException(Exception ex)
         {
-            if (ex is SocketException socketException)
+            // WSAECONNABORTED and WSAECONNRESET are common errors after a client disconnect,
+            // if they happen for other reasons, make sure disconnect procedure is handled
+            if (ex is SocketException { ErrorCode: 10053 or 10054 })
             {
-                // WSAECONNABORTED and WSAECONNRESET are common errors after a client disconnect,
-                // if they happen for other reasons, make sure disconnect procedure is handled
-                if (socketException.ErrorCode == 10053 || socketException.ErrorCode == 10054)
-                {
-                    DisconnectClient();
-                    return true;
-                }
+                DisconnectClient();
+                return true;
             }
 
             if (ex is not null)
@@ -3900,9 +3895,29 @@ namespace sttp
             DataChannel = null;
             m_metadataRefreshPending = false;
 
-            // If user didn't initiate disconnect, restart the connection
-            if (Enabled)
-                Start();
+            if (m_serverCommandChannel is null)
+            {
+                // If user didn't initiate disconnect, restart the connection cycle
+                if (Enabled)
+                    Start();
+            }
+            else
+            {
+                if (m_activeClientID != Guid.Empty)
+                    m_serverCommandChannel.DisconnectOne(m_activeClientID);
+
+                // When subscriber is in server mode, the server does not need to be restarted, but we
+                // will reset client statistics - this is a server of "one" client, the publisher
+                m_activeClientID = Guid.Empty;
+                m_subscribedDevicesTimer?.Stop();
+                m_metadataRefreshPending = false;
+                m_expectedBufferBlockSequenceNumber = 0u;
+                m_subscribed = false;
+                m_keyIVs = null;
+                TotalBytesReceived = 0L;
+                m_lastBytesReceived = 0;
+                m_lastReceivedAt = DateTime.MinValue;
+            }
         }
 
         // Gets the socket instance used by this client
@@ -4471,7 +4486,14 @@ namespace sttp
                 // If we've received no data in the last time-span, we restart connect cycle...
                 m_dataStreamMonitor.Enabled = false;
                 OnStatusMessage(MessageLevel.Info, $"{Environment.NewLine}No data received in {m_dataStreamMonitor.Interval / 1000.0D:0.0} seconds, restarting connect cycle...{Environment.NewLine}", "Connection Issues");
-                ThreadPool.QueueUserWorkItem(_ => Restart());
+                
+                ThreadPool.QueueUserWorkItem(_ =>
+                {
+                    if (m_serverCommandChannel is null)
+                        Restart();
+                    else
+                        DisconnectClient();
+                });
             }
 
             // Reset bytes received bytes being monitored
@@ -4514,7 +4536,9 @@ namespace sttp
             // Notify consumer that connection was successfully established
             OnConnectionEstablished();
 
-            OnStatusMessage(MessageLevel.Info, "Data subscriber command channel connection to publisher was established.");
+            OnStatusMessage(MessageLevel.Info, m_serverCommandChannel is null ?
+                "Data subscriber command channel connection to publisher was established." :
+                "Data subscriber server-based command channel established a new client connection from the publisher.");
 
             if (AutoConnect && Enabled)
                 StartSubscription();
@@ -4526,7 +4550,11 @@ namespace sttp
         private void ClientCommandChannelConnectionTerminated(object sender, EventArgs e)
         {
             OnConnectionTerminated();
-            OnStatusMessage(MessageLevel.Info, "Data subscriber command channel connection to publisher was terminated.");
+
+            OnStatusMessage(MessageLevel.Info, m_serverCommandChannel is null ? 
+                "Data subscriber command channel connection to publisher was terminated." :
+                "Data subscriber server-based command channel client connection from the publisher was terminated.");
+
             DisconnectClient();
         }
 
@@ -4595,6 +4623,24 @@ namespace sttp
         private void ServerCommandChannelClientConnected(object sender, EventArgs<Guid> e)
         {
             m_activeClientID = e.Argument;
+
+            // Reset all connection stats when new publisher-client connects - this is equivalent
+            // to a normal client-based subscriber establishing a new connection to the publisher
+            List<DeviceStatisticsHelper<SubscribedDevice>> statisticsHelpers = m_statisticsHelpers;
+
+            if (statisticsHelpers is not null)
+            {
+                long now = UseLocalClockAsRealTime ? DateTime.UtcNow.Ticks : 0L;
+                m_realTime = 0L;
+                m_lastStatisticsHelperUpdate = 0L;
+
+                foreach (DeviceStatisticsHelper<SubscribedDevice> statisticsHelper in statisticsHelpers)
+                    statisticsHelper.Reset(now);
+            }
+
+            if (UseLocalClockAsRealTime)
+                m_subscribedDevicesTimer.Start();
+
             ClientCommandChannelConnectionEstablished(sender, EventArgs.Empty);
         }
 
@@ -4645,16 +4691,26 @@ namespace sttp
         {
             Exception ex = e.Argument2;
 
-            if (!HandleSocketException(ex) && ex is not NullReferenceException && ex is not ObjectDisposedException)
+            if (HandleSocketException(ex))
+                return;
+
+            if (ex is not NullReferenceException && ex is not ObjectDisposedException)
                 OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data subscriber encountered an exception while sending command channel data to client-based publisher connection: {ex.Message}", ex));
+
+            DisconnectClient();
         }
 
         private void ServerCommandChannelReceiveClientDataException(object sender, EventArgs<Guid, Exception> e)
         {
             Exception ex = e.Argument2;
 
-            if (!HandleSocketException(ex) && ex is not NullReferenceException && ex is not ObjectDisposedException)
+            if (HandleSocketException(ex))
+                return;
+
+            if (ex is not NullReferenceException && ex is not ObjectDisposedException)
                 OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data subscriber encountered an exception while receiving command channel data from client-based publisher connection: {ex.Message}", ex));
+
+            DisconnectClient();
         }
 
         #endregion
