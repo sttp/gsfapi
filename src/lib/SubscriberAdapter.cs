@@ -409,7 +409,7 @@ namespace sttp
 
             base.Start();
 
-            if (m_baseTimeRotationTimer is not null && m_includeTime)
+            if (m_baseTimeRotationTimer is not null && m_includeTime && m_useCompactMeasurementFormat)
                 m_baseTimeRotationTimer.Start();
         }
 
