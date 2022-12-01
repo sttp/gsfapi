@@ -53,7 +53,7 @@ namespace InteropTest
 
         static void Main(string[] args)
         {
-            Console.WriteLine($"{((uint)OperationalModes.VersionMask & 1u) | (uint)OperationalModes.CompressMetadata | (uint)CompressionModes.GZip | (uint)OperationalEncoding.UTF8:X}");
+            //Console.WriteLine($"{((uint)OperationalModes.VersionMask & 1u) | (uint)OperationalModes.CompressMetadata | (uint)CompressionModes.GZip | (uint)OperationalEncoding.UTF8:X}");
 
             if (args.Length < 2)
             {

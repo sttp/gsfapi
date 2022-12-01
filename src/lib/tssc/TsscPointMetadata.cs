@@ -109,7 +109,7 @@ namespace sttp.tssc
                         m_writeBits(code, 8);
                     break;
                 default:
-                    throw new("Coding Error");
+                    throw new Exception("Coding Error");
             }
 
             UpdatedCodeStatistics(code);
@@ -146,7 +146,7 @@ namespace sttp.tssc
                         code = m_readBits5();
                     break;
                 default:
-                    throw new("Unsupported compression mode");
+                    throw new Exception("Unsupported compression mode");
             }
 
             UpdatedCodeStatistics(code);
@@ -258,7 +258,7 @@ namespace sttp.tssc
             }
             else
             {
-                throw new("Coding Error");
+                throw new Exception("Coding Error");
             }
 
             m_commandsSentSinceLastChange = 0;

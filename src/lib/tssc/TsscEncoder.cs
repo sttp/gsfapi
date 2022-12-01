@@ -25,6 +25,7 @@ using System;
 using GSF;
 using GSF.Collections;
 
+// ReSharper disable IntVariableOverflowInUncheckedContext
 namespace sttp.tssc
 {
     /// <summary>
@@ -72,8 +73,8 @@ namespace sttp.tssc
         /// </remarks>
         public void Reset()
         {
-            m_points = new();
-            m_lastPoint = new(WriteBits, null, null);
+            m_points = new IndexedArray<TsscPointMetadata>();
+            m_lastPoint = new TsscPointMetadata(WriteBits, null, null);
             m_data = Array.Empty<byte>();
             m_position = 0;
             m_lastPosition = 0;
@@ -132,7 +133,7 @@ namespace sttp.tssc
 
             if (point is null)
             {
-                point = new(WriteBits, null, null) { PrevNextPointId1 = id + 1 };
+                point = new TsscPointMetadata(WriteBits, null, null) { PrevNextPointId1 = id + 1 };
                 m_points[id] = point;
             }
 

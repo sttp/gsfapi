@@ -59,6 +59,7 @@ namespace sttp
         private readonly IPAddress m_ipAddress;
         private string m_subscriberInfo;
         private SubscriberAdapter m_subscription;
+        private volatile bool m_accepted;
         private volatile bool m_authenticated;
         private volatile byte[][][] m_keyIVs;
         private volatile int m_cipherIndex;
@@ -91,8 +92,8 @@ namespace sttp
             m_subscriberID = clientID;
             m_keyIVs = null;
             m_cipherIndex = 0;
-            CacheUpdateLock = new();
-            PendingCacheUpdateLock = new();
+            CacheUpdateLock = new object();
+            PendingCacheUpdateLock = new object();
 
             // Setup ping timer
             m_pingTimer = Common.TimerScheduler.CreateTimer(5000);
@@ -311,6 +312,15 @@ namespace sttp
         /// Gets the connection identification of this <see cref="SubscriberConnection"/>.
         /// </summary>
         public string ConnectionID => m_connectionID;
+
+        /// <summary>
+        /// Gets or sets connection accepted state indicating requested define operational modes were accepted and applied.
+        /// </summary>
+        public bool Accepted
+        {
+            get => m_accepted;
+            set => m_accepted = value;
+        }
 
         /// <summary>
         /// Gets or sets authenticated state of this <see cref="SubscriberConnection"/>.

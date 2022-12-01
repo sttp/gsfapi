@@ -91,8 +91,8 @@ namespace sttp
         /// </summary>
         public SignalIndexCache()
         {
-            m_reference = new();
-            m_signalIDCache = new(-1);
+            m_reference = new ConcurrentDictionary<int, MeasurementKey>();
+            m_signalIDCache = new IndexedArray<int>(-1);
         }
 
         /// <summary>
@@ -114,7 +114,7 @@ namespace sttp
             else
             {
                 DataTable activeMeasurements = dataSource.Tables["ActiveMeasurements"];
-                ConcurrentDictionary<int, MeasurementKey> reference = new ConcurrentDictionary<int, MeasurementKey>();
+                ConcurrentDictionary<int, MeasurementKey> reference = new();
 
                 foreach (KeyValuePair<int, MeasurementKey> signalIndex in remoteCache.Reference)
                 {

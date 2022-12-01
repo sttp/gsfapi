@@ -274,7 +274,12 @@ namespace sttp
         /// <summary>
         /// Specifies the default value for the <see cref="ParsingExceptionWindow"/> property.
         /// </summary>
-        public const long DefaultParsingExceptionWindow = 50000000L; // 5 seconds
+        public const long DefaultParsingExceptionWindow = 50000000L; // 5 seconds (ticks)
+
+        /// <summary>
+        /// Specifies the default value for the <see cref="DefineOperationalModesResponseTimeout"/> property.
+        /// </summary>
+        public const int DefaultDefineOperationalModesResponseTimeout = 5000; // 5 seconds (ms)
 
         private const int EvenKey = 0;      // Even key/IV index
         private const int OddKey = 1;       // Odd key/IV index
@@ -357,12 +362,14 @@ namespace sttp
         private long m_commandChannelConnectionAttempts;
         private long m_dataChannelConnectionAttempts;
         private volatile SignalIndexCache m_remoteSignalIndexCache;
-        private volatile SignalIndexCache[] m_signalIndexCache;
+        private SignalIndexCache[] m_signalIndexCache;
         private readonly object m_signalIndexCacheLock;
         private volatile int m_cacheIndex;
         private volatile long[] m_baseTimeOffsets;
         private volatile int m_timeIndex;
         private volatile byte[][][] m_keyIVs;
+        private readonly ManualResetEventSlim m_defineOpModesCompleted;
+        private volatile bool m_connectionAccepted;
         private volatile bool m_subscribed;
         private volatile int m_lastBytesReceived;
         private DateTime m_lastReceivedAt;
@@ -421,12 +428,12 @@ namespace sttp
         /// </summary>
         public DataSubscriber()
         {
-            m_registerStatisticsOperation = new(HandleDeviceStatisticsRegistration)
+            m_registerStatisticsOperation = new LongSynchronizedOperation(HandleDeviceStatisticsRegistration)
             {
                 IsBackground = true
             };
 
-            m_synchronizeMetadataOperation = new(SynchronizeMetadata)
+            m_synchronizeMetadataOperation = new LongSynchronizedOperation(SynchronizeMetadata)
             {
                 IsBackground = true
             };
@@ -436,6 +443,7 @@ namespace sttp
             MetadataSynchronizationTimeout = DefaultMetadataSynchronizationTimeout;
             AllowedParsingExceptions = DefaultAllowedParsingExceptions;
             ParsingExceptionWindow = DefaultParsingExceptionWindow;
+            DefineOperationalModesResponseTimeout = DefaultDefineOperationalModesResponseTimeout;
 
             string loggingPath = FilePath.GetDirectoryName(FilePath.GetAbsolutePath(DefaultLoggingPath));
 
@@ -454,10 +462,11 @@ namespace sttp
             }
 
             DataLossInterval = 10.0D;
-            m_bufferBlockCache = new();
+            m_bufferBlockCache = new List<BufferBlockMeasurement>();
             UseLocalClockAsRealTime = true;
             UseSourcePrefixNames = true;
-            m_signalIndexCacheLock = new();
+            m_signalIndexCacheLock = new object();
+            m_defineOpModesCompleted = new ManualResetEventSlim();
         }
 
         #endregion
@@ -880,6 +889,11 @@ namespace sttp
         public Ticks ParsingExceptionWindow { get; set; }
 
         /// <summary>
+        /// Gets or sets timeout, in milliseconds, for waiting for a define operational modes response.
+        /// </summary>
+        public int DefineOperationalModesResponseTimeout { get; set; }
+
+        /// <summary>
         /// Gets or sets <see cref="DataSet"/> based data source available to this <see cref="DataSubscriber"/>.
         /// </summary>
         public override DataSet DataSource
@@ -990,6 +1004,7 @@ namespace sttp
 
                 status.AppendLine($"          Protocol version: {Version}");
                 status.AppendLine($"                 Connected: {CommandChannelConnected}");
+                status.AppendLine($" Operational modes request: {(m_connectionAccepted ? "Accepted -- Connection Validated" : m_defineOpModesCompleted.IsSet ? "Rejected -- Connection Canceled" : "Pending Response")}");
                 status.AppendLine($"                Subscribed: {m_subscribed}");
                 status.AppendLine($"             Security mode: {SecurityMode}");
                 status.AppendLine($"             Authenticated: {m_securityMode == SecurityMode.TLS && CommandChannelConnected}");
@@ -1369,6 +1384,10 @@ namespace sttp
             if (settings.TryGetValue(nameof(ParsingExceptionWindow), out setting))
                 ParsingExceptionWindow = Ticks.FromSeconds(double.Parse(setting));
 
+            // Define the timeout for waiting for a define operational modes response
+            if (settings.TryGetValue(nameof(DefineOperationalModesResponseTimeout), out setting) && int.TryParse(setting, out int timeout))
+                DefineOperationalModesResponseTimeout = timeout;
+
             // Check if synchronize meta-data is explicitly enabled or disabled
             if (settings.TryGetValue(nameof(AutoSynchronizeMetadata), out setting))
                 AutoSynchronizeMetadata = setting.ParseBoolean();
@@ -1619,7 +1638,7 @@ namespace sttp
                             // the real-time subscriber (TCP only)
                             m_dataGapRecoveryEnabled = true;
 
-                            m_dataGapRecoverer = new()
+                            m_dataGapRecoverer = new DataGapRecoverer
                             {
                                 SourceConnectionName = Name,
                                 DataSource = DataSource,
@@ -1889,7 +1908,7 @@ namespace sttp
                     int.TryParse(setting, out port);
             }
 
-            return Subscribe(new()
+            return Subscribe(new SubscriptionInfo
             {
                 UseCompactMeasurementFormat = compactFormat,
                 Throttled = throttled,
@@ -1943,7 +1962,7 @@ namespace sttp
                             CompressionModes &= ~CompressionModes.TSSC;
                         }
 
-                        dataChannel = new(setting)
+                        dataChannel = new UdpClient(setting)
                         {
                             ReceiveBufferSize = ushort.MaxValue,
                             MaxConnectionAttempts = -1
@@ -2198,6 +2217,12 @@ namespace sttp
         /// <returns><c>true</c> if <paramref name="commandCode"/> transmission was successful; otherwise <c>false</c>.</returns>
         public virtual bool SendServerCommand(ServerCommand commandCode, byte[] data = null)
         {
+            if (!m_connectionAccepted && commandCode != ServerCommand.DefineOperationalModes)
+            {
+                OnStatusMessage(MessageLevel.Warning, "Cannot send any server command until requested operational modes for connection have been accepted.");
+                return false;
+            }
+
             if (m_clientCommandChannel?.CurrentState == ClientState.Connected || m_serverCommandChannel?.CurrentState == ServerState.Running && m_activeClientID != Guid.Empty)
             {
                 try
@@ -2244,6 +2269,8 @@ namespace sttp
             m_commandChannelConnectionAttempts = 0;
             m_dataChannelConnectionAttempts = 0;
 
+            m_connectionAccepted = Version < 3;
+            m_defineOpModesCompleted.Reset();
             m_subscribed = false;
             m_keyIVs = null;
             TotalBytesReceived = 0L;
@@ -2368,7 +2395,42 @@ namespace sttp
                     ServerCommand commandCode = (ServerCommand)buffer[startIndex + 1];
                     int responseLength = BigEndian.ToInt32(buffer, startIndex + 2);
                     int responseIndex = startIndex + DataPublisher.ClientResponseHeaderSize;
+                    int version = Version;
                     byte[][][] keyIVs;
+
+                    if (!m_connectionAccepted)
+                    {
+                        string message = null;
+
+                        // Initial response should be succeed or failed in response to define operational modes
+                        if (commandCode != ServerCommand.DefineOperationalModes || (responseCode != ServerResponse.Succeeded && responseCode != ServerResponse.Failed))
+                        {
+                            message = $"Possible invalid protocol detected from \"{ConnectionInfo}\": encountered unexpected initial command / response code: {commandCode} / {responseCode} -- connection likely from non-STTP client, disconnecting.";
+                        }
+                        else
+                        {
+                            // As an additional sanity check, validate initial payload header size. The very first response
+                            // received from the data publisher should be the succeeded or failed response command for the
+                            // DefineOperationalModes command sent by the subscriber. The packet payload size for this
+                            // response will typically be a short message. Longer message sizes would be considered suspect
+                            // data, likely from a non-STTP based client connection. In context of this initial response
+                            // message, anything larger than 8KB of payload is considered suspect and will be evaluated as
+                            // a non-STTP type response.
+                            const int MaxInitialPacketSize = DataPublisher.ClientResponseHeaderSize + 8192;
+
+                            if (responseLength > MaxInitialPacketSize)
+                                message = $"Possible invalid protocol detected from \"{ConnectionInfo}\": encountered request for {responseLength:N0} byte initial packet size -- connection likely from non-STTP client, disconnecting.";
+                        }
+
+                        if (message is not null)
+                        {
+                            OnStatusMessage(MessageLevel.Error, message);
+                            m_connectionAccepted = false;
+                            m_defineOpModesCompleted.Set();
+                            AttemptDisconnection();
+                            return;
+                        }
+                    }
 
                     startIndex = responseIndex + responseLength;
 
@@ -2386,6 +2448,11 @@ namespace sttp
                         case ServerResponse.Succeeded:
                             switch (commandCode)
                             {
+                                case ServerCommand.DefineOperationalModes:
+                                    OnStatusMessage(MessageLevel.Info, $"Success code received in response to server command \"{commandCode}\": {InterpretResponseMessage(buffer, responseIndex, responseLength)}");
+                                    m_connectionAccepted = true;
+                                    m_defineOpModesCompleted.Set();
+                                    break;
                                 case ServerCommand.Subscribe:
                                     OnStatusMessage(MessageLevel.Info, $"Success code received in response to server command \"{commandCode}\": {InterpretResponseMessage(buffer, responseIndex, responseLength)}");
                                     m_subscribed = true;
@@ -2396,21 +2463,32 @@ namespace sttp
                                     if (m_dataStreamMonitor is not null)
                                         m_dataStreamMonitor.Enabled = false;
                                     break;
-                                case ServerCommand.RotateCipherKeys:
-                                    OnStatusMessage(MessageLevel.Info, $"Success code received in response to server command \"{commandCode}\": {InterpretResponseMessage(buffer, responseIndex, responseLength)}");
-                                    break;
                                 case ServerCommand.MetaDataRefresh:
                                     OnStatusMessage(MessageLevel.Info, $"Success code received in response to server command \"{commandCode}\": latest meta-data received.");
                                     OnMetaDataReceived(DeserializeMetadata(buffer.BlockCopy(responseIndex, responseLength)));
                                     m_metadataRefreshPending = false;
                                     break;
+                                case ServerCommand.RotateCipherKeys:
+                                    OnStatusMessage(MessageLevel.Info, $"Success code received in response to server command \"{commandCode}\": {InterpretResponseMessage(buffer, responseIndex, responseLength)}");
+                                    break;
                             }
                             break;
                         case ServerResponse.Failed:
-                            OnStatusMessage(MessageLevel.Info, $"Failure code received in response to server command \"{commandCode}\": {InterpretResponseMessage(buffer, responseIndex, responseLength)}");
+                            OnStatusMessage(MessageLevel.Warning, $"Failure code received in response to server command \"{commandCode}\": {InterpretResponseMessage(buffer, responseIndex, responseLength)}");
 
-                            if (commandCode == ServerCommand.MetaDataRefresh)
-                                m_metadataRefreshPending = false;
+                            switch (commandCode)
+                            {
+                                case ServerCommand.MetaDataRefresh:
+                                    m_metadataRefreshPending = false;
+                                    break;
+                                case ServerCommand.DefineOperationalModes:
+                                    OnStatusMessage(MessageLevel.Error, "Data publisher rejected operational modes, disconnecting...");
+                                    m_connectionAccepted = false;
+                                    m_defineOpModesCompleted.Set();
+                                    AttemptDisconnection();
+                                    break;
+                            }
+
                             break;
                         case ServerResponse.DataPacket:
                         {
@@ -2431,7 +2509,7 @@ namespace sttp
                                 {
                                     if (m_runTimeLog is null)
                                     {
-                                        m_runTimeLog = new() { FileName = GetLoggingPath($"{Name}_RunTimeLog.txt") };
+                                        m_runTimeLog = new RunTimeLog { FileName = GetLoggingPath($"{Name}_RunTimeLog.txt") };
                                         m_runTimeLog.ProcessException += RunTimeLog_ProcessException;
                                         m_runTimeLog.Initialize();
                                     }
@@ -2681,7 +2759,7 @@ namespace sttp
                             // Buffer block received - wrap as a buffer block measurement and expose back to consumer
                             uint sequenceNumber = BigEndian.ToUInt32(buffer, responseIndex);
                             int bufferCacheIndex = (int)(sequenceNumber - m_expectedBufferBlockSequenceNumber);
-                            int signalCacheIndex = Version > 1 ? buffer[responseIndex + 4] : 0;
+                            int signalCacheIndex = version > 1 ? buffer[responseIndex + 4] : 0;
 
                             // Check if this buffer block has already been processed (e.g., mistaken retransmission due to timeout)
                             if (bufferCacheIndex >= 0 && (bufferCacheIndex >= m_bufferBlockCache.Count || m_bufferBlockCache[bufferCacheIndex] is null))
@@ -2689,7 +2767,7 @@ namespace sttp
                                 // Send confirmation that buffer block is received
                                 SendServerCommand(ServerCommand.ConfirmBufferBlock, buffer.BlockCopy(responseIndex, 4));
 
-                                if (Version > 1)
+                                if (version > 1)
                                     responseIndex += 1;
 
                                 // Get measurement key from signal index cache
@@ -2704,7 +2782,7 @@ namespace sttp
                                     throw new InvalidOperationException($"Failed to find associated signal identification for runtime ID {signalIndex}");
 
                                 // Skip the sequence number and signal index when creating the buffer block measurement
-                                BufferBlockMeasurement bufferBlockMeasurement = new BufferBlockMeasurement(buffer, responseIndex + 8, responseLength - 8)
+                                BufferBlockMeasurement bufferBlockMeasurement = new(buffer, responseIndex + 8, responseLength - 8)
                                 {
                                     Metadata = measurementKey.Metadata
                                 };
@@ -2762,7 +2840,6 @@ namespace sttp
                             break;
                         case ServerResponse.UpdateSignalIndexCache:
                         {
-                            int version = Version;
                             int cacheIndex = 0;
 
                             // Get active cache index
@@ -2771,13 +2848,11 @@ namespace sttp
 
                             // Deserialize new signal index cache
                             SignalIndexCache remoteSignalIndexCache = DeserializeSignalIndexCache(buffer.BlockCopy(responseIndex, responseLength));
-                            SignalIndexCache signalIndexCache = new SignalIndexCache(DataSource, remoteSignalIndexCache);
+                            SignalIndexCache signalIndexCache = new(DataSource, remoteSignalIndexCache);
 
                             lock (m_signalIndexCacheLock)
                             {
-                                if (m_signalIndexCache is null)
-                                    m_signalIndexCache = new SignalIndexCache[version > 1 ? 2 : 1];
-
+                                m_signalIndexCache ??= new SignalIndexCache[version > 1 ? 2 : 1];
                                 m_signalIndexCache[cacheIndex] = signalIndexCache;
                                 m_remoteSignalIndexCache = remoteSignalIndexCache;
                                 m_cacheIndex = cacheIndex;
@@ -2892,13 +2967,13 @@ namespace sttp
             // Use TSSC compression to decompress measurements                                            
             if (decoder is null)
             {
-                decoder = signalIndexCache.TsscDecoder = new();
+                decoder = signalIndexCache.TsscDecoder = new TsscDecoder();
                 decoder.SequenceNumber = 0;
                 newDecoder = true;
             }
 
             if (buffer[responseIndex] != 85)
-                throw new($"TSSC version not recognized: {buffer[responseIndex]}");
+                throw new Exception($"TSSC version not recognized: {buffer[responseIndex]}");
 
             responseIndex++;
 
@@ -2912,7 +2987,7 @@ namespace sttp
                     if (decoder.SequenceNumber > 0)
                         OnStatusMessage(MessageLevel.Info, $"TSSC algorithm reset before sequence number: {decoder.SequenceNumber}", "TSSC");
 
-                    decoder = signalIndexCache.TsscDecoder = new();
+                    decoder = signalIndexCache.TsscDecoder = new TsscDecoder();
                     decoder.SequenceNumber = 0;
                 }
 
@@ -2942,7 +3017,7 @@ namespace sttp
                 if (!signalIndexCache.Reference.TryGetValue(id, out MeasurementKey key) || key is null)
                     continue;
 
-                Measurement measurement = new Measurement
+                Measurement measurement = new()
                 {
                     Metadata = key.Metadata,
                     Timestamp = time,
@@ -3020,7 +3095,6 @@ namespace sttp
 
             if (outputMeasurementKeys is not null && outputMeasurementKeys.Length > 0)
             {
-                // TODO: Handle "continued" subscribe operations so connection string size can be fixed
                 foreach (MeasurementKey measurementKey in outputMeasurementKeys)
                 {
                     if (filterExpression.Length > 0)
@@ -3649,7 +3723,7 @@ namespace sttp
                                     }
 
                                     // Track defined phasors for each device
-                                    definedSourceIndicies.GetOrAdd(deviceID, _ => new()).Add(sourceIndex);
+                                    definedSourceIndicies.GetOrAdd(deviceID, _ => new List<int>()).Add(sourceIndex);
                                 }
 
                                 // Periodically notify user about synchronization progress
@@ -3717,7 +3791,7 @@ namespace sttp
                         remoteSignalIndexCache = m_remoteSignalIndexCache;
                     }
                     
-                    SignalIndexCache signalIndexCache = new SignalIndexCache(DataSource, remoteSignalIndexCache);
+                    SignalIndexCache signalIndexCache = new(DataSource, remoteSignalIndexCache);
 
                     if (signalIndexCache.Reference.Count > 0)
                     {
@@ -3781,7 +3855,7 @@ namespace sttp
                 try
                 {
                     using MemoryStream compressedData = new(buffer);
-                    inflater = new(compressedData, CompressionMode.Decompress, true);
+                    inflater = new GZipStream(compressedData, CompressionMode.Decompress, true);
                     buffer = inflater.ReadStream();
                 }
                 finally
@@ -3810,7 +3884,7 @@ namespace sttp
                 {
                     // Insert compressed data into compressed buffer
                     using MemoryStream compressedData = new(buffer);
-                    inflater = new(compressedData, CompressionMode.Decompress, true);
+                    inflater = new GZipStream(compressedData, CompressionMode.Decompress, true);
                     buffer = inflater.ReadStream();
                 }
                 finally
@@ -3824,7 +3898,7 @@ namespace sttp
             using (XmlTextReader xmlReader = new(encodedData))
             {
                 // Read encoded data into data set as XML
-                deserializedMetadata = new();
+                deserializedMetadata = new DataSet();
                 deserializedMetadata.ReadXml(xmlReader, XmlReadMode.ReadSchema);
             }
 
@@ -3911,7 +3985,9 @@ namespace sttp
                 m_activeClientID = Guid.Empty;
                 m_subscribedDevicesTimer?.Stop();
                 m_metadataRefreshPending = false;
-                m_expectedBufferBlockSequenceNumber = 0u;
+                m_expectedBufferBlockSequenceNumber = 0U;
+                m_connectionAccepted = false;
+                m_defineOpModesCompleted.Reset();
                 m_subscribed = false;
                 m_keyIVs = null;
                 TotalBytesReceived = 0L;
@@ -3960,8 +4036,8 @@ namespace sttp
                             statisticsHelper.Device.Dispose();
                     }
 
-                    m_statisticsHelpers = new();
-                    m_subscribedDevicesLookup = new();
+                    m_statisticsHelpers = new List<DeviceStatisticsHelper<SubscribedDevice>>();
+                    m_subscribedDevicesLookup = new Dictionary<Guid, DeviceStatisticsHelper<SubscribedDevice>>();
                 }
                 else
                 {
@@ -3994,7 +4070,7 @@ namespace sttp
                         if (subscribedDeviceNames.Contains(definedDeviceName))
                             continue;
 
-                        DeviceStatisticsHelper<SubscribedDevice> statisticsHelper = new(new(definedDeviceName));
+                        DeviceStatisticsHelper<SubscribedDevice> statisticsHelper = new(new SubscribedDevice(definedDeviceName));
                         subscribedDevices.Add(statisticsHelper);
                         statisticsHelper.Reset(now);
                     }
@@ -4056,8 +4132,8 @@ namespace sttp
                 foreach (DeviceStatisticsHelper<SubscribedDevice> statisticsHelper in m_statisticsHelpers)
                     statisticsHelper.Device.Dispose();
 
-                m_statisticsHelpers = new();
-                m_subscribedDevicesLookup = new();
+                m_statisticsHelpers = new List<DeviceStatisticsHelper<SubscribedDevice>>();
+                m_subscribedDevicesLookup = new Dictionary<Guid, DeviceStatisticsHelper<SubscribedDevice>>();
             }
             catch (Exception ex)
             {
@@ -4216,7 +4292,7 @@ namespace sttp
         {
             try
             {
-                ReceivedServerResponse?.Invoke(this, new(responseCode, commandCode));
+                ReceivedServerResponse?.Invoke(this, new EventArgs<ServerResponse, ServerCommand>(responseCode, commandCode));
             }
             catch (Exception ex)
             {
@@ -4255,7 +4331,7 @@ namespace sttp
         {
             try
             {
-                MetaDataReceived?.Invoke(this, new(metadata));
+                MetaDataReceived?.Invoke(this, new EventArgs<DataSet>(metadata));
             }
             catch (Exception ex)
             {
@@ -4272,7 +4348,7 @@ namespace sttp
         {
             try
             {
-                DataStartTime?.Invoke(this, new(startTime));
+                DataStartTime?.Invoke(this, new EventArgs<Ticks>(startTime));
             }
             catch (Exception ex)
             {
@@ -4289,7 +4365,7 @@ namespace sttp
         {
             try
             {
-                ProcessingComplete?.Invoke(this, new(source));
+                ProcessingComplete?.Invoke(this, new EventArgs<string>(source));
 
                 // Also raise base class event in case this event has been subscribed
                 OnProcessingComplete();
@@ -4309,7 +4385,7 @@ namespace sttp
         {
             try
             {
-                NotificationReceived?.Invoke(this, new(message));
+                NotificationReceived?.Invoke(this, new EventArgs<string>(message));
             }
             catch (Exception ex)
             {
@@ -4530,21 +4606,38 @@ namespace sttp
             // Notify input adapter base that asynchronous connection succeeded
             if (!PersistConnectionForMetadata)
                 OnConnected();
-            else
-                SendServerCommand(ServerCommand.MetaDataRefresh, MetadataFilters);
 
-            // Notify consumer that connection was successfully established
-            OnConnectionEstablished();
+            // Return event handler immediately, will wait for define operational modes response on thread pool
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                if (Version > 2 && !m_defineOpModesCompleted.Wait(DefineOperationalModesResponseTimeout))
+                {
+                    OnStatusMessage(MessageLevel.Warning, "Timed out waiting for define operational modes response, cancelling automated connection steps...");
+                    return;
+                }
 
-            OnStatusMessage(MessageLevel.Info, m_serverCommandChannel is null ?
-                "Data subscriber command channel connection to publisher was established." :
-                "Data subscriber server-based command channel established a new client connection from the publisher.");
+                if (!m_connectionAccepted)
+                {
+                    OnStatusMessage(MessageLevel.Error, "Data publisher rejected connection, cancelling automated connection steps...");
+                    return;
+                }
 
-            if (AutoConnect && Enabled)
-                StartSubscription();
+                if (PersistConnectionForMetadata)
+                    SendServerCommand(ServerCommand.MetaDataRefresh, MetadataFilters);
 
-            if (m_dataGapRecoveryEnabled && m_dataGapRecoverer is not null)
-                m_dataGapRecoverer.Enabled = true;
+                // Notify consumer that connection was successfully established
+                OnConnectionEstablished();
+
+                OnStatusMessage(MessageLevel.Info, m_serverCommandChannel is null ?
+                    "Data subscriber command channel connection to publisher was established." :
+                    "Data subscriber server-based command channel established a new client connection from the publisher.");
+
+                if (AutoConnect && Enabled)
+                    StartSubscription();
+
+                if (m_dataGapRecoveryEnabled && m_dataGapRecoverer is not null)
+                    m_dataGapRecoverer.Enabled = true;
+            });
         }
 
         private void ClientCommandChannelConnectionTerminated(object sender, EventArgs e)
@@ -4617,7 +4710,7 @@ namespace sttp
 
         private void ServerCommandChannelReceiveClientData(object sender, EventArgs<Guid, int> e)
         {
-            ClientCommandChannelReceiveData(sender, new(e.Argument2));
+            ClientCommandChannelReceiveData(sender, new EventArgs<int>(e.Argument2));
         }
 
         private void ServerCommandChannelClientConnected(object sender, EventArgs<Guid> e)

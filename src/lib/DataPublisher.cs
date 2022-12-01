@@ -838,11 +838,11 @@ namespace sttp
             base.Name = "Data Publisher Collection";
             base.DataMember = "[internal]";
 
-            ClientConnections = new();
-            m_clientPublicationChannels = new();
-            m_clientNotifications = new();
-            m_clientNotificationsLock = new();
-            m_publishBuffer = new();
+            ClientConnections = new ConcurrentDictionary<Guid, SubscriberConnection>();
+            m_clientPublicationChannels = new ConcurrentDictionary<Guid, IServer>();
+            m_clientNotifications = new Dictionary<Guid, Dictionary<int, string>>();
+            m_clientNotificationsLock = new object();
+            m_publishBuffer = new BlockAllocatedMemoryStream();
             SecurityMode = DefaultSecurityMode;
             m_encryptPayload = DefaultEncryptPayload;
             SharedDatabase = DefaultSharedDatabase;
@@ -857,8 +857,8 @@ namespace sttp
             {
                 m_routingTables = OptimizationOptions.DefaultRoutingMethod switch
                 {
-                    OptimizationOptions.RoutingMethod.HighLatencyLowCpu => new(new RouteMappingHighLatencyLowCpu()),
-                    _                                                   => new()
+                    OptimizationOptions.RoutingMethod.HighLatencyLowCpu => new RoutingTables(new RouteMappingHighLatencyLowCpu()),
+                    _                                                   => new RoutingTables()
                 };
             }
 
@@ -1491,8 +1491,8 @@ namespace sttp
             if (SecurityMode == SecurityMode.TLS)
             {
                 // Create certificate checker for publisher
-                m_certificateChecker = new();
-                m_subscriberIdentities = new();
+                m_certificateChecker = new CertificatePolicyChecker();
+                m_subscriberIdentities = new Dictionary<X509Certificate, DataRow>();
                 UpdateCertificateChecker();
 
                 if (clientBasedConnection)
@@ -1662,7 +1662,7 @@ namespace sttp
             if (measurementList.Count == 0)
                 return;
 
-            m_routingTables.InjectMeasurements(this, new(measurementList));
+            m_routingTables.InjectMeasurements(this, new EventArgs<ICollection<IMeasurement>>(measurementList));
 
             int measurementCount = measurementList.Count;
             LifetimeMeasurements += measurementCount;
@@ -1678,7 +1678,7 @@ namespace sttp
             if (measurements is null || measurements.Count == 0)
                 return;
 
-            m_routingTables.InjectMeasurements(this, new(measurements));
+            m_routingTables.InjectMeasurements(this, new EventArgs<ICollection<IMeasurement>>(measurements));
 
             int measurementCount = measurements.Count;
             LifetimeMeasurements += measurementCount;
@@ -1998,7 +1998,7 @@ namespace sttp
             {
                 if (connection.Version > 1)
                 {
-                    SignalIndexCache nextSignalIndexCache = new SignalIndexCache
+                    SignalIndexCache nextSignalIndexCache = new()
                     {
                         Reference = reference,
                         UnauthorizedSignalIDs = unauthorizedKeys.ToArray()
@@ -2107,7 +2107,7 @@ namespace sttp
                         foreach (DataRow row in DataSource.Tables["Subscribers"].Rows)
                         {
                             if (Guid.TryParse(row["ID"].ToNonNullString(), out Guid subscriberID))
-                                m_clientNotifications.Add(subscriberID, new());
+                                m_clientNotifications.Add(subscriberID, new Dictionary<int, string>());
                         }
                     }
 
@@ -2464,7 +2464,7 @@ namespace sttp
                 bool useDataChannel = dataPacketResponse || responseCode == (byte)ServerResponse.BufferBlock;
 
                 // Initialize target working buffer
-                workingBuffer = MaxPublishInterval == 0L ? new() : m_publishBuffer;
+                workingBuffer = MaxPublishInterval == 0L ? new BlockAllocatedMemoryStream() : m_publishBuffer;
 
                 // Add response code
                 workingBuffer.WriteByte(responseCode);
@@ -2755,7 +2755,7 @@ namespace sttp
         {
             try
             {
-                ClientConnected?.Invoke(this, new(subscriberID, connectionID, subscriberInfo));
+                ClientConnected?.Invoke(this, new EventArgs<Guid, string, string>(subscriberID, connectionID, subscriberInfo));
             }
             catch (Exception ex)
             {
@@ -2846,7 +2846,7 @@ namespace sttp
                         if (subscription is null)
                         {
                             // Client subscription not established yet, so we create a new one
-                            subscription = new(this, clientID, connection.SubscriberID, compressionModes);
+                            subscription = new SubscriberAdapter(this, clientID, connection.SubscriberID, compressionModes);
                             addSubscription = true;
                         }
 
@@ -2905,7 +2905,7 @@ namespace sttp
                                     connection.OperationalModes |= (OperationalModes)compressionModes;
                                 }
 
-                                connection.DataChannel = new($"Port=-1; Clients={connection.IPAddress}:{int.Parse(setting)}; interface={networkInterface}");
+                                connection.DataChannel = new UdpServer($"Port=-1; Clients={connection.IPAddress}:{int.Parse(setting)}; interface={networkInterface}");
                                 connection.DataChannel.Start();
                             }
                         }
@@ -3313,18 +3313,29 @@ namespace sttp
             if (length < 4)
                 return;
 
+            Guid clientID = connection.ClientID;
             uint operationalModes = BigEndian.ToUInt32(buffer, startIndex);
             uint version = operationalModes & (uint)OperationalModes.VersionMask;
 
-            // Currently publisher will support both version 1 and 2 clients
-            if (version != 1U && version != 2U)
-                OnStatusMessage(MessageLevel.Warning, $"Protocol version not supported. Operational modes may not be set correctly for client {connection.ClientID}.", flags: MessageFlags.UsageIssue);
+            // Currently publisher will support both version 1, 2 and 3 clients
+            if (version is < 1U or > 3U)
+            {
+                connection.Accepted = false;
+                OnStatusMessage(MessageLevel.Warning, $"Client connection rejected: protocol version not supported. Operational modes may not be set correctly for client {connection.ClientID}.", flags: MessageFlags.UsageIssue);
+                SendClientResponse(clientID, ServerResponse.Failed, ServerCommand.DefineOperationalModes, "Client connection rejected: protocol version defined in requested operational modes not supported.");
+                new Action(() => DisconnectClient(clientID)).DelayAndExecute(1000);
+                return;
+            }
 
             connection.Version = (int)version;
             connection.OperationalModes = (OperationalModes)operationalModes;
 
             if (connection.Version > 1)
                 connection.CurrentCacheIndex = 1;
+            
+            connection.Accepted = true;
+
+            SendClientResponse(clientID, ServerResponse.Succeeded, ServerCommand.DefineOperationalModes, "Client connection accepted: requested operational modes applied.");
         }
 
         // Handle confirmation of receipt of notification 
@@ -3407,7 +3418,7 @@ namespace sttp
             catch (Exception ex)
             {
                 string errorMessage = $"Data packet command failed due to exception: {ex.Message}";
-                OnProcessException(MessageLevel.Error, new(errorMessage, ex));
+                OnProcessException(MessageLevel.Error, new Exception(errorMessage, ex));
                 SendClientResponse(connection.ClientID, ServerResponse.Failed, ServerCommand.PublishCommandMeasurements, errorMessage);
             }
         }
@@ -3463,7 +3474,7 @@ namespace sttp
             try
             {
                 // Compress serialized signal index cache into compressed data buffer
-                deflater = new(compressedData, CompressionMode.Compress, true);
+                deflater = new GZipStream(compressedData, CompressionMode.Compress, true);
                 deflater.Write(serializedSignalIndexCache, 0, serializedSignalIndexCache.Length);
                 deflater.Close();
                 deflater = null;
@@ -3508,7 +3519,7 @@ namespace sttp
             {
                 // Compress serialized metadata into compressed data buffer
                 using BlockAllocatedMemoryStream compressedData = new();
-                deflater = new(compressedData, CompressionMode.Compress, true);
+                deflater = new GZipStream(compressedData, CompressionMode.Compress, true);
                 deflater.Write(serializedMetadata, 0, serializedMetadata.Length);
                 deflater.Close();
                 deflater = null;
@@ -3599,10 +3610,17 @@ namespace sttp
                 if (!ClientConnections.TryGetValue(clientID, out SubscriberConnection connection))
                 {
                     // Received a request from an unknown client, this request is denied
-                    OnStatusMessage(MessageLevel.Warning, $"Ignored {length} byte {(validServerCommand ? command.ToString() : "unidentified")} command request received from an unrecognized client: {clientID}", flags: MessageFlags.UsageIssue);
+                    OnStatusMessage(MessageLevel.Warning, $"Ignored {length:N0} byte {(validServerCommand ? command.ToString() : "unidentified")} command request received from an unrecognized client: {clientID}", flags: MessageFlags.UsageIssue);
                 }
                 else if (validServerCommand)
                 {
+                    if (!connection.Accepted && command != ServerCommand.DefineOperationalModes)
+                    {
+                        OnProcessException(MessageLevel.Warning, new InvalidOperationException($"{command} command request from client {connection.ConnectionID} rejected - operational modes have not been accepted yet. Disconnecting client."));
+                        DisconnectClient(clientID);
+                        return;
+                    }
+
                     switch (command)
                     {
                         case ServerCommand.Subscribe:
@@ -3679,9 +3697,17 @@ namespace sttp
                 else
                 {
                     // Handle unrecognized commands
-                    string message = $" sent an unrecognized server command: 0x{commandByte.ToString("X").PadLeft(2, '0')}";
-                    SendClientResponse(clientID, (byte)ServerResponse.Failed, commandByte, GetClientEncoding(clientID).GetBytes($"Client{message}"));
-                    OnProcessException(MessageLevel.Warning, new InvalidOperationException(connection.ConnectionID + message));
+                    if (connection.Accepted)
+                    {
+                        string message = $" sent an unrecognized server command: 0x{commandByte.ToString("X").PadLeft(2, '0')}";
+                        SendClientResponse(clientID, (byte)ServerResponse.Failed, commandByte, GetClientEncoding(clientID).GetBytes($"Client{message}"));
+                        OnProcessException(MessageLevel.Warning, new InvalidOperationException(connection.ConnectionID + message));
+                    }
+                    else
+                    {
+                        OnProcessException(MessageLevel.Warning, new InvalidOperationException($"Unrecognized server command 0x{commandByte.ToString("X").PadLeft(2, '0')} requested from client {connection.ConnectionID} rejected - operational modes have not been accepted yet. Disconnecting client."));
+                        DisconnectClient(clientID);
+                    }
                 }
             }
             catch (Exception ex)
@@ -3805,7 +3831,7 @@ namespace sttp
             try
             {
                 m_proxyClientID = Guid.NewGuid();
-                ServerCommandChannelClientConnected(sender, new(m_proxyClientID));
+                ServerCommandChannelClientConnected(sender, new EventArgs<Guid>(m_proxyClientID));
             }
             catch (Exception ex)
             {
@@ -3815,7 +3841,7 @@ namespace sttp
 
         private void ClientCommandChannelConnectionTerminated(object sender, EventArgs e)
         {
-            ServerCommandChannelClientDisconnected(sender, new(m_proxyClientID));
+            ServerCommandChannelClientDisconnected(sender, new EventArgs<Guid>(m_proxyClientID));
 
             // If user didn't initiate disconnect, restart the connection
             if (Enabled)
@@ -3847,7 +3873,7 @@ namespace sttp
         }
 
         private void ClientCommandChannelReceiveDataComplete(object sender, EventArgs<byte[], int> e) =>
-            ServerCommandChannelReceiveClientDataComplete(sender, new(m_proxyClientID, e.Argument1, e.Argument2));
+            ServerCommandChannelReceiveClientDataComplete(sender, new EventArgs<Guid, byte[], int>(m_proxyClientID, e.Argument1, e.Argument2));
 
         private void ClientCommandChannelReceiveDataException(object sender, EventArgs<Exception> e)
         {
