@@ -369,7 +369,7 @@ namespace sttp
         private volatile int m_timeIndex;
         private volatile byte[][][] m_keyIVs;
         private readonly ManualResetEventSlim m_defineOpModesCompleted;
-        private volatile bool m_connectionAccepted;
+        private volatile bool m_validated;
         private volatile bool m_subscribed;
         private volatile int m_lastBytesReceived;
         private DateTime m_lastReceivedAt;
@@ -789,6 +789,9 @@ namespace sttp
             get => (int)(m_operationalModes & OperationalModes.VersionMask);
             set
             {
+                if (value is < 1 or > 3)
+                    throw new ArgumentException("This STTP data subscriber implementation only supports version 1 to 3 of the protocol");
+
                 m_operationalModes &= ~OperationalModes.VersionMask;
                 m_operationalModes |= (OperationalModes)value;
             }
@@ -1004,7 +1007,7 @@ namespace sttp
 
                 status.AppendLine($"          Protocol version: {Version}");
                 status.AppendLine($"                 Connected: {CommandChannelConnected}");
-                status.AppendLine($" Operational modes request: {(m_connectionAccepted ? "Accepted -- Connection Validated" : m_defineOpModesCompleted.IsSet ? "Rejected -- Connection Canceled" : "Pending Response")}");
+                status.AppendLine($" Operational modes request: {(m_validated ? "Accepted -- Connection Validated" : m_defineOpModesCompleted.IsSet ? "Rejected -- Connection Canceled" : "Pending Response")}");
                 status.AppendLine($"                Subscribed: {m_subscribed}");
                 status.AppendLine($"             Security mode: {SecurityMode}");
                 status.AppendLine($"             Authenticated: {m_securityMode == SecurityMode.TLS && CommandChannelConnected}");
@@ -1303,7 +1306,7 @@ namespace sttp
                 m_securityMode = SecurityMode.None;
 
             // Apply any version override (e.g., to downgrade to older version)
-            if (settings.TryGetValue(nameof(Version), out setting) && int.TryParse(setting, out int value) && value < 32)
+            if (settings.TryGetValue(nameof(Version), out setting) && int.TryParse(setting, out int value))
                 Version = value;
 
             // Apply gateway compression mode to operational mode flags
@@ -2217,7 +2220,7 @@ namespace sttp
         /// <returns><c>true</c> if <paramref name="commandCode"/> transmission was successful; otherwise <c>false</c>.</returns>
         public virtual bool SendServerCommand(ServerCommand commandCode, byte[] data = null)
         {
-            if (!m_connectionAccepted && commandCode != ServerCommand.DefineOperationalModes)
+            if (!m_validated && commandCode != ServerCommand.DefineOperationalModes)
             {
                 OnStatusMessage(MessageLevel.Warning, "Cannot send any server command until requested operational modes for connection have been accepted.");
                 return false;
@@ -2269,7 +2272,7 @@ namespace sttp
             m_commandChannelConnectionAttempts = 0;
             m_dataChannelConnectionAttempts = 0;
 
-            m_connectionAccepted = Version < 3;
+            m_validated = Version < 3;
             m_defineOpModesCompleted.Reset();
             m_subscribed = false;
             m_keyIVs = null;
@@ -2398,12 +2401,12 @@ namespace sttp
                     int version = Version;
                     byte[][][] keyIVs;
 
-                    if (!m_connectionAccepted)
+                    if (!m_validated)
                     {
                         string message = null;
 
                         // Initial response should be succeed or failed in response to define operational modes
-                        if (commandCode != ServerCommand.DefineOperationalModes || (responseCode != ServerResponse.Succeeded && responseCode != ServerResponse.Failed))
+                        if (responseCode != ServerResponse.NoOP && (commandCode != ServerCommand.DefineOperationalModes || (responseCode != ServerResponse.Succeeded && responseCode != ServerResponse.Failed)))
                         {
                             message = $"Possible invalid protocol detected from \"{ConnectionInfo}\": encountered unexpected initial command / response code: {commandCode} / {responseCode} -- connection likely from non-STTP client, disconnecting.";
                         }
@@ -2425,7 +2428,6 @@ namespace sttp
                         if (message is not null)
                         {
                             OnStatusMessage(MessageLevel.Error, message);
-                            m_connectionAccepted = false;
                             m_defineOpModesCompleted.Set();
                             AttemptDisconnection();
                             return;
@@ -2450,7 +2452,7 @@ namespace sttp
                             {
                                 case ServerCommand.DefineOperationalModes:
                                     OnStatusMessage(MessageLevel.Info, $"Success code received in response to server command \"{commandCode}\": {InterpretResponseMessage(buffer, responseIndex, responseLength)}");
-                                    m_connectionAccepted = true;
+                                    m_validated = true;
                                     m_defineOpModesCompleted.Set();
                                     break;
                                 case ServerCommand.Subscribe:
@@ -2483,7 +2485,7 @@ namespace sttp
                                     break;
                                 case ServerCommand.DefineOperationalModes:
                                     OnStatusMessage(MessageLevel.Error, "Data publisher rejected operational modes, disconnecting...");
-                                    m_connectionAccepted = false;
+                                    m_validated = false;
                                     m_defineOpModesCompleted.Set();
                                     AttemptDisconnection();
                                     break;
@@ -3986,7 +3988,8 @@ namespace sttp
                 m_subscribedDevicesTimer?.Stop();
                 m_metadataRefreshPending = false;
                 m_expectedBufferBlockSequenceNumber = 0U;
-                m_connectionAccepted = false;
+                m_validated = false;
+                m_defineOpModesCompleted.Set();
                 m_defineOpModesCompleted.Reset();
                 m_subscribed = false;
                 m_keyIVs = null;
@@ -4616,7 +4619,7 @@ namespace sttp
                     return;
                 }
 
-                if (!m_connectionAccepted)
+                if (!m_validated)
                 {
                     OnStatusMessage(MessageLevel.Error, "Data publisher rejected connection, cancelling automated connection steps...");
                     return;
