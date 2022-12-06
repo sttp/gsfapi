@@ -249,7 +249,7 @@ namespace sttp
         /// <summary>
         /// Defines default value for <see cref="OperationalModes"/> property.
         /// </summary>
-        public const OperationalModes DefaultOperationalModes = (OperationalModes)((uint)OperationalModes.VersionMask & 2U) | OperationalModes.CompressMetadata | OperationalModes.CompressSignalIndexCache | OperationalModes.ReceiveInternalMetadata;
+        public const OperationalModes DefaultOperationalModes = (OperationalModes)((uint)OperationalModes.PreStandardVersionMask & 2U) | OperationalModes.CompressMetadata | OperationalModes.CompressSignalIndexCache | OperationalModes.ReceiveInternalMetadata;
 
         /// <summary>
         /// Defines the default value for the <see cref="MetadataSynchronizationTimeout"/> property.
@@ -786,13 +786,13 @@ namespace sttp
         /// </summary>
         public int Version
         {
-            get => (int)(m_operationalModes & OperationalModes.VersionMask);
+            get => (int)(m_operationalModes & OperationalModes.PreStandardVersionMask);
             set
             {
                 if (value is < 1 or > 3)
                     throw new ArgumentException("This STTP data subscriber implementation only supports version 1 to 3 of the protocol");
 
-                m_operationalModes &= ~OperationalModes.VersionMask;
+                m_operationalModes &= ~OperationalModes.PreStandardVersionMask;
                 m_operationalModes |= (OperationalModes)value;
             }
         }

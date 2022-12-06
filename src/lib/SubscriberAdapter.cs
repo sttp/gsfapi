@@ -796,7 +796,9 @@ namespace sttp
                         m_tsscEncoder = new TsscEncoder();
                         m_tsscWorkingBuffer = new byte[32 * 1024];
 
-                        OnStatusMessage(MessageLevel.Info, $"TSSC algorithm reset before sequence number: {m_tsscSequenceNumber}", "TSSC");
+                        if (m_tsscSequenceNumber != 0)
+                            OnStatusMessage(MessageLevel.Info, $"TSSC algorithm reset before sequence number: {m_tsscSequenceNumber}", "TSSC");
+                        
                         m_tsscSequenceNumber = 0;
                     }
 
@@ -808,20 +810,21 @@ namespace sttp
                     {
                         int index = signalIndexCache.GetSignalIndex(measurement.Key);
 
-                        if (index < int.MaxValue) // Ignore unmapped signal
+                        // Ignore unmapped signal
+                        if (index >= int.MaxValue)
+                            continue;
+
+                        if (!m_tsscEncoder.TryAddMeasurement(index, measurement.Timestamp.Value, (uint)measurement.StateFlags, (float)measurement.AdjustedValue))
                         {
-                            if (!m_tsscEncoder.TryAddMeasurement(index, measurement.Timestamp.Value, (uint)measurement.StateFlags, (float)measurement.AdjustedValue))
-                            {
-                                SendTSSCPayload(count, currentCacheIndex);
-                                count = 0;
-                                m_tsscEncoder.SetBuffer(m_tsscWorkingBuffer, 0, m_tsscWorkingBuffer.Length);
+                            SendTSSCPayload(count, currentCacheIndex);
+                            count = 0;
+                            m_tsscEncoder.SetBuffer(m_tsscWorkingBuffer, 0, m_tsscWorkingBuffer.Length);
 
-                                // This will always succeed
-                                m_tsscEncoder.TryAddMeasurement(index, measurement.Timestamp.Value, (uint)measurement.StateFlags, (float)measurement.AdjustedValue);
-                            }
-
-                            count++;
+                            // This will always succeed
+                            m_tsscEncoder.TryAddMeasurement(index, measurement.Timestamp.Value, (uint)measurement.StateFlags, (float)measurement.AdjustedValue);
                         }
+
+                        count++;
                     }
 
                     if (count > 0)

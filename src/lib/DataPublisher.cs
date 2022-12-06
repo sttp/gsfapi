@@ -521,7 +521,11 @@ namespace sttp
         /// <remarks>
         /// Version number is currently set to 2.
         /// </remarks>
-        VersionMask = (uint)(Bits.Bit04 | Bits.Bit03 | Bits.Bit02 | Bits.Bit01 | Bits.Bit00),
+        VersionMask = 0xFF,
+        /// <summary>
+        /// Mask to get version number of pre-IEEE standard implementations of protocol.
+        /// </summary>
+        PreStandardVersionMask = (uint)(Bits.Bit04 | Bits.Bit03 | Bits.Bit02 | Bits.Bit01 | Bits.Bit00),
         /// <summary>
         /// Mask to get mode of compression.
         /// </summary>
@@ -2036,7 +2040,8 @@ namespace sttp
                             }
                             else
                             {
-                                // Queue any pending update to be processed after current item
+                                // Queue any pending update to be processed after current item - this handles
+                                // updated subscription that may be occurring in quick succession
                                 lock (connection.PendingCacheUpdateLock)
                                     connection.PendingSignalIndexCache = nextSignalIndexCache;
                             }
@@ -3315,15 +3320,16 @@ namespace sttp
 
             Guid clientID = connection.ClientID;
             uint operationalModes = BigEndian.ToUInt32(buffer, startIndex);
-            uint version = operationalModes & (uint)OperationalModes.VersionMask;
+            uint version = operationalModes & (uint)OperationalModes.PreStandardVersionMask;
 
             // Currently publisher will support both version 1, 2 and 3 clients
             if (version is < 1U or > 3U)
             {
                 connection.Accepted = false;
-                OnStatusMessage(MessageLevel.Warning, $"Client connection rejected: protocol version not supported. Operational modes may not be set correctly for client {connection.ClientID}.", flags: MessageFlags.UsageIssue);
-                SendClientResponse(clientID, ServerResponse.Failed, ServerCommand.DefineOperationalModes, "Client connection rejected: protocol version defined in requested operational modes not supported.");
-                new Action(() => DisconnectClient(clientID)).DelayAndExecute(1000);
+                string message = $"Client connection rejected: requested protocol version {version} not supported. This STTP data publisher implementation only supports version 1 to 3 of the protocol.";
+                OnStatusMessage(MessageLevel.Warning, $"{message} Operational modes may not be set correctly for client \"{connection.ClientID}\" -- disconnecting client", flags: MessageFlags.UsageIssue);
+                SendClientResponse(clientID, ServerResponse.Failed, ServerCommand.DefineOperationalModes, message);
+                new Action(() => DisconnectClient(clientID)).DelayAndExecute(1000); // Allow a moment for failed response to be sent before disconnecting client
                 return;
             }
 
@@ -3335,7 +3341,7 @@ namespace sttp
             
             connection.Accepted = true;
 
-            SendClientResponse(clientID, ServerResponse.Succeeded, ServerCommand.DefineOperationalModes, "Client connection accepted: requested operational modes applied.");
+            SendClientResponse(clientID, ServerResponse.Succeeded, ServerCommand.DefineOperationalModes, $"STTP v{version} client connection accepted: requested operational modes applied.");
         }
 
         // Handle confirmation of receipt of notification 
@@ -3616,7 +3622,7 @@ namespace sttp
                 {
                     if (!connection.Accepted && command != ServerCommand.DefineOperationalModes)
                     {
-                        OnProcessException(MessageLevel.Warning, new InvalidOperationException($"{command} command request from client {connection.ConnectionID} rejected - operational modes have not been accepted yet. Disconnecting client."));
+                        OnProcessException(MessageLevel.Warning, new InvalidOperationException($"Requested server command {command} from client \"{connection.ConnectionID}\" rejected before operational modes validation -- possible non-STTP client -- disconnecting client."));
                         DisconnectClient(clientID);
                         return;
                     }

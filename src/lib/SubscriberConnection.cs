@@ -401,12 +401,25 @@ namespace sttp
             {
                 m_operationalModes = value;
 
-                m_encoding = (OperationalEncoding)(value & OperationalModes.EncodingMask) switch
+                OperationalEncoding encoding = (OperationalEncoding)(value & OperationalModes.EncodingMask);
+
+                string message = encoding switch
+                {
+                    OperationalEncoding.UTF8 => null,
+                    OperationalEncoding.UTF16LE => "Client requested UTF16 little-endian character encoding, this feature is deprecated and may be removed from future builds. IEEE 2664 will only support UTF8 encoding.",
+                    OperationalEncoding.UTF16BE => "Client requested UTF16 big-endian character encoding, this feature is deprecated and may be removed from future builds. IEEE 2664 will only support UTF8 encoding.",
+                    _ => $"Unsupported character encoding detected: 0x{encoding.ToString("X").PadLeft(2, '0')} -- defaulting to UTF8"
+                };
+
+                if (!string.IsNullOrEmpty(message))
+                    m_parent.OnStatusMessage(MessageLevel.Warning, message);
+                
+                m_encoding = encoding switch
                 {
                     OperationalEncoding.UTF16LE => Encoding.Unicode,
                     OperationalEncoding.UTF16BE => Encoding.BigEndianUnicode,
                     OperationalEncoding.UTF8 => Encoding.UTF8,
-                    _ => throw new InvalidOperationException($"Unsupported encoding detected: {value}")
+                    _ => Encoding.UTF8
                 };
             }
         }
