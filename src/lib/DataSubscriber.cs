@@ -1796,6 +1796,7 @@ namespace sttp
             connectionString.Append($"throttled={info.Throttled};");
             connectionString.Append($"publishInterval={info.PublishInterval};");
             connectionString.Append($"includeTime={info.IncludeTime};");
+            connectionString.Append($"enableTimeReasonabilityCheck={info.EnableTimeReasonabilityCheck};");
             connectionString.Append($"lagTime={info.LagTime};");
             connectionString.Append($"leadTime={info.LeadTime};");
             connectionString.Append($"useLocalClockAsRealTime={info.UseLocalClockAsRealTime};");

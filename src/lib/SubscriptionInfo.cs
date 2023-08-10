@@ -71,14 +71,23 @@ namespace sttp
         public int DataChannelLocalPort { get; set; } = 9500;
 
         /// <summary>
+        /// Gets or sets flag that determines if publisher should perform time reasonability checks.
+        /// When enabled <see cref="LagTime"/> and <see cref="LeadTime"/> will be used to determine
+        /// if a measurement is reasonable.
+        /// </summary>
+        public bool EnableTimeReasonabilityCheck {get; set; } = true;
+
+        /// <summary>
         /// Gets or sets the allowed past time deviation
         /// tolerance in seconds (can be sub-second).
+        /// Only applicable when <see cref="EnableTimeReasonabilityCheck"/> is <c>true</c>.
         /// </summary>
         public double LagTime { get; set; } = 10.0;
 
         /// <summary>
         /// Gets or sets the allowed future time deviation
         /// tolerance, in seconds (can be sub-second).
+        /// Only applicable when <see cref="EnableTimeReasonabilityCheck"/> is <c>true</c>.
         /// </summary>
         public double LeadTime { get; set; } = 5.0;
 
