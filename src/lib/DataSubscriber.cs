@@ -723,6 +723,19 @@ namespace sttp
         public bool AutoDeleteAlarmMeasurements { get; set; }
 
         /// <summary>
+        /// Gets or sets flag that determines if the data subscriber should attempt to synchronize device metadata as independent devices, i.e.,
+        /// not as children of the parent STTP device connection.
+        /// </summary>
+        /// <remarks>
+        /// This is useful when using an STTP connection to only synchronize metadata from a publisher, but not to receive data. When enabled,
+        /// the device enabled state will not be synchronized. In this mode it may be useful to add the original "ConnectionString" field to
+        /// the publisher's device metadata so it can be synchronized to the subscriber. To ensure no data is received, the subscriber should
+        /// be configured with an "OutputMeasurements" filter in the adapter's connection string that does not include any measurements, e.g.:
+        /// <code>outputMeasurements={FILTER ActiveMeasurements WHERE False}</code>
+        /// </remarks>
+        public bool SyncIndependentDevices { get; set; }
+
+        /// <summary>
         /// Gets or sets flag that determines if statistics engine should be enable for the data subscriber.
         /// </summary>
         public bool BypassStatistics { get; set; }
@@ -1002,6 +1015,7 @@ namespace sttp
                 status.AppendLine($"  Synchronize metadata IDs: {UseIdentityInsertsForMetadata}");
                 status.AppendLine($"  Auto delete CALC signals: {AutoDeleteCalculatedMeasurements}");
                 status.AppendLine($"  Auto delete ALRM signals: {AutoDeleteAlarmMeasurements}");
+                status.AppendLine($"  Sync independent devices: {SyncIndependentDevices}");
                 status.AppendLine($"  Bypass statistics engine: {BypassStatistics}");
                 status.AppendLine($"      Total bytes received: {TotalBytesReceived:N0}");
                 status.AppendLine($"      Data packet security: {(m_securityMode == SecurityMode.TLS && m_dataChannel is null ? "Secured via TLS" : m_keyIVs is null ? "Unencrypted" : "AES Encrypted")}");
@@ -1342,6 +1356,10 @@ namespace sttp
             // Check if user has defined a flag for auto-deletion of ALRM signals during meta-data synchronization
             if (settings.TryGetValue(nameof(AutoDeleteAlarmMeasurements), out setting))
                 AutoDeleteAlarmMeasurements = setting.ParseBoolean();
+
+            // Check if user has defined a flag for synchronizing independent devices during meta-data synchronization
+            if (settings.TryGetValue(nameof(SyncIndependentDevices), out setting))
+                SyncIndependentDevices = setting.ParseBoolean();
 
             // Check if user wants to request that publisher use millisecond resolution to conserve bandwidth
             #pragma warning disable CS0618 // Type or member is obsolete
@@ -2704,7 +2722,7 @@ namespace sttp
                                     throw new InvalidOperationException($"Failed to find associated signal identification for runtime ID {signalIndex}");
 
                                 // Skip the sequence number and signal index when creating the buffer block measurement
-                                BufferBlockMeasurement bufferBlockMeasurement = new BufferBlockMeasurement(buffer, responseIndex + 8, responseLength - 8)
+                                BufferBlockMeasurement bufferBlockMeasurement = new(buffer, responseIndex + 8, responseLength - 8)
                                 {
                                     Metadata = measurementKey.Metadata
                                 };
@@ -2771,12 +2789,11 @@ namespace sttp
 
                             // Deserialize new signal index cache
                             SignalIndexCache remoteSignalIndexCache = DeserializeSignalIndexCache(buffer.BlockCopy(responseIndex, responseLength));
-                            SignalIndexCache signalIndexCache = new SignalIndexCache(DataSource, remoteSignalIndexCache);
+                            SignalIndexCache signalIndexCache = new(DataSource, remoteSignalIndexCache);
 
                             lock (m_signalIndexCacheLock)
                             {
-                                if (m_signalIndexCache is null)
-                                    m_signalIndexCache = new SignalIndexCache[version > 1 ? 2 : 1];
+                                m_signalIndexCache ??= new SignalIndexCache[version > 1 ? 2 : 1];
 
                                 m_signalIndexCache[cacheIndex] = signalIndexCache;
                                 m_remoteSignalIndexCache = remoteSignalIndexCache;
@@ -2942,7 +2959,7 @@ namespace sttp
                 if (!signalIndexCache.Reference.TryGetValue(id, out MeasurementKey key) || key is null)
                     continue;
 
-                Measurement measurement = new Measurement
+                Measurement measurement = new()
                 {
                     Metadata = key.Metadata,
                     Timestamp = time,
@@ -3140,24 +3157,26 @@ namespace sttp
                             string deviceExistsSql = database.ParameterizedQueryString("SELECT COUNT(*) FROM Device WHERE UniqueID = {0}", "uniqueID");
 
                             // Define SQL statement to insert new device record
-                            string insertDeviceSql = database.ParameterizedQueryString("INSERT INTO Device(NodeID, ParentID, HistorianID, Acronym, Name, ProtocolID, FramesPerSecond, OriginalSource, AccessID, Longitude, Latitude, ContactList, IsConcentrator, Enabled) " +
-                                                                                       "VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11}, 0, 1)", "nodeID", "parentID", "historianID", "acronym", "name", "protocolID", "framesPerSecond", "originalSource", "accessID", "longitude", "latitude", "contactList");
+                            string insertDeviceSql = database.ParameterizedQueryString("INSERT INTO Device(NodeID, ParentID, HistorianID, Acronym, Name, ProtocolID, FramesPerSecond, OriginalSource, AccessID, Longitude, Latitude, ContactList, IsConcentrator, Enabled, ConnectionString) " +
+                                                                                       "VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11}, 0, " + (SyncIndependentDevices ? "0" : "1") + ", {12})",
+                                                                                       "nodeID", "parentID", "historianID", "acronym", "name", "protocolID", "framesPerSecond", "originalSource", "accessID", "longitude", "latitude", "contactList", "connectionString");
 
                             // Define SQL statement to update device's guid-based unique ID after insert
                             string updateDeviceUniqueIDSql = database.ParameterizedQueryString("UPDATE Device SET UniqueID = {0} WHERE Acronym = {1}", "uniqueID", "acronym");
 
                             // Define SQL statement to query if a device can be safely updated
-                            string deviceIsUpdatableSql = database.ParameterizedQueryString("SELECT COUNT(*) FROM Device WHERE UniqueID = {0} AND (ParentID <> {1} OR ParentID IS NULL)", "uniqueID", "parentID");
+                            string devceParentRestriction = SyncIndependentDevices ? "OriginalSource <> {1}" : "(ParentID <> {1} OR ParentID IS NULL)";
+                            string deviceIsUpdatableSql = database.ParameterizedQueryString("SELECT COUNT(*) FROM Device WHERE UniqueID = {0} AND " + devceParentRestriction, "uniqueID", "parentID");
 
                             // Define SQL statement to update existing device record
-                            string updateDeviceSql = database.ParameterizedQueryString("UPDATE Device SET Acronym = {0}, Name = {1}, OriginalSource = {2}, ProtocolID = {3}, FramesPerSecond = {4}, HistorianID = {5}, AccessID = {6}, Longitude = {7}, Latitude = {8}, ContactList = {9} WHERE UniqueID = {10}",
-                                                                                       "acronym", "name", "originalSource", "protocolID", "framesPerSecond", "historianID", "accessID", "longitude", "latitude", "contactList", "uniqueID");
+                            string updateDeviceSql = database.ParameterizedQueryString("UPDATE Device SET Acronym = {0}, Name = {1}, OriginalSource = {2}, ProtocolID = {3}, FramesPerSecond = {4}, HistorianID = {5}, AccessID = {6}, Longitude = {7}, Latitude = {8}, ContactList = {9}, ConnectionString = {10} WHERE UniqueID = {11}",
+                                                                                       "acronym", "name", "originalSource", "protocolID", "framesPerSecond", "historianID", "accessID", "longitude", "latitude", "contactList", "connectionString", "uniqueID");
 
                             // Define SQL statement to retrieve device's auto-inc ID based on its unique guid-based ID
                             string queryDeviceIDSql = database.ParameterizedQueryString("SELECT ID FROM Device WHERE UniqueID = {0}", "uniqueID");
 
                             // Define SQL statement to retrieve all unique device ID's for the current parent to check for mismatches
-                            string queryUniqueDeviceIDsSql = database.ParameterizedQueryString("SELECT UniqueID FROM Device WHERE ParentID = {0}", "parentID");
+                            string queryUniqueDeviceIDsSql = database.ParameterizedQueryString($"SELECT UniqueID FROM Device WHERE {(SyncIndependentDevices ? "OriginalSource" : "ParentID")} = {0}", "parentID");
 
                             // Define SQL statement to remove device records that no longer exist in the meta-data
                             string deleteDeviceSql = database.ParameterizedQueryString("DELETE FROM Device WHERE UniqueID = {0}", "uniqueID");
@@ -3183,6 +3202,7 @@ namespace sttp
                             bool vendorDeviceNameFieldExists = deviceDetailColumns.Contains("VendorDeviceName");
                             bool interconnectionNameFieldExists = deviceDetailColumns.Contains("InterconnectionName");
                             bool updatedOnFieldExists = deviceDetailColumns.Contains("UpdatedOn");
+                            bool connectionStringFieldExists = deviceDetailColumns.Contains("ConnectionString");
                             int accessID = 0;
 
                             List<Guid> uniqueIDs = deviceRows
@@ -3194,7 +3214,7 @@ namespace sttp
                             {
                                 // ReSharper disable once AccessToDisposedClosure
                                 IEnumerable<Guid> retiredUniqueIDs = command
-                                    .RetrieveData(database.AdapterType, queryUniqueDeviceIDsSql, MetadataSynchronizationTimeout, parentID)
+                                    .RetrieveData(database.AdapterType, queryUniqueDeviceIDsSql, MetadataSynchronizationTimeout, SyncIndependentDevices ? parentID.ToString() : parentID)
                                     .Select()
                                     .Select(deviceRow => database.Guid(deviceRow, "UniqueID"))
                                     .Except(uniqueIDs);
@@ -3241,6 +3261,8 @@ namespace sttp
                                     decimal longitude = 0M;
                                     decimal latitude = 0M;
                                     decimal? location;
+                                    string protocolName = null;
+                                    string connectionString = null;
 
                                     if (longitudeFieldExists)
                                     {
@@ -3258,6 +3280,12 @@ namespace sttp
                                             latitude = location.Value;
                                     }
 
+                                    if (protocolNameFieldExists)
+                                        protocolName = row.Field<string>("ProtocolName") ?? string.Empty;
+
+                                    if (connectionStringFieldExists)
+                                        connectionString = row.Field<string>("ConnectionString") ?? string.Empty;
+
                                     // Save any reported extraneous values from device meta-data in connection string formatted contact list - all fields are considered optional
                                     Dictionary<string, string> contactList = new();
 
@@ -3265,7 +3293,7 @@ namespace sttp
                                         contactList["companyAcronym"] = row.Field<string>("CompanyAcronym") ?? string.Empty;
 
                                     if (protocolNameFieldExists)
-                                        contactList["protocolName"] = row.Field<string>("ProtocolName") ?? string.Empty;
+                                        contactList["protocolName"] = protocolName;
 
                                     if (vendorAcronymFieldExists)
                                         contactList["vendorAcronym"] = row.Field<string>("VendorAcronym") ?? string.Empty;
@@ -3276,6 +3304,22 @@ namespace sttp
                                     if (interconnectionNameFieldExists)
                                         contactList["interconnectionName"] = row.Field<string>("InterconnectionName") ?? string.Empty;
 
+                                    int protocolID = m_sttpProtocolID;
+
+                                    // If we are synchronizing independent devices, we need to determine the protocol ID for the device
+                                    // based on the protocol name defined in the meta-data
+                                    if (SyncIndependentDevices && !string.IsNullOrWhiteSpace(protocolName))
+                                    {
+                                        string queryProtocolIDSql = database.ParameterizedQueryString("SELECT ID FROM Protocol WHERE Name = {0}", "protocolName");
+                                        object protocolIDValue = command.ExecuteScalar(queryProtocolIDSql, MetadataSynchronizationTimeout, protocolName);
+
+                                        if (protocolIDValue is not null && protocolIDValue is not DBNull)
+                                            protocolID = Convert.ToInt32(protocolIDValue);
+
+                                        if (protocolID == 0)
+                                            protocolID = m_sttpProtocolID;
+                                    }
+
                                     // For mutual subscriptions where this subscription is owner (i.e., internal is true), we only sync devices that we did not provide
                                     if (!MutualSubscription || !Internal || string.IsNullOrEmpty(row.Field<string>("OriginalSource")))
                                     {
@@ -3283,15 +3327,18 @@ namespace sttp
                                         // ownership is inferred by setting 'OriginalSource' to null. When gateway doesn't own device records (i.e., the "internal" flag is false), this means the device's measurements can only be consumed
                                         // locally - from a device record perspective this means the 'OriginalSource' field is set to the acronym of the PDC or PMU that generated the source measurements. This field allows a mirrored source
                                         // restriction to be implemented later to ensure all devices in an output protocol came from the same original source connection, if desired.
-                                        object originalSource = Internal ? (object)DBNull.Value : string.IsNullOrEmpty(row.Field<string>("ParentAcronym")) ? sourcePrefix + row.Field<string>("Acronym") : sourcePrefix + row.Field<string>("ParentAcronym");
+                                        object originalSource = SyncIndependentDevices ? parentID.ToString() : Internal ? (object)DBNull.Value : 
+                                                                string.IsNullOrEmpty(row.Field<string>("ParentAcronym")) ? 
+                                                                    sourcePrefix + row.Field<string>("Acronym") : 
+                                                                    sourcePrefix + row.Field<string>("ParentAcronym");
 
                                         // Determine if device record already exists
                                         if (Convert.ToInt32(command.ExecuteScalar(deviceExistsSql, MetadataSynchronizationTimeout, database.Guid(uniqueID))) == 0)
                                         {
                                             // Insert new device record
                                             command.ExecuteNonQuery(insertDeviceSql, MetadataSynchronizationTimeout, database.Guid(m_nodeID), parentID, historianID, sourcePrefix + row.Field<string>("Acronym"),
-                                                row.Field<string>("Name"), m_sttpProtocolID, row.ConvertField<int>("FramesPerSecond"),
-                                                originalSource, accessID, longitude, latitude, contactList.JoinKeyValuePairs());
+                                                row.Field<string>("Name"), protocolID, row.ConvertField<int>("FramesPerSecond"),
+                                                originalSource, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString);
 
                                             // Guids are normally auto-generated during insert - after insertion update the Guid so that it matches the source data. Most of the database
                                             // scripts have triggers that support properly assigning the Guid during an insert, but this code ensures the Guid will always get assigned.
@@ -3300,12 +3347,12 @@ namespace sttp
                                         else if (recordNeedsUpdating)
                                         {
                                             // Perform safety check to preserve device records which are not safe to overwrite (e.g., device already exists locally as part of another connection)
-                                            if (Convert.ToInt32(command.ExecuteScalar(deviceIsUpdatableSql, MetadataSynchronizationTimeout, database.Guid(uniqueID), parentID)) > 0)
+                                            if (Convert.ToInt32(command.ExecuteScalar(deviceIsUpdatableSql, MetadataSynchronizationTimeout, database.Guid(uniqueID), SyncIndependentDevices ? parentID.ToString() : parentID)) > 0)
                                                 continue;
 
                                             // Update existing device record
                                             command.ExecuteNonQuery(updateDeviceSql, MetadataSynchronizationTimeout, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
-                                                originalSource, m_sttpProtocolID, row.ConvertField<int>("FramesPerSecond"), historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Guid(uniqueID));
+                                                originalSource, protocolID, row.ConvertField<int>("FramesPerSecond"), historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString, database.Guid(uniqueID));
                                         }
                                     }
                                 }
@@ -3717,7 +3764,7 @@ namespace sttp
                         remoteSignalIndexCache = m_remoteSignalIndexCache;
                     }
                     
-                    SignalIndexCache signalIndexCache = new SignalIndexCache(DataSource, remoteSignalIndexCache);
+                    SignalIndexCache signalIndexCache = new(DataSource, remoteSignalIndexCache);
 
                     if (signalIndexCache.Reference.Count > 0)
                     {
