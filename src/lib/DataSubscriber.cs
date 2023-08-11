@@ -421,12 +421,12 @@ namespace sttp
         /// </summary>
         public DataSubscriber()
         {
-            m_registerStatisticsOperation = new(HandleDeviceStatisticsRegistration)
+            m_registerStatisticsOperation = new LongSynchronizedOperation(HandleDeviceStatisticsRegistration)
             {
                 IsBackground = true
             };
 
-            m_synchronizeMetadataOperation = new(SynchronizeMetadata)
+            m_synchronizeMetadataOperation = new LongSynchronizedOperation(SynchronizeMetadata)
             {
                 IsBackground = true
             };
@@ -454,10 +454,10 @@ namespace sttp
             }
 
             DataLossInterval = 10.0D;
-            m_bufferBlockCache = new();
+            m_bufferBlockCache = new List<BufferBlockMeasurement>();
             UseLocalClockAsRealTime = true;
             UseSourcePrefixNames = true;
-            m_signalIndexCacheLock = new();
+            m_signalIndexCacheLock = new object();
         }
 
         #endregion
@@ -2793,7 +2793,7 @@ namespace sttp
 
                             lock (m_signalIndexCacheLock)
                             {
-                                m_signalIndexCache ??= new SignalIndexCache[version > 1 ? 2 : 1];
+                               Interlocked.CompareExchange(ref m_signalIndexCache, new SignalIndexCache[version > 1 ? 2 : 1], null);
 
                                 m_signalIndexCache[cacheIndex] = signalIndexCache;
                                 m_remoteSignalIndexCache = remoteSignalIndexCache;
@@ -3157,8 +3157,8 @@ namespace sttp
                             string deviceExistsSql = database.ParameterizedQueryString("SELECT COUNT(*) FROM Device WHERE UniqueID = {0}", "uniqueID");
 
                             // Define SQL statement to insert new device record
-                            string insertDeviceSql = database.ParameterizedQueryString("INSERT INTO Device(NodeID, ParentID, HistorianID, Acronym, Name, ProtocolID, FramesPerSecond, OriginalSource, AccessID, Longitude, Latitude, ContactList, IsConcentrator, Enabled, ConnectionString) " +
-                                                                                       "VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11}, 0, " + (SyncIndependentDevices ? "0" : "1") + ", {12})",
+                            string insertDeviceSql = database.ParameterizedQueryString("INSERT INTO Device(NodeID, ParentID, HistorianID, Acronym, Name, ProtocolID, FramesPerSecond, OriginalSource, AccessID, Longitude, Latitude, ContactList, ConnectionString, IsConcentrator, Enabled) " +
+                                                                                       "VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11}, {12}, 0, " + (SyncIndependentDevices ? "0" : "1") + ")",
                                                                                        "nodeID", "parentID", "historianID", "acronym", "name", "protocolID", "framesPerSecond", "originalSource", "accessID", "longitude", "latitude", "contactList", "connectionString");
 
                             // Define SQL statement to update device's guid-based unique ID after insert
@@ -3176,7 +3176,7 @@ namespace sttp
                             string queryDeviceIDSql = database.ParameterizedQueryString("SELECT ID FROM Device WHERE UniqueID = {0}", "uniqueID");
 
                             // Define SQL statement to retrieve all unique device ID's for the current parent to check for mismatches
-                            string queryUniqueDeviceIDsSql = database.ParameterizedQueryString($"SELECT UniqueID FROM Device WHERE {(SyncIndependentDevices ? "OriginalSource" : "ParentID")} = {0}", "parentID");
+                            string queryUniqueDeviceIDsSql = database.ParameterizedQueryString($"SELECT UniqueID FROM Device WHERE {(SyncIndependentDevices ? "OriginalSource" : "ParentID")} = {{0}}", "parentID");
 
                             // Define SQL statement to remove device records that no longer exist in the meta-data
                             string deleteDeviceSql = database.ParameterizedQueryString("DELETE FROM Device WHERE UniqueID = {0}", "uniqueID");
@@ -3203,6 +3203,7 @@ namespace sttp
                             bool interconnectionNameFieldExists = deviceDetailColumns.Contains("InterconnectionName");
                             bool updatedOnFieldExists = deviceDetailColumns.Contains("UpdatedOn");
                             bool connectionStringFieldExists = deviceDetailColumns.Contains("ConnectionString");
+                            object parentIDValue = SyncIndependentDevices ? parentID.ToString() : parentID;
                             int accessID = 0;
 
                             List<Guid> uniqueIDs = deviceRows
@@ -3214,7 +3215,7 @@ namespace sttp
                             {
                                 // ReSharper disable once AccessToDisposedClosure
                                 IEnumerable<Guid> retiredUniqueIDs = command
-                                    .RetrieveData(database.AdapterType, queryUniqueDeviceIDsSql, MetadataSynchronizationTimeout, SyncIndependentDevices ? parentID.ToString() : parentID)
+                                    .RetrieveData(database.AdapterType, queryUniqueDeviceIDsSql, MetadataSynchronizationTimeout, parentIDValue)
                                     .Select()
                                     .Select(deviceRow => database.Guid(deviceRow, "UniqueID"))
                                     .Except(uniqueIDs);
@@ -3336,8 +3337,8 @@ namespace sttp
                                         if (Convert.ToInt32(command.ExecuteScalar(deviceExistsSql, MetadataSynchronizationTimeout, database.Guid(uniqueID))) == 0)
                                         {
                                             // Insert new device record
-                                            command.ExecuteNonQuery(insertDeviceSql, MetadataSynchronizationTimeout, database.Guid(m_nodeID), parentID, historianID, sourcePrefix + row.Field<string>("Acronym"),
-                                                row.Field<string>("Name"), protocolID, row.ConvertField<int>("FramesPerSecond"),
+                                            command.ExecuteNonQuery(insertDeviceSql, MetadataSynchronizationTimeout, database.Guid(m_nodeID), SyncIndependentDevices ? DBNull.Value : parentID,
+                                                historianID, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"), protocolID, row.ConvertField<int>("FramesPerSecond"),
                                                 originalSource, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString);
 
                                             // Guids are normally auto-generated during insert - after insertion update the Guid so that it matches the source data. Most of the database
@@ -3347,7 +3348,7 @@ namespace sttp
                                         else if (recordNeedsUpdating)
                                         {
                                             // Perform safety check to preserve device records which are not safe to overwrite (e.g., device already exists locally as part of another connection)
-                                            if (Convert.ToInt32(command.ExecuteScalar(deviceIsUpdatableSql, MetadataSynchronizationTimeout, database.Guid(uniqueID), SyncIndependentDevices ? parentID.ToString() : parentID)) > 0)
+                                            if (Convert.ToInt32(command.ExecuteScalar(deviceIsUpdatableSql, MetadataSynchronizationTimeout, database.Guid(uniqueID), parentIDValue)) > 0)
                                                 continue;
 
                                             // Update existing device record
@@ -3640,6 +3641,7 @@ namespace sttp
                                 deviceAcronym = row.Field<string>("DeviceAcronym") ?? string.Empty;
 
                                 // Make sure we have an associated device already defined for the phasor record
+                                // ReSharper disable once CanSimplifyDictionaryLookupWithTryGetValue
                                 if (!string.IsNullOrWhiteSpace(deviceAcronym) && deviceIDs.ContainsKey(deviceAcronym))
                                 {
                                     bool recordNeedsUpdating;
