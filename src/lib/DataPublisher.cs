@@ -811,7 +811,7 @@ namespace sttp
         private readonly BlockAllocatedMemoryStream m_publishBuffer;
         private SharedTimer m_cipherKeyRotationTimer;
         private long m_commandChannelConnectionAttempts;
-        private Guid m_proxyClientID;
+        private Guid? m_proxyClientID;
         private RoutingTables m_routingTables;
         private bool m_encryptPayload;
 
@@ -1746,12 +1746,11 @@ namespace sttp
         private string EnumerateClients(bool filterToTemporalSessions)
         {
             StringBuilder clientEnumeration = new();
-            Guid[] clientIDs = (Guid[])m_serverCommandChannel?.ClientIDs.Clone() ?? new[] { m_proxyClientID };
+            Guid[] clientIDs = (Guid[])m_serverCommandChannel?.ClientIDs.Clone() ?? new[] { m_proxyClientID.GetValueOrDefault() };
 
-            if (filterToTemporalSessions)
-                clientEnumeration.AppendLine($"{Environment.NewLine}Indices for connected clients with active temporal sessions:{Environment.NewLine}");
-            else
-                clientEnumeration.AppendLine($"{Environment.NewLine}Indices for {clientIDs.Length:N0} connected clients:{Environment.NewLine}");
+            clientEnumeration.AppendLine(filterToTemporalSessions ? 
+                $"{Environment.NewLine}Indices for connected clients with active temporal sessions:{Environment.NewLine}" : 
+                $"{Environment.NewLine}Indices for {clientIDs.Length:N0} connected clients:{Environment.NewLine}");
 
             for (int i = 0; i < clientIDs.Length; i++)
             {
@@ -1785,7 +1784,7 @@ namespace sttp
 
             try
             {
-                clientID = m_serverCommandChannel?.ClientIDs[clientIndex] ?? m_proxyClientID;
+                clientID = m_serverCommandChannel?.ClientIDs[clientIndex] ?? m_proxyClientID.GetValueOrDefault();
             }
             catch
             {
@@ -1814,7 +1813,7 @@ namespace sttp
 
             try
             {
-                clientID = m_serverCommandChannel?.ClientIDs[clientIndex] ?? m_proxyClientID;
+                clientID = m_serverCommandChannel?.ClientIDs[clientIndex] ?? m_proxyClientID.GetValueOrDefault();
             }
             catch
             {
@@ -1845,7 +1844,7 @@ namespace sttp
 
             try
             {
-                clientID = m_serverCommandChannel?.ClientIDs[clientIndex] ?? m_proxyClientID;
+                clientID = m_serverCommandChannel?.ClientIDs[clientIndex] ?? m_proxyClientID.GetValueOrDefault();
             }
             catch
             {
@@ -2651,13 +2650,13 @@ namespace sttp
                 {
                     connection.Dispose();
 
-                    if (clientID == m_proxyClientID)
-                        OnStatusMessage(MessageLevel.Info, "Data publisher client-based connection disconnected from subscriber.");
-                    else
-                        OnStatusMessage(MessageLevel.Info, "Client disconnected from command channel.");
+                    OnStatusMessage(MessageLevel.Info, clientID == m_proxyClientID ? 
+                        "Data publisher client-based connection disconnected from subscriber." : 
+                        "Client disconnected from command channel.");
                 }
 
                 m_clientPublicationChannels.TryRemove(clientID, out _);
+                m_proxyClientID = null;
             }
             catch (Exception ex)
             {
@@ -3695,15 +3694,12 @@ namespace sttp
                 ClientNotFoundExceptionOccurred = false
             };
 
+            TryFindClientDetails(connection);
+
             if (ValidateClientIPAddress)
-            {
-                TryFindClientDetails(connection);
                 connection.Authenticated = connection.ValidIPAddresses.Contains(connection.IPAddress);
-            }
             else if (ValidateMeasurementRights)
-            {
                 connection.Authenticated = true;
-            }
 
             ClientConnections[clientID] = connection;
 
@@ -3800,8 +3796,14 @@ namespace sttp
         {
             try
             {
-                m_proxyClientID = Guid.NewGuid();
-                ServerCommandChannelClientConnected(sender, new EventArgs<Guid>(m_proxyClientID));
+                // Prevent duplicate proxy client connection establishment calls - TLS client may raise this event multiple times
+                if (m_proxyClientID is not null && ClientConnections.ContainsKey(m_proxyClientID.GetValueOrDefault()))
+                    return;
+
+                OnStatusMessage(MessageLevel.Info, "Client-based command channel subscriber connection established.");
+
+                m_proxyClientID ??= Guid.NewGuid();
+                ServerCommandChannelClientConnected(sender, new EventArgs<Guid>(m_proxyClientID.GetValueOrDefault()));
             }
             catch (Exception ex)
             {
@@ -3811,7 +3813,7 @@ namespace sttp
 
         private void ClientCommandChannelConnectionTerminated(object sender, EventArgs e)
         {
-            ServerCommandChannelClientDisconnected(sender, new EventArgs<Guid>(m_proxyClientID));
+            ServerCommandChannelClientDisconnected(sender, new EventArgs<Guid>(m_proxyClientID.GetValueOrDefault()));
 
             // If user didn't initiate disconnect, restart the connection
             if (Enabled)
@@ -3838,18 +3840,20 @@ namespace sttp
         {
             Exception ex = e.Argument;
 
-            if (!HandleSocketException(m_proxyClientID, ex) && ex is not ObjectDisposedException)
+            if (!HandleSocketException(m_proxyClientID.GetValueOrDefault(), ex) && ex is not ObjectDisposedException)
                 OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data publisher encountered an exception while sending client-based command channel data to subscriber connection: {ex.Message}", ex));
         }
 
-        private void ClientCommandChannelReceiveDataComplete(object sender, EventArgs<byte[], int> e) =>
-            ServerCommandChannelReceiveClientDataComplete(sender, new EventArgs<Guid, byte[], int>(m_proxyClientID, e.Argument1, e.Argument2));
+        private void ClientCommandChannelReceiveDataComplete(object sender, EventArgs<byte[], int> e)
+        {
+            ServerCommandChannelReceiveClientDataComplete(sender, new EventArgs<Guid, byte[], int>(m_proxyClientID.GetValueOrDefault(), e.Argument1, e.Argument2));
+        }
 
         private void ClientCommandChannelReceiveDataException(object sender, EventArgs<Exception> e)
         {
             Exception ex = e.Argument;
 
-            if (!HandleSocketException(m_proxyClientID, ex) && ex is not ObjectDisposedException)
+            if (!HandleSocketException(m_proxyClientID.GetValueOrDefault(), ex) && ex is not ObjectDisposedException)
                 OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data publisher encountered an exception while receiving client-based command channel data from subscriber connection: {ex.Message}", ex));
         }
 
