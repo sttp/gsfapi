@@ -22,7 +22,7 @@
 //       Fixed issue when DataSubscriber tries to resubscribe by setting subscriber. Initialized
 //       manually in ReceiveClientDataComplete event handler.
 //  12/02/2010 - J. Ritchie Carroll
-//       Fixed an issue for when DataSubcriber dynamically resubscribes with a different
+//       Fixed an issue for when DataSubscriber dynamically resubscribes with a different
 //       synchronization method (e.g., going from unsynchronized to synchronized)
 //  05/26/2011 - J. Ritchie Carroll
 //       Implemented subscriber authentication model.
@@ -1997,7 +1997,7 @@ namespace sttp
             {
                 if (connection.Version > 1)
                 {
-                    SignalIndexCache nextSignalIndexCache = new SignalIndexCache
+                    SignalIndexCache nextSignalIndexCache = new()
                     {
                         Reference = reference,
                         UnauthorizedSignalIDs = unauthorizedKeys.ToArray()
@@ -3055,7 +3055,7 @@ namespace sttp
         /// <param name="connection">Client connection requesting meta-data.</param>
         /// <param name="filterExpressions">Any meta-data filter expressions requested by client.</param>
         /// <returns>Meta-data to be returned to client.</returns>
-        protected virtual DataSet AquireMetadata(SubscriberConnection connection, Dictionary<string, Tuple<string, string, int>> filterExpressions)
+        protected virtual DataSet AcquireMetadata(SubscriberConnection connection, Dictionary<string, Tuple<string, string, int>> filterExpressions)
         {
             using AdoDataConnection adoDatabase = new("systemSettings");
             IDbConnection dbConnection = adoDatabase.Connection;
@@ -3140,60 +3140,58 @@ namespace sttp
                         DataRow newRow = metadataTable.NewRow();
 
                         // Copy each column of data in the current row
-                        for (int x = 0; x < table.Columns.Count; x++)
-                            newRow[x] = row[x];
+                        for (int columnIndex = 0; columnIndex < table.Columns.Count; columnIndex++)
+                            newRow[columnIndex] = row[columnIndex];
 
                         metadataTable.Rows.Add(newRow);
                     }
                 }
             }
 
-            // TODO: Although protected against unprovided tables and columns, this post-analysis operation is schema specific. This may need to be moved to an external function and executed via delegate to allow this kind of work for other schemas.
-
             // Do some post analysis on the meta-data to be delivered to the client, e.g., if a device exists with no associated measurements - don't send the device.
-            if (metadata.Tables.Contains("MeasurementDetail") && metadata.Tables["MeasurementDetail"].Columns.Contains("DeviceAcronym") && metadata.Tables.Contains("DeviceDetail") && metadata.Tables["DeviceDetail"].Columns.Contains("Acronym"))
+            if (!metadata.Tables.Contains("MeasurementDetail") || !metadata.Tables["MeasurementDetail"].Columns.Contains("DeviceAcronym") || !metadata.Tables.Contains("DeviceDetail") || !metadata.Tables["DeviceDetail"].Columns.Contains("Acronym"))
+                return metadata;
+
+            List<DataRow> rowsToRemove = new();
+            string deviceAcronym;
+
+            // Remove device records where no associated measurements records exist
+            foreach (DataRow row in metadata.Tables["DeviceDetail"].Rows)
             {
-                List<DataRow> rowsToRemove = new();
-                string deviceAcronym;
+                deviceAcronym = row["Acronym"].ToNonNullString();
 
-                // Remove device records where no associated measurements records exist
-                foreach (DataRow row in metadata.Tables["DeviceDetail"].Rows)
+                if (!string.IsNullOrEmpty(deviceAcronym) && (int)metadata.Tables["MeasurementDetail"].Compute("Count(DeviceAcronym)", $"DeviceAcronym = '{deviceAcronym}'") == 0)
+                    rowsToRemove.Add(row);
+            }
+
+            if (metadata.Tables.Contains("PhasorDetail") && metadata.Tables["PhasorDetail"].Columns.Contains("DeviceAcronym"))
+            {
+                // Remove phasor records where no associated device records exist
+                foreach (DataRow row in metadata.Tables["PhasorDetail"].Rows)
                 {
-                    deviceAcronym = row["Acronym"].ToNonNullString();
+                    deviceAcronym = row["DeviceAcronym"].ToNonNullString();
 
-                    if (!string.IsNullOrEmpty(deviceAcronym) && (int)metadata.Tables["MeasurementDetail"].Compute("Count(DeviceAcronym)", $"DeviceAcronym = '{deviceAcronym}'") == 0)
+                    if (!string.IsNullOrEmpty(deviceAcronym) && (int)metadata.Tables["DeviceDetail"].Compute("Count(Acronym)", $"Acronym = '{deviceAcronym}'") == 0)
                         rowsToRemove.Add(row);
                 }
 
-                if (metadata.Tables.Contains("PhasorDetail") && metadata.Tables["PhasorDetail"].Columns.Contains("DeviceAcronym"))
+                if (metadata.Tables["PhasorDetail"].Columns.Contains("SourceIndex") && metadata.Tables["MeasurementDetail"].Columns.Contains("PhasorSourceIndex"))
                 {
-                    // Remove phasor records where no associated device records exist
-                    foreach (DataRow row in metadata.Tables["PhasorDetail"].Rows)
+                    // Remove measurement records where no associated phasor records exist
+                    foreach (DataRow row in metadata.Tables["MeasurementDetail"].Rows)
                     {
                         deviceAcronym = row["DeviceAcronym"].ToNonNullString();
+                        int? phasorSourceIndex = row.ConvertField<int?>("PhasorSourceIndex");
 
-                        if (!string.IsNullOrEmpty(deviceAcronym) && (int)metadata.Tables["DeviceDetail"].Compute("Count(Acronym)", $"Acronym = '{deviceAcronym}'") == 0)
+                        if (!string.IsNullOrEmpty(deviceAcronym) && phasorSourceIndex is not null && (int)metadata.Tables["PhasorDetail"].Compute("Count(DeviceAcronym)", $"DeviceAcronym = '{deviceAcronym}' AND SourceIndex = {phasorSourceIndex}") == 0)
                             rowsToRemove.Add(row);
                     }
-
-                    if (metadata.Tables["PhasorDetail"].Columns.Contains("SourceIndex") && metadata.Tables["MeasurementDetail"].Columns.Contains("PhasorSourceIndex"))
-                    {
-                        // Remove measurement records where no associated phasor records exist
-                        foreach (DataRow row in metadata.Tables["MeasurementDetail"].Rows)
-                        {
-                            deviceAcronym = row["DeviceAcronym"].ToNonNullString();
-                            int? phasorSourceIndex = row.ConvertField<int?>("PhasorSourceIndex");
-
-                            if (!string.IsNullOrEmpty(deviceAcronym) && phasorSourceIndex is not null && (int)metadata.Tables["PhasorDetail"].Compute("Count(DeviceAcronym)", $"DeviceAcronym = '{deviceAcronym}' AND SourceIndex = {phasorSourceIndex}") == 0)
-                                rowsToRemove.Add(row);
-                        }
-                    }
                 }
-
-                // Remove any unnecessary rows
-                foreach (DataRow row in rowsToRemove)
-                    row.Delete();
             }
+
+            // Remove any unnecessary rows
+            foreach (DataRow row in rowsToRemove)
+                row.Delete();
 
             return metadata;
         }
@@ -3243,7 +3241,7 @@ namespace sttp
 
             try
             {
-                DataSet metadata = AquireMetadata(connection, filterExpressions);
+                DataSet metadata = AcquireMetadata(connection, filterExpressions);
                 byte[] serializedMetadata = SerializeMetadata(clientID, metadata);
                 long rowCount = metadata.Tables.Cast<DataTable>().Select(dataTable => (long)dataTable.Rows.Count).Sum();
 
@@ -3444,13 +3442,11 @@ namespace sttp
 
             if (!compressSignalIndexCache || !compressionModes.HasFlag(CompressionModes.GZip))
             {
-                if (connection.Version > 1)
-                {
-                    compressedData.Write(serializedSignalIndexCache);
-                    return compressedData.ToArray();
-                }
-
-                return serializedSignalIndexCache;
+                if (connection.Version <= 1)
+                    return serializedSignalIndexCache;
+                
+                compressedData.Write(serializedSignalIndexCache);
+                return compressedData.ToArray();
             }
 
             GZipStream deflater = null;

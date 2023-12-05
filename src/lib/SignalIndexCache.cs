@@ -114,7 +114,7 @@ namespace sttp
             else
             {
                 DataTable activeMeasurements = dataSource.Tables["ActiveMeasurements"];
-                ConcurrentDictionary<int, MeasurementKey> reference = new ConcurrentDictionary<int, MeasurementKey>();
+                ConcurrentDictionary<int, MeasurementKey> reference = new();
 
                 foreach (KeyValuePair<int, MeasurementKey> signalIndex in remoteCache.Reference)
                 {
