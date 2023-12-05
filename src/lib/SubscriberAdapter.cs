@@ -114,15 +114,15 @@ namespace sttp
             ClientID = clientID;
             SubscriberID = subscriberID;
             m_compressionModes = compressionModes;
-            m_bufferBlockCache = new();
-            m_bufferBlockCacheLock = new();
-            m_tsscSyncLock = new();
+            m_bufferBlockCache = new List<byte[]>();
+            m_bufferBlockCacheLock = new object();
+            m_tsscSyncLock = new object();
             m_parent.ClientConnections.TryGetValue(ClientID, out m_connection);
 
             if (m_connection is null)
                 throw new NullReferenceException("Subscriber adapter failed to find associated connection");
             
-            m_connection.SignalIndexCache = new() { SubscriberID = subscriberID };
+            m_connection.SignalIndexCache = new SignalIndexCache { SubscriberID = subscriberID };
         }
 
         #endregion
@@ -698,7 +698,7 @@ namespace sttp
                     {
                         // Serialize the current measurement.
                         IBinaryMeasurement binaryMeasurement = useCompactMeasurementFormat ?
-                            (IBinaryMeasurement)new CompactMeasurement(measurement, signalIndexCache, m_includeTime, m_baseTimeOffsets, m_timeIndex, m_useMillisecondResolution) :
+                            new CompactMeasurement(measurement, signalIndexCache, m_includeTime, m_baseTimeOffsets, m_timeIndex, m_useMillisecondResolution) :
                             new SerializableMeasurement(measurement, m_parent.GetClientEncoding(ClientID));
 
                         // Determine the size of the measurement in bytes.
@@ -793,7 +793,7 @@ namespace sttp
                     if (m_tsscEncoder is null || m_resetTsscEncoder)
                     {
                         m_resetTsscEncoder = false;
-                        m_tsscEncoder = new();
+                        m_tsscEncoder = new TsscEncoder();
                         m_tsscWorkingBuffer = new byte[32 * 1024];
 
                         OnStatusMessage(MessageLevel.Info, $"TSSC algorithm reset before sequence number: {m_tsscSequenceNumber}", "TSSC");
@@ -939,7 +939,7 @@ namespace sttp
        
         // Explicitly implement processing completed event bubbler to satisfy IClientSubscription interface
         void IClientSubscription.OnProcessingCompleted(object sender, EventArgs e) => 
-            ProcessingComplete?.Invoke(sender, new(this, e));
+            ProcessingComplete?.Invoke(sender, new EventArgs<IClientSubscription, EventArgs>(this, e));
 
         #endregion
     }

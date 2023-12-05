@@ -480,7 +480,7 @@ namespace sttp
         /// <remarks>
         /// Leave value blank for default path, i.e., installation folder. Can be a fully qualified path or a path that
         /// is relative to the installation folder, e.g., a value of "ConfigurationCache" might resolve to
-        /// "C:\Program Files\MyTimeSeriespPp\ConfigurationCache\".
+        /// "C:\Program Files\MyTimeSeriesApp\ConfigurationCache\".
         /// </remarks>
         public string LoggingPath
         {
@@ -627,10 +627,8 @@ namespace sttp
             get => m_operationalModes;
             set
             {
-                OperationalEncoding operationalEncoding;
-
                 m_operationalModes = value;
-                operationalEncoding = (OperationalEncoding)(value & OperationalModes.EncodingMask);
+                OperationalEncoding operationalEncoding = (OperationalEncoding)(value & OperationalModes.EncodingMask);
                 Encoding = GetCharacterEncoding(operationalEncoding);
             }
         }
@@ -1229,7 +1227,7 @@ namespace sttp
         /// <summary>
         /// Gets real-time as determined by either the local clock or the latest measurement received.
         /// </summary>
-        protected Ticks RealTime => UseLocalClockAsRealTime ? (Ticks)DateTime.UtcNow.Ticks : m_realTime;
+        protected Ticks RealTime => UseLocalClockAsRealTime ? DateTime.UtcNow.Ticks : m_realTime;
 
         #endregion
 
@@ -1637,7 +1635,7 @@ namespace sttp
                             // the real-time subscriber (TCP only)
                             m_dataGapRecoveryEnabled = true;
 
-                            m_dataGapRecoverer = new()
+                            m_dataGapRecoverer = new DataGapRecoverer
                             {
                                 SourceConnectionName = Name,
                                 DataSource = DataSource,
@@ -1723,14 +1721,11 @@ namespace sttp
                         subscribedMeasurements.Add(measurement);
                     }
 
+                    // Combine subscribed output measurement with any existing output measurement and return unique set
                     if (subscribedMeasurements.Count > 0)
-                    {
-                        // Combine subscribed output measurement with any existing output measurement and return unique set
-                        if (OutputMeasurements is null)
-                            OutputMeasurements = subscribedMeasurements.ToArray();
-                        else
-                            OutputMeasurements = subscribedMeasurements.Concat(OutputMeasurements).Distinct().ToArray();
-                    }
+                        OutputMeasurements = OutputMeasurements is null ?
+                            subscribedMeasurements.ToArray() :
+                            subscribedMeasurements.Concat(OutputMeasurements).Distinct().ToArray();
                 }
                 catch (Exception ex)
                 {
@@ -1907,7 +1902,7 @@ namespace sttp
                     int.TryParse(setting, out port);
             }
 
-            return Subscribe(new()
+            return Subscribe(new SubscriptionInfo
             {
                 UseCompactMeasurementFormat = compactFormat,
                 Throttled = throttled,
@@ -1961,7 +1956,7 @@ namespace sttp
                             CompressionModes &= ~CompressionModes.TSSC;
                         }
 
-                        dataChannel = new(setting)
+                        dataChannel = new UdpClient(setting)
                         {
                             ReceiveBufferSize = ushort.MaxValue,
                             MaxConnectionAttempts = -1
@@ -1976,7 +1971,6 @@ namespace sttp
                     // Setup subscription packet
                     using BlockAllocatedMemoryStream buffer = new();
                     DataPacketFlags flags = DataPacketFlags.NoFlags;
-                    byte[] bytes;
 
                     if (compactFormat)
                         flags |= DataPacketFlags.Compact;
@@ -1985,7 +1979,7 @@ namespace sttp
                     buffer.WriteByte((byte)flags);
 
                     // Get encoded bytes of connection string
-                    bytes = Encoding.GetBytes(connectionString);
+                    byte[] bytes = Encoding.GetBytes(connectionString);
 
                     // Write encoded connection string length into buffer
                     buffer.Write(BigEndian.GetBytes(bytes.Length), 0, 4);
@@ -2449,7 +2443,7 @@ namespace sttp
                                 {
                                     if (m_runTimeLog is null)
                                     {
-                                        m_runTimeLog = new() { FileName = GetLoggingPath($"{Name}_RunTimeLog.txt") };
+                                        m_runTimeLog = new RunTimeLog { FileName = GetLoggingPath($"{Name}_RunTimeLog.txt") };
                                         m_runTimeLog.ProcessException += RunTimeLog_ProcessException;
                                         m_runTimeLog.Initialize();
                                     }
@@ -2827,10 +2821,9 @@ namespace sttp
                             keyIVs[OddKey] = new byte[2][];
 
                             int index = 0;
-                            int bufferLen;
 
                             // Read even key size
-                            bufferLen = BigEndian.ToInt32(bytes, index);
+                            int bufferLen = BigEndian.ToInt32(bytes, index);
                             index = 4;
 
                             // Read even key
@@ -2909,13 +2902,13 @@ namespace sttp
             // Use TSSC compression to decompress measurements                                            
             if (decoder is null)
             {
-                decoder = signalIndexCache.TsscDecoder = new();
+                decoder = signalIndexCache.TsscDecoder = new TsscDecoder();
                 decoder.SequenceNumber = 0;
                 newDecoder = true;
             }
 
             if (buffer[responseIndex] != 85)
-                throw new($"TSSC version not recognized: {buffer[responseIndex]}");
+                throw new Exception($"TSSC version not recognized: {buffer[responseIndex]}");
 
             responseIndex++;
 
@@ -2929,7 +2922,7 @@ namespace sttp
                     if (decoder.SequenceNumber > 0)
                         OnStatusMessage(MessageLevel.Info, $"TSSC algorithm reset before sequence number: {decoder.SequenceNumber}", "TSSC");
 
-                    decoder = signalIndexCache.TsscDecoder = new();
+                    decoder = signalIndexCache.TsscDecoder = new TsscDecoder();
                     decoder.SequenceNumber = 0;
                 }
 
@@ -3165,8 +3158,8 @@ namespace sttp
                             string updateDeviceUniqueIDSql = database.ParameterizedQueryString("UPDATE Device SET UniqueID = {0} WHERE Acronym = {1}", "uniqueID", "acronym");
 
                             // Define SQL statement to query if a device can be safely updated
-                            string devceParentRestriction = SyncIndependentDevices ? "OriginalSource <> {1}" : "(ParentID <> {1} OR ParentID IS NULL)";
-                            string deviceIsUpdatableSql = database.ParameterizedQueryString("SELECT COUNT(*) FROM Device WHERE UniqueID = {0} AND " + devceParentRestriction, "uniqueID", "parentID");
+                            string deviceParentRestriction = SyncIndependentDevices ? "OriginalSource <> {1}" : "(ParentID <> {1} OR ParentID IS NULL)";
+                            string deviceIsUpdateableSql = database.ParameterizedQueryString("SELECT COUNT(*) FROM Device WHERE UniqueID = {0} AND " + deviceParentRestriction, "uniqueID", "parentID");
 
                             // Define SQL statement to update existing device record
                             string updateDeviceSql = database.ParameterizedQueryString("UPDATE Device SET Acronym = {0}, Name = {1}, OriginalSource = {2}, ProtocolID = {3}, FramesPerSecond = {4}, HistorianID = {5}, AccessID = {6}, Longitude = {7}, Latitude = {8}, ContactList = {9}, ConnectionString = {10} WHERE UniqueID = {11}",
@@ -3263,7 +3256,7 @@ namespace sttp
                                     decimal latitude = 0M;
                                     decimal? location;
                                     string protocolName = null;
-                                    string connectionString = null;
+                                    string connectionString = string.Empty;
 
                                     if (longitudeFieldExists)
                                     {
@@ -3328,7 +3321,7 @@ namespace sttp
                                         // ownership is inferred by setting 'OriginalSource' to null. When gateway doesn't own device records (i.e., the "internal" flag is false), this means the device's measurements can only be consumed
                                         // locally - from a device record perspective this means the 'OriginalSource' field is set to the acronym of the PDC or PMU that generated the source measurements. This field allows a mirrored source
                                         // restriction to be implemented later to ensure all devices in an output protocol came from the same original source connection, if desired.
-                                        object originalSource = SyncIndependentDevices ? parentID.ToString() : Internal ? (object)DBNull.Value : 
+                                        object originalSource = SyncIndependentDevices ? parentID.ToString() : Internal ? DBNull.Value : 
                                                                 string.IsNullOrEmpty(row.Field<string>("ParentAcronym")) ? 
                                                                     sourcePrefix + row.Field<string>("Acronym") : 
                                                                     sourcePrefix + row.Field<string>("ParentAcronym");
@@ -3348,7 +3341,7 @@ namespace sttp
                                         else if (recordNeedsUpdating)
                                         {
                                             // Perform safety check to preserve device records which are not safe to overwrite (e.g., device already exists locally as part of another connection)
-                                            if (Convert.ToInt32(command.ExecuteScalar(deviceIsUpdatableSql, MetadataSynchronizationTimeout, database.Guid(uniqueID), parentIDValue)) > 0)
+                                            if (Convert.ToInt32(command.ExecuteScalar(deviceIsUpdateableSql, MetadataSynchronizationTimeout, database.Guid(uniqueID), parentIDValue)) > 0)
                                                 continue;
 
                                             // Update existing device record
@@ -3600,7 +3593,7 @@ namespace sttp
                         if (metadata.Tables.Contains("PhasorDetail"))
                         {
                             DataTable phasorDetail = metadata.Tables["PhasorDetail"];
-                            Dictionary<int, List<int>> definedSourceIndicies = new();
+                            Dictionary<int, List<int>> definedSourceIndices = new();
                             Dictionary<int, int> metadataToDatabaseIDMap = new();
                             Dictionary<int, int> sourceToDestinationIDMap = new();
 
@@ -3698,7 +3691,7 @@ namespace sttp
                                     }
 
                                     // Track defined phasors for each device
-                                    definedSourceIndicies.GetOrAdd(deviceID, _ => new()).Add(sourceIndex);
+                                    definedSourceIndices.GetOrAdd(deviceID, _ => new List<int>()).Add(sourceIndex);
                                 }
 
                                 // Periodically notify user about synchronization progress
@@ -3718,10 +3711,11 @@ namespace sttp
                                 // Remove any phasor records associated with existing devices in this session but no longer exist in the meta-data
                                 foreach (int id in deviceIDs.Values)
                                 {
-                                    if (definedSourceIndicies.TryGetValue(id, out List<int> sourceIndicies))
-                                        command.ExecuteNonQuery($"{deletePhasorSql} AND SourceIndex NOT IN ({string.Join(",", sourceIndicies)})", MetadataSynchronizationTimeout, id);
-                                    else
-                                        command.ExecuteNonQuery(deletePhasorSql, MetadataSynchronizationTimeout, id);
+                                    string deleteSql = definedSourceIndices.TryGetValue(id, out List<int> sourceIndices) ? 
+                                        $"{deletePhasorSql} AND SourceIndex NOT IN ({string.Join(",", sourceIndices)})" : 
+                                        deletePhasorSql;
+                                    
+                                    command.ExecuteNonQuery(deleteSql, MetadataSynchronizationTimeout, id);
                                 }
                             }
                         }
@@ -3830,7 +3824,7 @@ namespace sttp
                 try
                 {
                     using MemoryStream compressedData = new(buffer);
-                    inflater = new(compressedData, CompressionMode.Decompress, true);
+                    inflater = new GZipStream(compressedData, CompressionMode.Decompress, true);
                     buffer = inflater.ReadStream();
                 }
                 finally
@@ -3859,7 +3853,7 @@ namespace sttp
                 {
                     // Insert compressed data into compressed buffer
                     using MemoryStream compressedData = new(buffer);
-                    inflater = new(compressedData, CompressionMode.Decompress, true);
+                    inflater = new GZipStream(compressedData, CompressionMode.Decompress, true);
                     buffer = inflater.ReadStream();
                 }
                 finally
@@ -3873,7 +3867,7 @@ namespace sttp
             using (XmlTextReader xmlReader = new(encodedData))
             {
                 // Read encoded data into data set as XML
-                deserializedMetadata = new();
+                deserializedMetadata = new DataSet();
                 deserializedMetadata.ReadXml(xmlReader, XmlReadMode.ReadSchema);
             }
 
@@ -4009,8 +4003,8 @@ namespace sttp
                             statisticsHelper.Device.Dispose();
                     }
 
-                    m_statisticsHelpers = new();
-                    m_subscribedDevicesLookup = new();
+                    m_statisticsHelpers = new List<DeviceStatisticsHelper<SubscribedDevice>>();
+                    m_subscribedDevicesLookup = new Dictionary<Guid, DeviceStatisticsHelper<SubscribedDevice>>();
                 }
                 else
                 {
@@ -4043,7 +4037,7 @@ namespace sttp
                         if (subscribedDeviceNames.Contains(definedDeviceName))
                             continue;
 
-                        DeviceStatisticsHelper<SubscribedDevice> statisticsHelper = new(new(definedDeviceName));
+                        DeviceStatisticsHelper<SubscribedDevice> statisticsHelper = new(new SubscribedDevice(definedDeviceName));
                         subscribedDevices.Add(statisticsHelper);
                         statisticsHelper.Reset(now);
                     }
@@ -4105,8 +4099,8 @@ namespace sttp
                 foreach (DeviceStatisticsHelper<SubscribedDevice> statisticsHelper in m_statisticsHelpers)
                     statisticsHelper.Device.Dispose();
 
-                m_statisticsHelpers = new();
-                m_subscribedDevicesLookup = new();
+                m_statisticsHelpers = new List<DeviceStatisticsHelper<SubscribedDevice>>();
+                m_subscribedDevicesLookup = new Dictionary<Guid, DeviceStatisticsHelper<SubscribedDevice>>();
             }
             catch (Exception ex)
             {
@@ -4265,7 +4259,7 @@ namespace sttp
         {
             try
             {
-                ReceivedServerResponse?.Invoke(this, new(responseCode, commandCode));
+                ReceivedServerResponse?.Invoke(this, new EventArgs<ServerResponse, ServerCommand>(responseCode, commandCode));
             }
             catch (Exception ex)
             {
@@ -4304,7 +4298,7 @@ namespace sttp
         {
             try
             {
-                MetaDataReceived?.Invoke(this, new(metadata));
+                MetaDataReceived?.Invoke(this, new EventArgs<DataSet>(metadata));
             }
             catch (Exception ex)
             {
@@ -4321,7 +4315,7 @@ namespace sttp
         {
             try
             {
-                DataStartTime?.Invoke(this, new(startTime));
+                DataStartTime?.Invoke(this, new EventArgs<Ticks>(startTime));
             }
             catch (Exception ex)
             {
@@ -4338,7 +4332,7 @@ namespace sttp
         {
             try
             {
-                ProcessingComplete?.Invoke(this, new(source));
+                ProcessingComplete?.Invoke(this, new EventArgs<string>(source));
 
                 // Also raise base class event in case this event has been subscribed
                 OnProcessingComplete();
@@ -4358,7 +4352,7 @@ namespace sttp
         {
             try
             {
-                NotificationReceived?.Invoke(this, new(message));
+                NotificationReceived?.Invoke(this, new EventArgs<string>(message));
             }
             catch (Exception ex)
             {
@@ -4666,7 +4660,7 @@ namespace sttp
 
         private void ServerCommandChannelReceiveClientData(object sender, EventArgs<Guid, int> e)
         {
-            ClientCommandChannelReceiveData(sender, new(e.Argument2));
+            ClientCommandChannelReceiveData(sender, new EventArgs<int>(e.Argument2));
         }
 
         private void ServerCommandChannelClientConnected(object sender, EventArgs<Guid> e)

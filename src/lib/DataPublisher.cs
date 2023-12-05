@@ -838,11 +838,11 @@ namespace sttp
             base.Name = "Data Publisher Collection";
             base.DataMember = "[internal]";
 
-            ClientConnections = new();
-            m_clientPublicationChannels = new();
-            m_clientNotifications = new();
-            m_clientNotificationsLock = new();
-            m_publishBuffer = new();
+            ClientConnections = new ConcurrentDictionary<Guid, SubscriberConnection>();
+            m_clientPublicationChannels = new ConcurrentDictionary<Guid, IServer>();
+            m_clientNotifications = new Dictionary<Guid, Dictionary<int, string>>();
+            m_clientNotificationsLock = new object();
+            m_publishBuffer = new BlockAllocatedMemoryStream();
             SecurityMode = DefaultSecurityMode;
             m_encryptPayload = DefaultEncryptPayload;
             SharedDatabase = DefaultSharedDatabase;
@@ -857,8 +857,8 @@ namespace sttp
             {
                 m_routingTables = OptimizationOptions.DefaultRoutingMethod switch
                 {
-                    OptimizationOptions.RoutingMethod.HighLatencyLowCpu => new(new RouteMappingHighLatencyLowCpu()),
-                    _                                                   => new()
+                    OptimizationOptions.RoutingMethod.HighLatencyLowCpu => new RoutingTables(new RouteMappingHighLatencyLowCpu()),
+                    _                                                   => new RoutingTables()
                 };
             }
 
@@ -1491,8 +1491,8 @@ namespace sttp
             if (SecurityMode == SecurityMode.TLS)
             {
                 // Create certificate checker for publisher
-                m_certificateChecker = new();
-                m_subscriberIdentities = new();
+                m_certificateChecker = new CertificatePolicyChecker();
+                m_subscriberIdentities = new Dictionary<X509Certificate, DataRow>();
                 UpdateCertificateChecker();
 
                 if (clientBasedConnection)
@@ -1662,7 +1662,7 @@ namespace sttp
             if (measurementList.Count == 0)
                 return;
 
-            m_routingTables.InjectMeasurements(this, new(measurementList));
+            m_routingTables.InjectMeasurements(this, new EventArgs<ICollection<IMeasurement>>(measurementList));
 
             int measurementCount = measurementList.Count;
             LifetimeMeasurements += measurementCount;
@@ -1678,7 +1678,7 @@ namespace sttp
             if (measurements is null || measurements.Count == 0)
                 return;
 
-            m_routingTables.InjectMeasurements(this, new(measurements));
+            m_routingTables.InjectMeasurements(this, new EventArgs<ICollection<IMeasurement>>(measurements));
 
             int measurementCount = measurements.Count;
             LifetimeMeasurements += measurementCount;
@@ -2107,7 +2107,7 @@ namespace sttp
                         foreach (DataRow row in DataSource.Tables["Subscribers"].Rows)
                         {
                             if (Guid.TryParse(row["ID"].ToNonNullString(), out Guid subscriberID))
-                                m_clientNotifications.Add(subscriberID, new());
+                                m_clientNotifications.Add(subscriberID, new Dictionary<int, string>());
                         }
                     }
 
@@ -2464,7 +2464,7 @@ namespace sttp
                 bool useDataChannel = dataPacketResponse || responseCode == (byte)ServerResponse.BufferBlock;
 
                 // Initialize target working buffer
-                workingBuffer = MaxPublishInterval == 0L ? new() : m_publishBuffer;
+                workingBuffer = MaxPublishInterval == 0L ? new BlockAllocatedMemoryStream() : m_publishBuffer;
 
                 // Add response code
                 workingBuffer.WriteByte(responseCode);
@@ -2755,7 +2755,7 @@ namespace sttp
         {
             try
             {
-                ClientConnected?.Invoke(this, new(subscriberID, connectionID, subscriberInfo));
+                ClientConnected?.Invoke(this, new EventArgs<Guid, string, string>(subscriberID, connectionID, subscriberInfo));
             }
             catch (Exception ex)
             {
@@ -2846,7 +2846,7 @@ namespace sttp
                         if (subscription is null)
                         {
                             // Client subscription not established yet, so we create a new one
-                            subscription = new(this, clientID, connection.SubscriberID, compressionModes);
+                            subscription = new SubscriberAdapter(this, clientID, connection.SubscriberID, compressionModes);
                             addSubscription = true;
                         }
 
@@ -2905,7 +2905,7 @@ namespace sttp
                                     connection.OperationalModes |= (OperationalModes)compressionModes;
                                 }
 
-                                connection.DataChannel = new($"Port=-1; Clients={connection.IPAddress}:{int.Parse(setting)}; interface={networkInterface}");
+                                connection.DataChannel = new UdpServer($"Port=-1; Clients={connection.IPAddress}:{int.Parse(setting)}; interface={networkInterface}");
                                 connection.DataChannel.Start();
                             }
                         }
@@ -3407,7 +3407,7 @@ namespace sttp
             catch (Exception ex)
             {
                 string errorMessage = $"Data packet command failed due to exception: {ex.Message}";
-                OnProcessException(MessageLevel.Error, new(errorMessage, ex));
+                OnProcessException(MessageLevel.Error, new Exception(errorMessage, ex));
                 SendClientResponse(connection.ClientID, ServerResponse.Failed, ServerCommand.PublishCommandMeasurements, errorMessage);
             }
         }
@@ -3463,7 +3463,7 @@ namespace sttp
             try
             {
                 // Compress serialized signal index cache into compressed data buffer
-                deflater = new(compressedData, CompressionMode.Compress, true);
+                deflater = new GZipStream(compressedData, CompressionMode.Compress, true);
                 deflater.Write(serializedSignalIndexCache, 0, serializedSignalIndexCache.Length);
                 deflater.Close();
                 deflater = null;
@@ -3508,7 +3508,7 @@ namespace sttp
             {
                 // Compress serialized metadata into compressed data buffer
                 using BlockAllocatedMemoryStream compressedData = new();
-                deflater = new(compressedData, CompressionMode.Compress, true);
+                deflater = new GZipStream(compressedData, CompressionMode.Compress, true);
                 deflater.Write(serializedMetadata, 0, serializedMetadata.Length);
                 deflater.Close();
                 deflater = null;
@@ -3805,7 +3805,7 @@ namespace sttp
             try
             {
                 m_proxyClientID = Guid.NewGuid();
-                ServerCommandChannelClientConnected(sender, new(m_proxyClientID));
+                ServerCommandChannelClientConnected(sender, new EventArgs<Guid>(m_proxyClientID));
             }
             catch (Exception ex)
             {
@@ -3815,7 +3815,7 @@ namespace sttp
 
         private void ClientCommandChannelConnectionTerminated(object sender, EventArgs e)
         {
-            ServerCommandChannelClientDisconnected(sender, new(m_proxyClientID));
+            ServerCommandChannelClientDisconnected(sender, new EventArgs<Guid>(m_proxyClientID));
 
             // If user didn't initiate disconnect, restart the connection
             if (Enabled)
@@ -3847,7 +3847,7 @@ namespace sttp
         }
 
         private void ClientCommandChannelReceiveDataComplete(object sender, EventArgs<byte[], int> e) =>
-            ServerCommandChannelReceiveClientDataComplete(sender, new(m_proxyClientID, e.Argument1, e.Argument2));
+            ServerCommandChannelReceiveClientDataComplete(sender, new EventArgs<Guid, byte[], int>(m_proxyClientID, e.Argument1, e.Argument2));
 
         private void ClientCommandChannelReceiveDataException(object sender, EventArgs<Exception> e)
         {

@@ -65,8 +65,8 @@ namespace sttp.tssc
         /// </remarks>
         public void Reset()
         {
-            m_points = new();
-            m_lastPoint = new(null, ReadBit, ReadBits5);
+            m_points = new IndexedArray<TsscPointMetadata>();
+            m_lastPoint = new TsscPointMetadata(null, ReadBit, ReadBits5);
             m_data = Array.Empty<byte>();
             m_position = 0;
             m_lastPosition = 0;
@@ -143,7 +143,7 @@ namespace sttp.tssc
                     code = m_lastPoint.ReadCode();
                 
                     if (code < TsscCodeWords.TimeDelta1Forward)
-                        throw new($"Expecting code >= {TsscCodeWords.TimeDelta1Forward} Received {code} at position {m_position} with last position { m_lastPosition}");
+                        throw new Exception($"Expecting code >= {TsscCodeWords.TimeDelta1Forward} Received {code} at position {m_position} with last position { m_lastPosition}");
                     break;
                 }
             }
@@ -154,7 +154,7 @@ namespace sttp.tssc
 
             if (nextPoint is null)
             {
-                nextPoint = new(null, ReadBit, ReadBits5);
+                nextPoint = new TsscPointMetadata(null, ReadBit, ReadBits5);
                 m_points[id] = nextPoint;
                 nextPoint.PrevNextPointId1 = id + 1;
             }
@@ -165,7 +165,7 @@ namespace sttp.tssc
                 code = m_lastPoint.ReadCode();
                 
                 if (code < TsscCodeWords.Quality2)
-                    throw new($"Expecting code >= {TsscCodeWords.Quality2} Received {code} at position {m_position} with last position { m_lastPosition}");
+                    throw new Exception($"Expecting code >= {TsscCodeWords.Quality2} Received {code} at position {m_position} with last position { m_lastPosition}");
             }
             else
             {
@@ -178,7 +178,7 @@ namespace sttp.tssc
                 code = m_lastPoint.ReadCode();
                 
                 if (code < TsscCodeWords.Value1)
-                    throw new($"Expecting code >= {TsscCodeWords.Value1} Received {code} at position {m_position} with last position { m_lastPosition}");
+                    throw new Exception($"Expecting code >= {TsscCodeWords.Value1} Received {code} at position {m_position} with last position { m_lastPosition}");
             }
             else
             {
@@ -246,7 +246,7 @@ namespace sttp.tssc
                             m_position += 4;
                             break;
                         default:
-                            throw new($"Invalid code received {code} at position {m_position} with last position { m_lastPosition}");
+                            throw new Exception($"Invalid code received {code} at position {m_position} with last position { m_lastPosition}");
                     }
 
                     nextPoint.PrevValue3 = nextPoint.PrevValue2;
@@ -293,7 +293,7 @@ namespace sttp.tssc
                     m_position += 4;
                     break;
                 default:
-                    throw new($"Invalid code received {code} at position {m_position} with last position {m_lastPosition}");
+                    throw new Exception($"Invalid code received {code} at position {m_position} with last position {m_lastPosition}");
             }
         }
 

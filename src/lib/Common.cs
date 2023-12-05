@@ -49,7 +49,7 @@ namespace sttp
             UseManagedEncryption = (Registry.GetValue(FipsKeyNew, "Enabled", 0) ?? Registry.GetValue(FipsKeyOld, "FipsAlgorithmPolicy", 0)).ToString() == "0";
         #endif
 
-            TimerScheduler = new();
+            TimerScheduler = new SharedTimerScheduler();
         }
 
         /// <summary>
@@ -64,7 +64,7 @@ namespace sttp
         {
             get
             {
-                Aes symmetricAlgorithm = UseManagedEncryption ? (Aes)new AesManaged() : new AesCryptoServiceProvider();
+                Aes symmetricAlgorithm = UseManagedEncryption ? new AesManaged() : new AesCryptoServiceProvider();
                 
                 symmetricAlgorithm.KeySize = 256;
                 
