@@ -2213,16 +2213,12 @@ namespace sttp
         /// <returns>Text encoding associated with a particular client.</returns>
         protected internal Encoding GetClientEncoding(Guid clientID)
         {
-            if (ClientConnections.TryGetValue(clientID, out SubscriberConnection connection))
-            {
-                Encoding clientEncoding = connection.Encoding;
+            if (!ClientConnections.TryGetValue(clientID, out SubscriberConnection connection))
+                return Encoding.UTF8;
+            
+            Encoding clientEncoding = connection.Encoding;
 
-                if (clientEncoding is not null)
-                    return clientEncoding;
-            }
-
-            // Default to Unicode
-            return Encoding.Unicode;
+            return clientEncoding ?? Encoding.UTF8;
         }
 
         /// <summary>
