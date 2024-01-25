@@ -1631,6 +1631,9 @@ namespace sttp
                             connectionSettings.Remove(nameof(BypassStatistics));
                             connectionSettings.Remove(nameof(LoggingPath));
 
+                            if (dataGapSettings.ContainsKey("server"))
+                                connectionSettings.Remove("server");
+
                             // Note that the data gap recoverer will connect on the same command channel port as
                             // the real-time subscriber (TCP only)
                             m_dataGapRecoveryEnabled = true;
