@@ -723,15 +723,23 @@ namespace sttp
         /// <summary>
         /// Gets or sets flag that determines if the data subscriber should attempt to synchronize device metadata as independent devices, i.e.,
         /// not as children of the parent STTP device connection.
+        /// Defaults to <c>false</c>.
         /// </summary>
         /// <remarks>
         /// This is useful when using an STTP connection to only synchronize metadata from a publisher, but not to receive data. When enabled,
-        /// the device enabled state will not be synchronized. In this mode it may be useful to add the original "ConnectionString" field to
-        /// the publisher's device metadata so it can be synchronized to the subscriber. To ensure no data is received, the subscriber should
-        /// be configured with an "OutputMeasurements" filter in the adapter's connection string that does not include any measurements, e.g.:
+        /// the device enabled state will not synchronized upon creation unless <see cref="AutoEnableIndependentlySyncedDevices"/> is set to
+        /// <c>true</c>. In this mode it may be useful to add the original "ConnectionString" field to the publisher's device metadata so it can
+        /// be synchronized to the subscriber. To ensure no data is received, the subscriber should be configured with an "OutputMeasurements"
+        /// filter in the adapter's connection string that does not include any measurements, e.g.:
         /// <code>outputMeasurements={FILTER ActiveMeasurements WHERE False}</code>
         /// </remarks>
         public bool SyncIndependentDevices { get; set; }
+
+        /// <summary>
+        /// Gets or sets flag that determines if the data subscriber should automatically enable independently synced devices.
+        /// Defaults to <c>false</c>.
+        /// </summary>
+        public bool AutoEnableIndependentlySyncedDevices { get; set; }
 
         /// <summary>
         /// Gets or sets flag that determines if statistics engine should be enable for the data subscriber.
@@ -1014,6 +1022,10 @@ namespace sttp
                 status.AppendLine($"  Auto delete CALC signals: {AutoDeleteCalculatedMeasurements}");
                 status.AppendLine($"  Auto delete ALRM signals: {AutoDeleteAlarmMeasurements}");
                 status.AppendLine($"  Sync independent devices: {SyncIndependentDevices}");
+
+                if (SyncIndependentDevices)
+                    status.AppendLine($"Independent synced devices: {(AutoEnableIndependentlySyncedDevices? "enabled" : "disabled")} on creation");
+
                 status.AppendLine($"  Bypass statistics engine: {BypassStatistics}");
                 status.AppendLine($"      Total bytes received: {TotalBytesReceived:N0}");
                 status.AppendLine($"      Data packet security: {(m_securityMode == SecurityMode.TLS && m_dataChannel is null ? "Secured via TLS" : m_keyIVs is null ? "Unencrypted" : "AES Encrypted")}");
@@ -1358,6 +1370,10 @@ namespace sttp
             // Check if user has defined a flag for synchronizing independent devices during meta-data synchronization
             if (settings.TryGetValue(nameof(SyncIndependentDevices), out setting))
                 SyncIndependentDevices = setting.ParseBoolean();
+
+            // Check if user has defined a flag for auto-enabling independently synced devices
+            if (settings.TryGetValue(nameof(AutoEnableIndependentlySyncedDevices), out setting))
+                AutoEnableIndependentlySyncedDevices = setting.ParseBoolean();
 
             // Check if user wants to request that publisher use millisecond resolution to conserve bandwidth
             #pragma warning disable CS0618 // Type or member is obsolete
@@ -3154,7 +3170,7 @@ namespace sttp
 
                             // Define SQL statement to insert new device record
                             string insertDeviceSql = database.ParameterizedQueryString("INSERT INTO Device(NodeID, ParentID, HistorianID, Acronym, Name, ProtocolID, FramesPerSecond, OriginalSource, AccessID, Longitude, Latitude, ContactList, ConnectionString, IsConcentrator, Enabled) " +
-                                                                                       "VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11}, {12}, 0, " + (SyncIndependentDevices ? "0" : "1") + ")",
+                                                                                       "VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11}, {12}, 0, " + (SyncIndependentDevices ? AutoEnableIndependentlySyncedDevices ? "1" : "0" : "1") + ")",
                                                                                        "nodeID", "parentID", "historianID", "acronym", "name", "protocolID", "framesPerSecond", "originalSource", "accessID", "longitude", "latitude", "contactList", "connectionString");
 
                             // Define SQL statement to update device's guid-based unique ID after insert
@@ -3165,8 +3181,11 @@ namespace sttp
                             string deviceIsUpdateableSql = database.ParameterizedQueryString("SELECT COUNT(*) FROM Device WHERE UniqueID = {0} AND " + deviceParentRestriction, "uniqueID", "parentID");
 
                             // Define SQL statement to update existing device record
-                            string updateDeviceSql = database.ParameterizedQueryString("UPDATE Device SET Acronym = {0}, Name = {1}, OriginalSource = {2}, ProtocolID = {3}, FramesPerSecond = {4}, HistorianID = {5}, AccessID = {6}, Longitude = {7}, Latitude = {8}, ContactList = {9}, ConnectionString = {10} WHERE UniqueID = {11}",
-                                                                                       "acronym", "name", "originalSource", "protocolID", "framesPerSecond", "historianID", "accessID", "longitude", "latitude", "contactList", "connectionString", "uniqueID");
+                            string updateDeviceSql = database.ParameterizedQueryString("UPDATE Device SET Acronym = {0}, Name = {1}, OriginalSource = {2}, ProtocolID = {3}, FramesPerSecond = {4}, HistorianID = {5}, AccessID = {6}, Longitude = {7}, Latitude = {8}, ContactList = {9} WHERE UniqueID = {10}",
+                                                                                       "acronym", "name", "originalSource", "protocolID", "framesPerSecond", "historianID", "accessID", "longitude", "latitude", "contactList", "uniqueID");
+
+                            string updateDeviceWithConnectionStringSql = database.ParameterizedQueryString("UPDATE Device SET Acronym = {0}, Name = {1}, OriginalSource = {2}, ProtocolID = {3}, FramesPerSecond = {4}, HistorianID = {5}, AccessID = {6}, Longitude = {7}, Latitude = {8}, ContactList = {9}, ConnectionString = {10} WHERE UniqueID = {11}",
+                                                                                                           "acronym", "name", "originalSource", "protocolID", "framesPerSecond", "historianID", "accessID", "longitude", "latitude", "contactList", "connectionString", "uniqueID");
 
                             // Define SQL statement to retrieve device's auto-inc ID based on its unique guid-based ID
                             string queryDeviceIDSql = database.ParameterizedQueryString("SELECT ID FROM Device WHERE UniqueID = {0}", "uniqueID");
@@ -3348,8 +3367,12 @@ namespace sttp
                                                 continue;
 
                                             // Update existing device record
-                                            command.ExecuteNonQuery(updateDeviceSql, MetadataSynchronizationTimeout, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
-                                                originalSource, protocolID, row.ConvertField<int>("FramesPerSecond"), historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString, database.Guid(uniqueID));
+                                            if (connectionStringFieldExists)
+                                                command.ExecuteNonQuery(updateDeviceWithConnectionStringSql, MetadataSynchronizationTimeout, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
+                                                    originalSource, protocolID, row.ConvertField<int>("FramesPerSecond"), historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString, database.Guid(uniqueID));
+                                            else
+                                                command.ExecuteNonQuery(updateDeviceSql, MetadataSynchronizationTimeout, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
+                                                    originalSource, protocolID, row.ConvertField<int>("FramesPerSecond"), historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Guid(uniqueID));
                                         }
                                     }
                                 }
