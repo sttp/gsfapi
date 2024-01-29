@@ -727,9 +727,10 @@ namespace sttp
         /// </summary>
         /// <remarks>
         /// This is useful when using an STTP connection to only synchronize metadata from a publisher, but not to receive data. When enabled,
-        /// the device enabled state will not be synchronized. In this mode it may be useful to add the original "ConnectionString" field to
-        /// the publisher's device metadata so it can be synchronized to the subscriber. To ensure no data is received, the subscriber should
-        /// be configured with an "OutputMeasurements" filter in the adapter's connection string that does not include any measurements, e.g.:
+        /// the device enabled state will not synchronized upon creation unless <see cref="AutoEnableIndependentlySyncedDevices"/> is set to
+        /// <c>true</c>. In this mode it may be useful to add the original "ConnectionString" field to the publisher's device metadata so it can
+        /// be synchronized to the subscriber. To ensure no data is received, the subscriber should be configured with an "OutputMeasurements"
+        /// filter in the adapter's connection string that does not include any measurements, e.g.:
         /// <code>outputMeasurements={FILTER ActiveMeasurements WHERE False}</code>
         /// </remarks>
         public bool SyncIndependentDevices { get; set; }
@@ -1021,7 +1022,10 @@ namespace sttp
                 status.AppendLine($"  Auto delete CALC signals: {AutoDeleteCalculatedMeasurements}");
                 status.AppendLine($"  Auto delete ALRM signals: {AutoDeleteAlarmMeasurements}");
                 status.AppendLine($"  Sync independent devices: {SyncIndependentDevices}");
-                status.AppendLine($"Independent synced devices: {(AutoEnableIndependentlySyncedDevices? "enabled" : "disabled")} on creation");
+
+                if (SyncIndependentDevices)
+                    status.AppendLine($"Independent synced devices: {(AutoEnableIndependentlySyncedDevices? "enabled" : "disabled")} on creation");
+
                 status.AppendLine($"  Bypass statistics engine: {BypassStatistics}");
                 status.AppendLine($"      Total bytes received: {TotalBytesReceived:N0}");
                 status.AppendLine($"      Data packet security: {(m_securityMode == SecurityMode.TLS && m_dataChannel is null ? "Secured via TLS" : m_keyIVs is null ? "Unencrypted" : "AES Encrypted")}");
