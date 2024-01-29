@@ -723,6 +723,7 @@ namespace sttp
         /// <summary>
         /// Gets or sets flag that determines if the data subscriber should attempt to synchronize device metadata as independent devices, i.e.,
         /// not as children of the parent STTP device connection.
+        /// Defaults to <c>false</c>.
         /// </summary>
         /// <remarks>
         /// This is useful when using an STTP connection to only synchronize metadata from a publisher, but not to receive data. When enabled,
@@ -735,7 +736,7 @@ namespace sttp
 
         /// <summary>
         /// Gets or sets flag that determines if the data subscriber should automatically enable independently synced devices.
-        /// Default to <c>false</c>.
+        /// Defaults to <c>false</c>.
         /// </summary>
         public bool AutoEnableIndependentlySyncedDevices { get; set; }
 
