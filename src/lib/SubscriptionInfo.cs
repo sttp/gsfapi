@@ -38,7 +38,10 @@ namespace sttp
         /// <summary>
         /// Creates a new instance of the <see cref="SubscriptionInfo"/> class.
         /// </summary>
-        public SubscriptionInfo(bool throttled = false) => Throttled = throttled;
+        public SubscriptionInfo(bool throttled = false)
+        {
+            Throttled = throttled;
+        }
 
         #endregion
 
@@ -71,13 +74,13 @@ namespace sttp
         public int DataChannelLocalPort { get; set; } = 9500;
 
         /// <summary>
-        /// Gets or sets the allowed past time deviation
+        /// Gets or sets the allowed past-time deviation
         /// tolerance in seconds (can be sub-second).
         /// </summary>
         public double LagTime { get; set; } = 10.0;
 
         /// <summary>
-        /// Gets or sets the allowed future time deviation
+        /// Gets or sets the allowed future-time deviation
         /// tolerance, in seconds (can be sub-second).
         /// </summary>
         public double LeadTime { get; set; } = 5.0;
@@ -214,9 +217,9 @@ namespace sttp
         /// possible.
         /// </summary>
         /// <remarks>
-        /// With the exception of the values of -1 and 0, the <see cref="ProcessingInterval"/> value specifies the desired historical playback data
-        /// processing interval in milliseconds. This is basically a delay, or timer interval, over which to process data. Setting this value to -1 means
-        /// to use the default processing interval while setting the value to 0 means to process data as fast as possible.
+        /// Except for the values of -1 and 0, the <see cref="ProcessingInterval"/> value specifies the desired historical playback data
+        /// processing interval in milliseconds. This is basically a delay, or timer interval, over which to process data. Setting this
+        /// value to -1 means to use the default processing interval while setting the value to 0 means to process data as fast as possible.
         /// </remarks>
         public int ProcessingInterval { get; set; } = -1;
 

@@ -52,7 +52,10 @@ namespace sttp.tssc
         /// <summary>
         /// Creates a decoder for the TSSC protocol.
         /// </summary>
-        public TsscDecoder() => Reset();
+        public TsscDecoder()
+        {
+            Reset();
+        }
 
         /// <summary>
         /// Resets the TSSC Decoder to the initial state. 
@@ -67,7 +70,7 @@ namespace sttp.tssc
         {
             m_points = new IndexedArray<TsscPointMetadata>();
             m_lastPoint = new TsscPointMetadata(null, ReadBit, ReadBits5);
-            m_data = Array.Empty<byte>();
+            m_data = [];
             m_position = 0;
             m_lastPosition = 0;
             ClearBitStream();
@@ -390,11 +393,15 @@ namespace sttp.tssc
             return (m_bitStreamCache >> m_bitStreamCount) & 1;
         }
 
-        private int ReadBits4() => 
-            ReadBit() << 3 | ReadBit() << 2 | ReadBit() << 1 | ReadBit();
+        private int ReadBits4()
+        {
+            return ReadBit() << 3 | ReadBit() << 2 | ReadBit() << 1 | ReadBit();
+        }
 
-        private int ReadBits5() => 
-            ReadBit() << 4 | ReadBit() << 3 | ReadBit() << 2 | ReadBit() << 1 | ReadBit();
+        private int ReadBits5()
+        {
+            return ReadBit() << 4 | ReadBit() << 3 | ReadBit() << 2 | ReadBit() << 1 | ReadBit();
+        }
 
         #endregion
     }

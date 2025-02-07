@@ -73,9 +73,15 @@ namespace sttp.tssc
             m_readBits5 = readBits5 ?? NotImplementedMethod1;
         }
 
-        private static int NotImplementedMethod1() => throw new NotImplementedException();
+        private static int NotImplementedMethod1()
+        {
+            throw new NotImplementedException();
+        }
 
-        private static void NotImplementedMethod2(int a, int b) => throw new NotImplementedException();
+        private static void NotImplementedMethod2(int a, int b)
+        {
+            throw new NotImplementedException();
+        }
 
         public void WriteCode(int code)
         {
@@ -161,9 +167,6 @@ namespace sttp.tssc
             switch (m_startupMode)
             {
                 case 0 when m_commandsSentSinceLastChange > 5:
-                    m_startupMode++;
-                    AdaptCommands();
-                    break;
                 case 1 when m_commandsSentSinceLastChange > 20:
                     m_startupMode++;
                     AdaptCommands();

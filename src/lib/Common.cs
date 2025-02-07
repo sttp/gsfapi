@@ -42,8 +42,8 @@ namespace sttp
         #if MONO
             UseManagedEncryption = true;
         #else
-            const string FipsKeyOld = "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Lsa";
-            const string FipsKeyNew = "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\FipsAlgorithmPolicy";
+            const string FipsKeyOld = @"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Lsa";
+            const string FipsKeyNew = @"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Lsa\FipsAlgorithmPolicy";
 
             // Determine if the operating system configuration to set to use FIPS-compliant algorithms
             UseManagedEncryption = (Registry.GetValue(FipsKeyNew, "Enabled", 0) ?? Registry.GetValue(FipsKeyOld, "FipsAlgorithmPolicy", 0)).ToString() == "0";
@@ -65,9 +65,7 @@ namespace sttp
             get
             {
                 Aes symmetricAlgorithm = UseManagedEncryption ? new AesManaged() : new AesCryptoServiceProvider();
-                
                 symmetricAlgorithm.KeySize = 256;
-                
                 return symmetricAlgorithm;
             }
         }

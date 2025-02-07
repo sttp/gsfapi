@@ -642,8 +642,10 @@ namespace sttp
         }
 
         // Send a no-op keep-alive ping to make sure the client is still connected
-        private void PingTimer_Elapsed(object sender, EventArgs<DateTime> e) =>
+        private void PingTimer_Elapsed(object sender, EventArgs<DateTime> e)
+        {
             m_parent.SendClientResponse(ClientID, ServerResponse.NoOP, ServerCommand.Subscribe);
+        }
 
         private void DataChannel_ClientConnectingException(object sender, EventArgs<Exception> e)
         {
@@ -657,8 +659,10 @@ namespace sttp
             m_parent.OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data channel exception occurred while sending client data to \"{m_connectionID}\": {ex.Message}", ex));
         }
 
-        private void DataChannel_ServerStarted(object sender, EventArgs e) => 
+        private void DataChannel_ServerStarted(object sender, EventArgs e)
+        {
             m_parent.OnStatusMessage(MessageLevel.Info, "Data channel started.");
+        }
 
         private void DataChannel_ServerStopped(object sender, EventArgs e)
         {
@@ -769,7 +773,7 @@ namespace sttp
             }
             catch
             {
-                // At worst we'll just use the client GUID for identification
+                // At worst, we'll just use the client GUID for identification
                 connectionID = clientID.ToString();
             }
 

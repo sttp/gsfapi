@@ -20,6 +20,8 @@
 //       Generated original version of source code.
 //
 //******************************************************************************************************
+// ReSharper disable IntVariableOverflowInUncheckedContext
+// ReSharper disable UnusedMember.Local
 
 using System;
 using GSF;
@@ -57,9 +59,12 @@ namespace sttp.tssc
         private IndexedArray<TsscPointMetadata> m_points;
 
         /// <summary>
-        /// Creates a encoder for the TSSC protocol.
+        /// Creates an encoder for the TSSC protocol.
         /// </summary>
-        public TsscEncoder() => Reset();
+        public TsscEncoder()
+        {
+            Reset();
+        }
 
         /// <summary>
         /// Resets the TSSC Encoder to the initial state. 
@@ -74,7 +79,7 @@ namespace sttp.tssc
         {
             m_points = new IndexedArray<TsscPointMetadata>();
             m_lastPoint = new TsscPointMetadata(WriteBits, null, null);
-            m_data = Array.Empty<byte>();
+            m_data = [];
             m_position = 0;
             m_lastPosition = 0;
             ClearBitStream();
@@ -123,8 +128,8 @@ namespace sttp.tssc
         /// <returns>true if successful, false otherwise.</returns>
         public unsafe bool TryAddMeasurement(int id, long timestamp, uint quality, float value)
         {
-            //if there are fewer than 100 bytes available on the buffer
-            //assume that we cannot add any more.
+            // If there are fewer than 100 bytes available on the buffer
+            // assume that we cannot add more.
             if (m_lastPosition - m_position < 100)
                 return false;
 

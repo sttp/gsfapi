@@ -201,7 +201,7 @@ namespace sttp
             IncludeTime = includeTime;
 
             // We keep a clone of the base time offsets, if provided, since array contents can change at any time
-            m_baseTimeOffsets = baseTimeOffsets is null ? s_emptyBaseTimeOffsets : new[] { baseTimeOffsets[0], baseTimeOffsets[1] };
+            m_baseTimeOffsets = baseTimeOffsets is null ? s_emptyBaseTimeOffsets : [baseTimeOffsets[0], baseTimeOffsets[1]];
             m_timeIndex = timeIndex;
             m_useMillisecondResolution = useMillisecondResolution;
         }
@@ -226,7 +226,7 @@ namespace sttp
             IncludeTime = includeTime;
 
             // We keep a clone of the base time offsets, if provided, since array contents can change at any time
-            m_baseTimeOffsets = baseTimeOffsets is null ? s_emptyBaseTimeOffsets : new[] { baseTimeOffsets[0], baseTimeOffsets[1] };
+            m_baseTimeOffsets = baseTimeOffsets is null ? s_emptyBaseTimeOffsets : [baseTimeOffsets[0], baseTimeOffsets[1]];
             m_timeIndex = timeIndex;
             m_useMillisecondResolution = useMillisecondResolution;
         }
@@ -484,7 +484,7 @@ namespace sttp
         #region [ Static ]
 
         // Static Fields
-        private static readonly long[] s_emptyBaseTimeOffsets = { 0L, 0L };
+        private static readonly long[] s_emptyBaseTimeOffsets = [0L, 0L];
 
         #endregion
     }

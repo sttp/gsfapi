@@ -194,7 +194,10 @@ namespace sttp
         /// <summary>
         /// Releases the unmanaged resources before the <see cref="DataGapRecoverer"/> object is reclaimed by <see cref="GC"/>.
         /// </summary>
-        ~DataGapRecoverer() => Dispose(false);
+        ~DataGapRecoverer()
+        {
+            Dispose(false);
+        }
 
         #endregion
 
@@ -355,7 +358,7 @@ namespace sttp
         /// <remarks>
         /// Leave value blank for default path, i.e., installation folder. Can be a fully qualified path or a path that
         /// is relative to the installation folder, e.g., a value of "ConfigurationCache" might resolve to
-        /// "C:\Program Files\MyTimeSeriespPp\ConfigurationCache\".
+        /// "C:\Program Files\MyTimeSeries\ConfigurationCache\".
         /// </remarks>
         public string LoggingPath
         {
@@ -390,12 +393,12 @@ namespace sttp
         /// A value of <c>0</c> indicates data will be processed as fast as possible.
         /// </summary>
         /// <remarks>
-        /// With the exception of the values of -1 and 0, the <see cref="RecoveryProcessingInterval"/> value specifies
-        /// the desired historical data playback processing interval in milliseconds. This is basically a delay, or timer
-        /// interval, over which to process data. Setting this value to -1 means to use the default processing interval
-        /// while setting the value to 0 means to process data as fast as possible, i.e., as fast as the historian can
-        /// query the data. Depending on the available bandwidth, this parameter may need to be adjusted such that the
-        /// data being recovered does not adversely interfere with the ongoing transmission of real-time data.
+        /// Except for the values of -1 and 0, the <see cref="RecoveryProcessingInterval"/> value specifies the desired
+        /// historical data playback processing interval in milliseconds. This is basically a delay, or timer interval,
+        /// over which to process data. Setting this value to -1 means to use the default processing interval while setting
+        /// the value to 0 means to process data as fast as possible, i.e., as fast as the historian can query the data.
+        /// Depending on the available bandwidth, this parameter may need to be adjusted such that the data being recovered
+        /// does not adversely interfere with the ongoing transmission of real-time data.
         /// </remarks>
         public int RecoveryProcessingInterval
         {
@@ -654,7 +657,7 @@ namespace sttp
             if (string.IsNullOrEmpty(m_sourceConnectionName))
                 throw new NullReferenceException("Source connection name must defined - it is used to create outage log file name.");
 
-            // Setup a new temporal data subscriber that will be used to query historical data
+            // Set up a new temporal data subscriber that will be used to query historical data
             m_temporalSubscription = new DataSubscriber
             {
                 Name = m_sourceConnectionName + "!" + GetType().Name,
@@ -819,10 +822,9 @@ namespace sttp
                 // Re-insert adjusted data gap at the top of the processing queue
                 DataGapLog.Add(dataGap);
 
-                if (m_measurementsRecoveredForDataGap == 0)
-                    OnStatusMessage(MessageLevel.Warning, $"Failed to establish temporal session. Data recovery for period \"{m_subscriptionInfo.StartTime}\" - \"{m_subscriptionInfo.StopTime}\" will be re-attempted.");
-                else
-                    OnStatusMessage(MessageLevel.Warning, $"Temporal session was disconnected during recovery operation. Data recovery for adjusted period \"{dataGap.Start.ToString(OutageLog.DateTimeFormat, CultureInfo.InvariantCulture)}\" - \"{m_subscriptionInfo.StopTime}\" will be re-attempted.");
+                OnStatusMessage(MessageLevel.Warning, m_measurementsRecoveredForDataGap == 0 ? 
+                    $"Failed to establish temporal session. Data recovery for period \"{m_subscriptionInfo.StartTime}\" - \"{m_subscriptionInfo.StopTime}\" will be re-attempted." : 
+                    $"Temporal session was disconnected during recovery operation. Data recovery for adjusted period \"{dataGap.Start.ToString(OutageLog.DateTimeFormat, CultureInfo.InvariantCulture)}\" - \"{m_subscriptionInfo.StopTime}\" will be re-attempted.");
             }
 
             // Unsubscribe from temporal session
@@ -906,11 +908,15 @@ namespace sttp
             }
         }
 
-        private string GetLoggingPath(string filePath) => 
-            string.IsNullOrWhiteSpace(m_loggingPath) ? FilePath.GetAbsolutePath(filePath) : Path.Combine(m_loggingPath, filePath);
+        private string GetLoggingPath(string filePath)
+        {
+            return string.IsNullOrWhiteSpace(m_loggingPath) ? FilePath.GetAbsolutePath(filePath) : Path.Combine(m_loggingPath, filePath);
+        }
 
-        private void TemporalSubscription_ConnectionEstablished(object sender, EventArgs e) => 
+        private void TemporalSubscription_ConnectionEstablished(object sender, EventArgs e)
+        {
             m_connected = true;
+        }
 
         private void TemporalSubscription_ConnectionTerminated(object sender, EventArgs e)
         {
@@ -970,11 +976,15 @@ namespace sttp
             m_dataStreamMonitor.Enabled = false;
         }
 
-        private void Common_StatusMessage(object sender, EventArgs<string> e) => 
+        private void Common_StatusMessage(object sender, EventArgs<string> e)
+        {
             OnStatusMessage(MessageLevel.Info, e.Argument);
+        }
 
-        private void Common_ProcessException(object sender, EventArgs<Exception> e) => 
+        private void Common_ProcessException(object sender, EventArgs<Exception> e)
+        {
             OnProcessException(MessageLevel.Warning, e.Argument);
+        }
 
         private void DataStreamMonitor_Elapsed(object sender, EventArgs<DateTime> e)
         {

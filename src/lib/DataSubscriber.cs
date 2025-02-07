@@ -104,7 +104,10 @@ namespace sttp
             /// <summary>
             /// Releases the unmanaged resources before the <see cref="SubscribedDevice"/> object is reclaimed by <see cref="GC"/>.
             /// </summary>
-            ~SubscribedDevice() => Unregister();
+            ~SubscribedDevice()
+            {
+                Unregister();
+            }
 
             #endregion
 
@@ -164,10 +167,15 @@ namespace sttp
 
             #region [ Methods ]
 
-            public override bool Equals(object obj) =>
-                obj is SubscribedDevice subscribedDevice && Name.Equals(subscribedDevice.Name);
+            public override bool Equals(object obj)
+            {
+                return obj is SubscribedDevice subscribedDevice && Name.Equals(subscribedDevice.Name);
+            }
 
-            public override int GetHashCode() => Name.GetHashCode();
+            public override int GetHashCode()
+            {
+                return Name.GetHashCode();
+            }
 
             /// <summary>
             /// Releases all the resources used by the <see cref="SubscribedDevice"/> object.
@@ -454,7 +462,7 @@ namespace sttp
             }
 
             DataLossInterval = 10.0D;
-            m_bufferBlockCache = new List<BufferBlockMeasurement>();
+            m_bufferBlockCache = [];
             UseLocalClockAsRealTime = true;
             UseSourcePrefixNames = true;
             m_signalIndexCacheLock = new object();
@@ -515,7 +523,7 @@ namespace sttp
         /// Gets flag that indicates whether the connection will be persisted
         /// even while the adapter is offline in order to synchronize metadata.
         /// </summary>
-        public bool PersistConnectionForMetadata =>
+        public bool PersistConnectionForMetadata => 
             !AutoStart && AutoSynchronizeMetadata && !this.TemporalConstraintIsDefined();
 
         /// <summary>
@@ -539,7 +547,7 @@ namespace sttp
         public string MetadataFilters { get; set; }
 
         /// <summary>
-        /// Gets or sets flag that determines if a subscription is mutual, i.e., bi-directional pub/sub. In this mode one node will
+        /// Gets or sets flag that determines if a subscription is mutual, i.e., bidirectional pub/sub. In this mode one node will
         /// be the owner and set <c>Internal = True</c> and the other node will be the renter and set <c>Internal = False</c>.
         /// </summary>
         /// <remarks>
@@ -727,7 +735,7 @@ namespace sttp
         /// </summary>
         /// <remarks>
         /// This is useful when using an STTP connection to only synchronize metadata from a publisher, but not to receive data. When enabled,
-        /// the device enabled state will not synchronized upon creation unless <see cref="AutoEnableIndependentlySyncedDevices"/> is set to
+        /// the device enabled state will not be synchronized upon creation unless <see cref="AutoEnableIndependentlySyncedDevices"/> is set to
         /// <c>true</c>. In this mode it may be useful to add the original "ConnectionString" field to the publisher's device metadata so it can
         /// be synchronized to the subscriber. To ensure no data is received, the subscriber should be configured with an "OutputMeasurements"
         /// filter in the adapter's connection string that does not include any measurements, e.g.:
@@ -742,7 +750,7 @@ namespace sttp
         public bool AutoEnableIndependentlySyncedDevices { get; set; }
 
         /// <summary>
-        /// Gets or sets flag that determines if statistics engine should be enable for the data subscriber.
+        /// Gets or sets flag that determines if statistics engine should be enabled for the data subscriber.
         /// </summary>
         public bool BypassStatistics { get; set; }
 
@@ -847,9 +855,9 @@ namespace sttp
         /// Gets or sets the desired processing interval, in milliseconds, for the adapter.
         /// </summary>
         /// <remarks>
-        /// With the exception of the values of -1 and 0, this value specifies the desired processing interval for data, i.e.,
-        /// basically a delay, or timer interval, over which to process data. A value of -1 means to use the default processing
-        /// interval while a value of 0 means to process data as fast as possible.
+        /// Except for the values of -1 and 0, this value specifies the desired processing interval for data, i.e., basically a delay,
+        /// or timer interval, over which to process data. A value of -1 means to use the default processing interval while a value of
+        /// 0 means to process data as fast as possible.
         /// </remarks>
         public override int ProcessingInterval
         {
@@ -935,9 +943,9 @@ namespace sttp
             get => base.RequestedOutputMeasurementKeys;
             set
             {
-                MeasurementKey[] oldKeys = base.RequestedOutputMeasurementKeys ?? Array.Empty<MeasurementKey>();
-                MeasurementKey[] newKeys = value ?? Array.Empty<MeasurementKey>();
-                HashSet<MeasurementKey> oldKeySet = new(oldKeys);
+                MeasurementKey[] oldKeys = base.RequestedOutputMeasurementKeys ?? [];
+                MeasurementKey[] newKeys = value ?? [];
+                HashSet<MeasurementKey> oldKeySet = [..oldKeys];
 
                 base.RequestedOutputMeasurementKeys = value;
 
@@ -1685,7 +1693,11 @@ namespace sttp
             }
             else
             {
-                void statisticsCalculated(object sender, EventArgs args) => ResetMeasurementsPerSecondCounters();
+                void statisticsCalculated(object sender, EventArgs args)
+                {
+                    ResetMeasurementsPerSecondCounters();
+                }
+
                 StatisticsEngine.Register(this, "Subscriber", "SUB");
                 StatisticsEngine.Calculated += statisticsCalculated;
                 Disposed += (_, _) => StatisticsEngine.Calculated -= statisticsCalculated;
@@ -1724,7 +1736,7 @@ namespace sttp
                 {
                     // Filter to points associated with this subscriber that have been requested for subscription, are enabled and not owned locally
                     DataRow[] filteredRows = DataSource.Tables["ActiveMeasurements"].Select("Subscribed <> 0");
-                    List<IMeasurement> subscribedMeasurements = new();
+                    List<IMeasurement> subscribedMeasurements = [];
 
                     foreach (DataRow row in filteredRows)
                     {
@@ -1783,7 +1795,7 @@ namespace sttp
                     .Where(row => Guid.TryParse(row["SignalID"].ToNonNullString(), out signalID))
                     .Select(_ => signalID);
 
-                HashSet<Guid> measurementIDSet = new(measurementIDs);
+                HashSet<Guid> measurementIDSet = [..measurementIDs];
 
                 OutputMeasurements = OutputMeasurements.Where(measurement => measurementIDSet.Contains(measurement.ID)).ToArray();
             }
@@ -1855,7 +1867,7 @@ namespace sttp
         /// <param name="includeTime">Boolean value that determines if time is a necessary component in streaming data.</param>
         /// <param name="lagTime">When <paramref name="throttled"/> is <c>true</c>, defines the data transmission speed in seconds (can be sub-second).</param>
         /// <param name="leadTime">When <paramref name="throttled"/> is <c>true</c>, defines the allowed time deviation tolerance to real-time in seconds (can be sub-second).</param>
-        /// <param name="useLocalClockAsRealTime">When <paramref name="throttled"/> is <c>true</c>, defines boolean value that determines whether or not to use the local clock time as real-time. Set to <c>false</c> to use latest received measurement timestamp as real-time.</param>
+        /// <param name="useLocalClockAsRealTime">When <paramref name="throttled"/> is <c>true</c>, defines boolean value that determines whether to use the local clock time as real-time. Set to <c>false</c> to use latest received measurement timestamp as real-time.</param>
         /// <param name="startTime">Defines a relative or exact start time for the temporal constraint to use for historical playback.</param>
         /// <param name="stopTime">Defines a relative or exact stop time for the temporal constraint to use for historical playback.</param>
         /// <param name="constraintParameters">Defines any temporal parameters related to the constraint to use for historical playback.</param>
@@ -1869,9 +1881,9 @@ namespace sttp
         /// and <paramref name="stopTime"/> specifies the subscriber session will process data in standard, i.e., real-time, operation.
         /// </para>
         /// <para>
-        /// With the exception of the values of -1 and 0, the <paramref name="processingInterval"/> value specifies the desired historical playback data
-        /// processing interval in milliseconds. This is basically a delay, or timer interval, over which to process data. Setting this value to -1 means
-        /// to use the default processing interval while setting the value to 0 means to process data as fast as possible.
+        /// Except for the values of -1 and 0, the <paramref name="processingInterval"/> value specifies the desired historical playback data
+        /// processing interval in milliseconds. This is basically a delay, or timer interval, over which to process data. Setting this value
+        /// to -1 means to use the default processing interval while setting the value to 0 means to process data as fast as possible.
         /// </para>
         /// <para>
         /// The <paramref name="startTime"/> and <paramref name="stopTime"/> parameters can be specified in one of the
@@ -2045,8 +2057,10 @@ namespace sttp
         /// </summary>
         /// <returns><c>true</c> if unsubscribe command was sent successfully; otherwise <c>false</c>.</returns>
         [AdapterCommand("Unsubscribes from data publisher.", "Administrator", "Editor")]
-        public virtual bool Unsubscribe() =>
-            SendServerCommand(ServerCommand.Unsubscribe);
+        public virtual bool Unsubscribe()
+        {
+            return SendServerCommand(ServerCommand.Unsubscribe);
+        }
 
         /// <summary>
         /// Returns the measurements signal IDs that were authorized after the last successful subscription request.
@@ -2055,7 +2069,7 @@ namespace sttp
         public virtual Guid[] GetAuthorizedSignalIDs()
         {
             lock (m_signalIndexCacheLock)
-                return m_signalIndexCache?[m_cacheIndex] is null ? Array.Empty<Guid>() : m_signalIndexCache[m_cacheIndex].AuthorizedSignalIDs;
+                return m_signalIndexCache?[m_cacheIndex] is null ? [] : m_signalIndexCache[m_cacheIndex].AuthorizedSignalIDs;
         }
 
         /// <summary>
@@ -2065,7 +2079,7 @@ namespace sttp
         public virtual Guid[] GetUnauthorizedSignalIDs()
         {
             lock (m_signalIndexCacheLock)
-                return m_signalIndexCache?[m_cacheIndex] is null ? Array.Empty<Guid>() : m_signalIndexCache[m_cacheIndex].UnauthorizedSignalIDs;
+                return m_signalIndexCache?[m_cacheIndex] is null ? [] : m_signalIndexCache[m_cacheIndex].UnauthorizedSignalIDs;
         }
 
         /// <summary>
@@ -2448,7 +2462,7 @@ namespace sttp
                             long now = DateTime.UtcNow.Ticks;
 
                             // Deserialize data packet
-                            List<IMeasurement> measurements = new();
+                            List<IMeasurement> measurements = [];
                             Ticks timestamp = default;
 
                             if (TotalBytesReceived == 0)
@@ -2599,7 +2613,11 @@ namespace sttp
                                         // Determine the number of measurements received with valid values
                                         const MeasurementStateFlags ErrorFlags = MeasurementStateFlags.BadData | MeasurementStateFlags.BadTime | MeasurementStateFlags.SystemError;
 
-                                        static bool hasError(MeasurementStateFlags stateFlags) => (stateFlags & ErrorFlags) != MeasurementStateFlags.Normal;
+                                        static bool hasError(MeasurementStateFlags stateFlags)
+                                        {
+                                            return (stateFlags & ErrorFlags) != MeasurementStateFlags.Normal;
+                                        }
+
                                         int measurementsReceived = frame.Count(measurement => !double.IsNaN(measurement.Value));
                                         int measurementsWithError = frame.Count(measurement => !double.IsNaN(measurement.Value) && hasError(measurement.StateFlags));
 
@@ -2743,7 +2761,7 @@ namespace sttp
                                 // Determine if this is the next buffer block in the sequence
                                 if (sequenceNumber == m_expectedBufferBlockSequenceNumber)
                                 {
-                                    List<IMeasurement> bufferBlockMeasurements = new();
+                                    List<IMeasurement> bufferBlockMeasurements = [];
                                     int i;
 
                                     // Add the buffer block measurement to the list of measurements to be published
@@ -2825,7 +2843,7 @@ namespace sttp
                             responseIndex += 4;
 
                             // Deserialize new base time offsets
-                            m_baseTimeOffsets = new[] { BigEndian.ToInt64(buffer, responseIndex), BigEndian.ToInt64(buffer, responseIndex + 8) };
+                            m_baseTimeOffsets = [BigEndian.ToInt64(buffer, responseIndex), BigEndian.ToInt64(buffer, responseIndex + 8)];
                             break;
                         case ServerResponse.UpdateCipherKeys:
                             // Move past active cipher index (not currently used anywhere else)
@@ -2992,7 +3010,7 @@ namespace sttp
         private static bool IsUserCommand(ServerCommand command)
         {
             ServerCommand[] userCommands =
-            {
+            [
                 ServerCommand.UserCommand00,
                 ServerCommand.UserCommand01,
                 ServerCommand.UserCommand02,
@@ -3009,7 +3027,7 @@ namespace sttp
                 ServerCommand.UserCommand13,
                 ServerCommand.UserCommand14,
                 ServerCommand.UserCommand15
-            };
+            ];
 
             return userCommands.Contains(command);
         }
@@ -3204,7 +3222,7 @@ namespace sttp
                             else if (ReceiveExternalMetadata)
                                 deviceRows = deviceDetail.Select("OriginalSource IS NOT NULL");
                             else
-                                deviceRows = Array.Empty<DataRow>();
+                                deviceRows = [];
 
                             // Check existence of optional meta-data fields
                             DataColumnCollection deviceDetailColumns = deviceDetail.Columns;
@@ -3267,7 +3285,7 @@ namespace sttp
                                     recordNeedsUpdating = true;
                                 }
 
-                                // We will synchronize meta-data only if the source owns this device and it's not defined as a concentrator (these should normally be filtered by publisher - but we check just in case).
+                                // We will synchronize meta-data only if the source owns this device, and it's not defined as a concentrator (these should normally be filtered by publisher - but we check just in case).
                                 if (!row["IsConcentrator"].ToNonNullString("0").ParseBoolean())
                                 {
                                     if (accessIDFieldExists)
@@ -3389,7 +3407,7 @@ namespace sttp
                         if (metadata.Tables.Contains("MeasurementDetail"))
                         {
                             DataTable measurementDetail = metadata.Tables["MeasurementDetail"];
-                            List<Guid> signalIDs = new();
+                            List<Guid> signalIDs = [];
                             DataRow[] measurementRows;
 
                             // Define SQL statement to query if this measurement is already defined (this should always be based on the unique signal ID Guid)
@@ -3447,7 +3465,7 @@ namespace sttp
                             }
                             else
                             {
-                                List<int> excludedSignalTypeIDs = new();
+                                List<int> excludedSignalTypeIDs = [];
 
                                 // We are intentionally ignoring CALC and ALRM signals during measurement deletion since if you have subscribed to a device and subsequently created local
                                 // calculations and alarms associated with this device, these signals are locally owned and not part of the publisher subscription stream. As a result any
@@ -3474,7 +3492,7 @@ namespace sttp
                             else if (ReceiveExternalMetadata)
                                 measurementRows = measurementDetail.Select("Internal = 0");
                             else
-                                measurementRows = Array.Empty<DataRow>();
+                                measurementRows = [];
 
                             // Check existence of optional meta-data fields
                             DataColumnCollection measurementDetailColumns = measurementDetail.Columns;
@@ -3717,7 +3735,7 @@ namespace sttp
                                     }
 
                                     // Track defined phasors for each device
-                                    definedSourceIndices.GetOrAdd(deviceID, _ => new List<int>()).Add(sourceIndex);
+                                    definedSourceIndices.GetOrAdd(deviceID, _ => []).Add(sourceIndex);
                                 }
 
                                 // Periodically notify user about synchronization progress
@@ -4029,13 +4047,13 @@ namespace sttp
                             statisticsHelper.Device.Dispose();
                     }
 
-                    m_statisticsHelpers = new List<DeviceStatisticsHelper<SubscribedDevice>>();
+                    m_statisticsHelpers = [];
                     m_subscribedDevicesLookup = new Dictionary<Guid, DeviceStatisticsHelper<SubscribedDevice>>();
                 }
                 else
                 {
                     Dictionary<Guid, DeviceStatisticsHelper<SubscribedDevice>> subscribedDevicesLookup = new();
-                    List<DeviceStatisticsHelper<SubscribedDevice>> subscribedDevices = new();
+                    List<DeviceStatisticsHelper<SubscribedDevice>> subscribedDevices = [];
                     ISet<string> subscribedDeviceNames = new HashSet<string>();
                     ISet<string> definedDeviceNames = new HashSet<string>();
 
@@ -4125,7 +4143,7 @@ namespace sttp
                 foreach (DeviceStatisticsHelper<SubscribedDevice> statisticsHelper in m_statisticsHelpers)
                     statisticsHelper.Device.Dispose();
 
-                m_statisticsHelpers = new List<DeviceStatisticsHelper<SubscribedDevice>>();
+                m_statisticsHelpers = [];
                 m_subscribedDevicesLookup = new Dictionary<Guid, DeviceStatisticsHelper<SubscribedDevice>>();
             }
             catch (Exception ex)

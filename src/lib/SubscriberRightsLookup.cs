@@ -38,12 +38,6 @@ namespace sttp
     /// </summary>
     public class SubscriberRightsLookup
     {
-        #region [ Members ]
-
-        // Fields
-
-        #endregion
-
         #region [ Constructors ]
 
         /// <summary>
@@ -51,8 +45,10 @@ namespace sttp
         /// </summary>
         /// <param name="dataSource">The source of metadata providing the tables required by the rights logic.</param>
         /// <param name="subscriberID">The ID of the subscriber whose rights are being looked up.</param>
-        public SubscriberRightsLookup(DataSet dataSource, Guid subscriberID) => 
+        public SubscriberRightsLookup(DataSet dataSource, Guid subscriberID)
+        {
             HasRightsFunc = BuildLookup(dataSource, subscriberID);
+        }
 
         #endregion
 
@@ -72,12 +68,14 @@ namespace sttp
         /// </summary>
         /// <param name="signalID">The ID of the signal.</param>
         /// <returns>True if the subscriber has rights; false otherwise.</returns>
-        public bool HasRights(Guid signalID) => 
-            HasRightsFunc(signalID);
-
-        private Func<Guid, bool> BuildLookup(DataSet dataSource, Guid subscriberID)
+        public bool HasRights(Guid signalID)
         {
-            HashSet<Guid> authorizedSignals = new();
+            return HasRightsFunc(signalID);
+        }
+
+        private static Func<Guid, bool> BuildLookup(DataSet dataSource, Guid subscriberID)
+        {
+            HashSet<Guid> authorizedSignals = [];
 
             const string FilterRegex = @"(ALLOW|DENY)\s+WHERE\s+([^;]*)";
 
@@ -90,7 +88,7 @@ namespace sttp
             DataRow subscriber = dataSource.Tables["Subscribers"].Select($"ID = '{subscriberID}' AND Enabled <> 0").FirstOrDefault();
 
             if (subscriber is null)
-                return id => false;
+                return _ => false;
 
             //=================================================================
             // Check group implicitly authorized signals
@@ -184,10 +182,10 @@ namespace sttp
             }
 
             // Remove all explicitly unauthorized signals from authorizedSignals
-            foreach (DataRow explicitAthorization in explicitAuthorizations)
+            foreach (DataRow explicitAuthorization in explicitAuthorizations)
             {
-                if (!explicitAthorization.ConvertField<bool>("Allowed"))
-                    authorizedSignals.Remove(explicitAthorization.ConvertField<Guid>("SignalID"));
+                if (!explicitAuthorization.ConvertField<bool>("Allowed"))
+                    authorizedSignals.Remove(explicitAuthorization.ConvertField<Guid>("SignalID"));
             }
 
             return id => authorizedSignals.Contains(id);

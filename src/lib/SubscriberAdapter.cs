@@ -114,7 +114,7 @@ namespace sttp
             ClientID = clientID;
             SubscriberID = subscriberID;
             m_compressionModes = compressionModes;
-            m_bufferBlockCache = new List<byte[]>();
+            m_bufferBlockCache = [];
             m_bufferBlockCacheLock = new object();
             m_tsscSyncLock = new object();
             m_parent.ClientConnections.TryGetValue(ClientID, out m_connection);
@@ -205,9 +205,9 @@ namespace sttp
         /// Gets or sets the desired processing interval, in milliseconds, for the adapter.
         /// </summary>
         /// <remarks>
-        /// With the exception of the values of -1 and 0, this value specifies the desired processing interval for data, i.e.,
-        /// basically a delay, or timer interval, over which to process data. A value of -1 means to use the default processing
-        /// interval while a value of 0 means to process data as fast as possible.
+        /// Except for the values of -1 and 0, this value specifies the desired processing interval for data, i.e.,
+        /// basically a delay, or timer interval, over which to process data. A value of -1 means to use the default
+        /// processing interval while a value of 0 means to process data as fast as possible.
         /// </remarks>
         public override int ProcessingInterval
         {
@@ -346,7 +346,7 @@ namespace sttp
             }
             else
             {
-                inputMeasurementKeys = Array.Empty<MeasurementKey>();
+                inputMeasurementKeys = [];
                 RequestedInputFilter = null;
             }
 
@@ -489,7 +489,7 @@ namespace sttp
                 if (DateTime.UtcNow.Ticks <= m_lastPublishTime + Ticks.FromSeconds(publishInterval))
                     return;
 
-                List<IMeasurement> currentMeasurements = new();
+                List<IMeasurement> currentMeasurements = [];
 
                 // Create a new set of measurements that represent the latest known values setting value to NaN if it is old
                 foreach (TemporalMeasurement measurement in LatestMeasurements)
@@ -639,7 +639,7 @@ namespace sttp
                 if (!Enabled)
                     return;
 
-                List<IBinaryMeasurement> packet = new();
+                List<IBinaryMeasurement> packet = [];
                 int packetSize = PacketHeaderSize;
 
                 //usePayloadCompression = m_usePayloadCompression;
@@ -925,21 +925,31 @@ namespace sttp
             m_parent.SendClientResponse(ClientID, ServerResponse.UpdateBaseTimes, ServerCommand.Subscribe, responsePacket.ToArray());
         }
 
-        private void OnBufferBlockRetransmission() => 
+        private void OnBufferBlockRetransmission()
+        {
             BufferBlockRetransmission?.Invoke(this, EventArgs.Empty);
+        }
 
-        private void BaseTimeRotationTimer_Elapsed(object sender, EventArgs<DateTime> e) => 
+        private void BaseTimeRotationTimer_Elapsed(object sender, EventArgs<DateTime> e)
+        {
             RotateBaseTimes();
+        }
 
-        void IClientSubscription.OnStatusMessage(MessageLevel level, string status, string eventName, MessageFlags flags) =>
+        void IClientSubscription.OnStatusMessage(MessageLevel level, string status, string eventName, MessageFlags flags)
+        {
             OnStatusMessage(level, status, eventName, flags);
+        }
 
-        void IClientSubscription.OnProcessException(MessageLevel level, Exception ex, string eventName, MessageFlags flags) =>
+        void IClientSubscription.OnProcessException(MessageLevel level, Exception ex, string eventName, MessageFlags flags)
+        {
             OnProcessException(level, ex, eventName, flags);
-       
+        }
+
         // Explicitly implement processing completed event bubbler to satisfy IClientSubscription interface
-        void IClientSubscription.OnProcessingCompleted(object sender, EventArgs e) => 
+        void IClientSubscription.OnProcessingCompleted(object sender, EventArgs e)
+        {
             ProcessingComplete?.Invoke(sender, new EventArgs<IClientSubscription, EventArgs>(this, e));
+        }
 
         #endregion
     }

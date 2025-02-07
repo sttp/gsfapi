@@ -866,7 +866,7 @@ namespace sttp
             m_routingTables.StatusMessage += RoutingTables_StatusMessage;
             m_routingTables.ProcessException += RoutingTables_ProcessException;
 
-            // Setup a timer for rotating cipher keys
+            // Set up a timer for rotating cipher keys
             m_cipherKeyRotationTimer = Common.TimerScheduler.CreateTimer((int)DefaultCipherKeyRotationPeriod);
             m_cipherKeyRotationTimer.AutoReset = true;
             m_cipherKeyRotationTimer.Enabled = false;
@@ -1043,7 +1043,7 @@ namespace sttp
         public bool ValidateMeasurementRights { get; set; }
 
         /// <summary>
-        /// Gets or sets flag that determines whether client subscriber IP address is validated. Defaults to true when measurement rights are validated.")]
+        /// Gets or sets flag that determines whether client subscriber IP address is validated. Defaults to true when measurement rights are validated.
         /// </summary>
         [ConnectionStringParameter]
         [Description("Define the flag that determines whether client subscriber IP address is validated. Defaults to true when measurement rights are validated.")]
@@ -1134,7 +1134,7 @@ namespace sttp
         }
 
         /// <summary>
-        /// Gets or sets semi-colon separated list of SQL select statements used to create data for meta-data exchange.
+        /// Gets or sets semicolon separated list of SQL select statements used to create data for meta-data exchange.
         /// </summary>
         [ConnectionStringParameter]
         [Description("Semi-colon separated list of SQL select statements used to create data for meta-data exchange.")]
@@ -1142,7 +1142,7 @@ namespace sttp
         public string MetadataTables { get; set; }
 
         /// <summary>
-        /// Gets or sets flag that determines if a subscription is mutual, i.e., bi-directional pub/sub. In this mode one node will
+        /// Gets or sets flag that determines if a subscription is mutual, i.e., bidirectional pub/sub. In this mode one node will
         /// be the owner and set <c>Internal = True</c> and the other node will be the renter and set <c>Internal = False</c>.
         /// </summary>
         /// <remarks>
@@ -1362,7 +1362,7 @@ namespace sttp
         /// </summary>
         public override void Initialize()
         {
-            // We don't call base class initialize since it tries to auto-load adapters from the defined
+            // We don't call base class initialize since it tries to autoload adapters from the defined
             // data member - instead, the data publisher dynamically creates adapters upon request
             Initialized = false;
 
@@ -1482,7 +1482,7 @@ namespace sttp
             if (!commandChannelSettings.TryGetValue("bufferSize", out setting) || !int.TryParse(setting, out bufferSize))
                 bufferSize = DefaultBufferSize;
 
-            if (bufferSize == default)
+            if (bufferSize == 0)
                 bufferSize = BufferSize;
 
             if (settings.TryGetValue(nameof(UseSimpleTcpClient), out setting))
@@ -1645,8 +1645,10 @@ namespace sttp
             Initialized = true;
         }
 
-        RoutingPassthroughMethod IOptimizedRoutingConsumer.GetRoutingPassthroughMethods() =>
-            new(QueueMeasurementsForProcessing);
+        RoutingPassthroughMethod IOptimizedRoutingConsumer.GetRoutingPassthroughMethods()
+        {
+            return new RoutingPassthroughMethod(QueueMeasurementsForProcessing);
+        }
 
         /// <summary>
         /// Queues a collection of measurements for processing to each <see cref="IActionAdapter"/> connected to this <see cref="DataPublisher"/>.
@@ -1733,20 +1735,24 @@ namespace sttp
         /// Enumerates connected clients.
         /// </summary>
         [AdapterCommand("Enumerates connected clients.", "Administrator", "Editor", "Viewer")]
-        public virtual void EnumerateClients() =>
+        public virtual void EnumerateClients()
+        {
             OnStatusMessage(MessageLevel.Info, EnumerateClients(false));
+        }
 
         /// <summary>
         /// Enumerates connected clients with active temporal sessions.
         /// </summary>
         [AdapterCommand("Enumerates connected clients with active temporal sessions.", "Administrator", "Editor", "Viewer")]
-        public virtual void EnumerateTemporalClients() =>
+        public virtual void EnumerateTemporalClients()
+        {
             OnStatusMessage(MessageLevel.Info, EnumerateClients(true));
+        }
 
         private string EnumerateClients(bool filterToTemporalSessions)
         {
             StringBuilder clientEnumeration = new();
-            Guid[] clientIDs = (Guid[])m_serverCommandChannel?.ClientIDs.Clone() ?? new[] { m_proxyClientID.GetValueOrDefault() };
+            Guid[] clientIDs = (Guid[])m_serverCommandChannel?.ClientIDs.Clone() ?? [m_proxyClientID.GetValueOrDefault()];
 
             clientEnumeration.AppendLine(filterToTemporalSessions ? 
                 $"{Environment.NewLine}Indices for connected clients with active temporal sessions:{Environment.NewLine}" : 
@@ -1792,13 +1798,13 @@ namespace sttp
                 OnStatusMessage(MessageLevel.Error, $"Failed to find connected client with enumerated index {clientIndex}");
             }
 
-            if (success)
-            {
-                if (ClientConnections.TryGetValue(clientID, out SubscriberConnection connection))
-                    connection.RotateCipherKeys();
-                else
-                    OnStatusMessage(MessageLevel.Error, $"Failed to find connected client {clientID}");
-            }
+            if (!success)
+                return;
+            
+            if (ClientConnections.TryGetValue(clientID, out SubscriberConnection connection))
+                connection.RotateCipherKeys();
+            else
+                OnStatusMessage(MessageLevel.Error, $"Failed to find connected client {clientID}");
         }
 
         /// <summary>
@@ -1919,10 +1925,12 @@ namespace sttp
         /// </summary>
         /// <param name="subscriberID">Guid based subscriber ID for client connection.</param>
         [AdapterCommand("Gets subscriber status for client connection using its subscriber ID.", "Administrator", "Editor", "Viewer")]
-        public virtual Tuple<Guid, bool, string> GetSubscriberStatus(Guid subscriberID) =>
-            new(subscriberID,
-                GetConnectionProperty(subscriberID, sc => sc.IsConnected),
+        public virtual Tuple<Guid, bool, string> GetSubscriberStatus(Guid subscriberID)
+        {
+            return new Tuple<Guid, bool, string>(subscriberID, 
+                GetConnectionProperty(subscriberID, sc => sc.IsConnected), 
                 GetConnectionProperty(subscriberID, sc => sc.SubscriberInfo));
+        }
 
         /// <summary>
         /// Resets the counters for the lifetime statistics without interrupting the adapter's operations.
@@ -1968,7 +1976,7 @@ namespace sttp
         public Guid[] UpdateSignalIndexCache(Guid clientID, SignalIndexCache signalIndexCache, MeasurementKey[] inputMeasurementKeys)
         {
             ConcurrentDictionary<int, MeasurementKey> reference = new();
-            List<Guid> unauthorizedKeys = new();
+            List<Guid> unauthorizedKeys = [];
             int index = 0;
 
             if (inputMeasurementKeys is not null)
@@ -2244,8 +2252,10 @@ namespace sttp
         /// <param name="response">Server response.</param>
         /// <param name="command">In response to command.</param>
         /// <returns><c>true</c> if send was successful; otherwise <c>false</c>.</returns>
-        protected internal virtual bool SendClientResponse(Guid clientID, ServerResponse response, ServerCommand command) =>
-            SendClientResponse(clientID, response, command, (byte[])null);
+        protected internal virtual bool SendClientResponse(Guid clientID, ServerResponse response, ServerCommand command)
+        {
+            return SendClientResponse(clientID, response, command, (byte[])null);
+        }
 
         /// <summary>
         /// Sends response back to specified client with a message.
@@ -2255,10 +2265,12 @@ namespace sttp
         /// <param name="command">In response to command.</param>
         /// <param name="status">Status message to return.</param>
         /// <returns><c>true</c> if send was successful; otherwise <c>false</c>.</returns>
-        protected internal virtual bool SendClientResponse(Guid clientID, ServerResponse response, ServerCommand command, string status) =>
-            status is null ?
-                SendClientResponse(clientID, response, command) :
+        protected internal virtual bool SendClientResponse(Guid clientID, ServerResponse response, ServerCommand command, string status)
+        {
+            return status is null ? 
+                SendClientResponse(clientID, response, command) : 
                 SendClientResponse(clientID, response, command, GetClientEncoding(clientID).GetBytes(status));
+        }
 
         /// <summary>
         /// Sends response back to specified client with a formatted message.
@@ -2269,10 +2281,12 @@ namespace sttp
         /// <param name="formattedStatus">Formatted status message to return.</param>
         /// <param name="args">Arguments for <paramref name="formattedStatus"/>.</param>
         /// <returns><c>true</c> if send was successful; otherwise <c>false</c>.</returns>
-        protected internal virtual bool SendClientResponse(Guid clientID, ServerResponse response, ServerCommand command, string formattedStatus, params object[] args) =>
-            string.IsNullOrWhiteSpace(formattedStatus) ?
-                SendClientResponse(clientID, response, command) :
+        protected internal virtual bool SendClientResponse(Guid clientID, ServerResponse response, ServerCommand command, string formattedStatus, params object[] args)
+        {
+            return string.IsNullOrWhiteSpace(formattedStatus) ? 
+                SendClientResponse(clientID, response, command) : 
                 SendClientResponse(clientID, response, command, GetClientEncoding(clientID).GetBytes(string.Format(formattedStatus, args)));
+        }
 
         /// <summary>
         /// Sends response back to specified client with attached data.
@@ -2282,8 +2296,10 @@ namespace sttp
         /// <param name="command">In response to command.</param>
         /// <param name="data">Data to return to client; null if none.</param>
         /// <returns><c>true</c> if send was successful; otherwise <c>false</c>.</returns>
-        protected internal virtual bool SendClientResponse(Guid clientID, ServerResponse response, ServerCommand command, byte[] data) =>
-            SendClientResponse(clientID, (byte)response, (byte)command, data);
+        protected internal virtual bool SendClientResponse(Guid clientID, ServerResponse response, ServerCommand command, byte[] data)
+        {
+            return SendClientResponse(clientID, (byte)response, (byte)command, data);
+        }
 
         /// <summary>
         /// Updates latency statistics based on the collection of latencies passed into the method.
@@ -2409,7 +2425,7 @@ namespace sttp
                 // It is important here that "SELECT" not be allowed in parsing the input measurement keys expression since this key comes
                 // from the remote subscription - this will prevent possible SQL injection attacks.
                 MeasurementKey[] requestedInputs = AdapterBase.ParseInputMeasurementKeys(DataSource, false, subscription.RequestedInputFilter);
-                HashSet<MeasurementKey> authorizedSignals = new();
+                HashSet<MeasurementKey> authorizedSignals = [];
 
                 Func<Guid, bool> hasRightsFunc = ValidateMeasurementRights ?
                     new SubscriberRightsLookup(DataSource, subscription.SubscriberID).HasRightsFunc :
@@ -2689,8 +2705,10 @@ namespace sttp
         }
 
         // Handle notification on input measurement key change
-        private void NotifyHostOfSubscriptionRemoval(object state) =>
+        private void NotifyHostOfSubscriptionRemoval(object state)
+        {
             OnInputMeasurementKeysUpdated();
+        }
 
         // Attempt to find client subscription
         private bool TryGetClientSubscription(Guid clientID, out SubscriberAdapter subscription)
@@ -2706,8 +2724,10 @@ namespace sttp
             return false;
         }
 
-        private bool GetClientSubscription(IActionAdapter item, Guid value) =>
-            item is SubscriberAdapter subscription && subscription.ClientID == value;
+        private bool GetClientSubscription(IActionAdapter item, Guid value)
+        {
+            return item is SubscriberAdapter subscription && subscription.ClientID == value;
+        }
 
         // Gets specified property from client connection based on subscriber ID
         private TResult GetConnectionProperty<TResult>(Guid subscriberID, Func<SubscriberConnection, TResult> predicate)
@@ -2759,19 +2779,27 @@ namespace sttp
             }
         }
 
-        protected internal new void OnStatusMessage(MessageLevel level, string status, string eventName = null, MessageFlags flags = MessageFlags.None) =>
+        protected internal new void OnStatusMessage(MessageLevel level, string status, string eventName = null, MessageFlags flags = MessageFlags.None)
+        {
             base.OnStatusMessage(level, status, eventName, flags);
+        }
 
-        protected internal new void OnProcessException(MessageLevel level, Exception exception, string eventName = null, MessageFlags flags = MessageFlags.None) =>
+        protected internal new void OnProcessException(MessageLevel level, Exception exception, string eventName = null, MessageFlags flags = MessageFlags.None)
+        {
             base.OnProcessException(level, exception, eventName, flags);
+        }
 
         // Make sure to expose any routing table messages
-        private void RoutingTables_StatusMessage(object sender, EventArgs<string> e) =>
+        private void RoutingTables_StatusMessage(object sender, EventArgs<string> e)
+        {
             OnStatusMessage(MessageLevel.Info, e.Argument);
+        }
 
         // Make sure to expose any routing table exceptions
-        private void RoutingTables_ProcessException(object sender, EventArgs<Exception> e) =>
+        private void RoutingTables_ProcessException(object sender, EventArgs<Exception> e)
+        {
             OnProcessException(MessageLevel.Warning, e.Argument);
+        }
 
         // Cipher key rotation timer handler
         private void CipherKeyRotationTimer_Elapsed(object sender, EventArgs<DateTime> e)
@@ -3085,7 +3113,7 @@ namespace sttp
                 int takeCount = int.MaxValue;
 
                 // Build filter list
-                List<string> filters = new();
+                List<string> filters = [];
 
                 if (table.Columns.Contains("NodeID"))
                     filters.Add($"NodeID = '{nodeID}'");
@@ -3152,10 +3180,10 @@ namespace sttp
             if (!metadata.Tables.Contains("MeasurementDetail") || !metadata.Tables["MeasurementDetail"].Columns.Contains("DeviceAcronym") || !metadata.Tables.Contains("DeviceDetail") || !metadata.Tables["DeviceDetail"].Columns.Contains("Acronym"))
                 return metadata;
 
-            List<DataRow> rowsToRemove = new();
+            List<DataRow> rowsToRemove = [];
             string deviceAcronym;
 
-            // Remove device records where no associated measurements records exist
+            // Remove device records where no associated measurement records exist
             foreach (DataRow row in metadata.Tables["DeviceDetail"].Rows)
             {
                 deviceAcronym = row["Acronym"].ToNonNullString();
@@ -3372,7 +3400,7 @@ namespace sttp
         {
             try
             {
-                List<IMeasurement> measurements = new();
+                List<IMeasurement> measurements = [];
 
                 int index = startIndex;
                 int payloadByteLength = BigEndian.ToInt32(buffer, index);
@@ -3381,7 +3409,7 @@ namespace sttp
                 string dataString = connection.Encoding.GetString(buffer, index, payloadByteLength);
                 ConnectionStringParser<SettingAttribute> connectionStringParser = new();
 
-                foreach (string measurementString in dataString.Split(new[] { ";;" }, StringSplitOptions.RemoveEmptyEntries))
+                foreach (string measurementString in dataString.Split([";;"], StringSplitOptions.RemoveEmptyEntries))
                 {
                     CommandMeasurement measurement = new();
                     connectionStringParser.ParseConnectionString(measurementString, measurement);
@@ -3416,8 +3444,10 @@ namespace sttp
         /// <remarks>
         /// Derived data publisher implementations should override this method as needed to handle custom user commands.
         /// </remarks>
-        protected virtual void HandleUserCommand(SubscriberConnection connection, ServerCommand command, byte[] buffer, int startIndex, int length) =>
+        protected virtual void HandleUserCommand(SubscriberConnection connection, ServerCommand command, byte[] buffer, int startIndex, int length)
+        {
             OnStatusMessage(MessageLevel.Info, $"Received command code for user-defined command \"{command}\".");
+        }
 
         private byte[] SerializeSignalIndexCache(Guid clientID, SignalIndexCache signalIndexCache)
         {
@@ -3547,8 +3577,10 @@ namespace sttp
             m_measurementsPerSecondCount = 0L;
         }
 
-        private void Subscription_BufferBlockRetransmission(object sender, EventArgs eventArgs) =>
+        private void Subscription_BufferBlockRetransmission(object sender, EventArgs eventArgs)
+        {
             BufferBlockRetransmissions++;
+        }
 
         // Bubble up processing complete notifications from subscriptions
         private void Subscription_ProcessingComplete(object sender, EventArgs<IClientSubscription, EventArgs> e)
@@ -3738,8 +3770,10 @@ namespace sttp
             OnProcessException(MessageLevel.Info, new ConnectionException($"Data publisher encountered an exception while connecting client to the command channel: {ex.Message}", ex));
         }
 
-        private void ServerCommandChannelServerStarted(object sender, EventArgs e) =>
+        private void ServerCommandChannelServerStarted(object sender, EventArgs e)
+        {
             OnStatusMessage(MessageLevel.Info, "Data publisher command channel started.");
+        }
 
         private void ServerCommandChannelServerStopped(object sender, EventArgs e)
         {
@@ -3862,7 +3896,7 @@ namespace sttp
         // Static Fields
 
         // Constant zero length integer byte array
-        private static readonly byte[] s_zeroLengthBytes = { 0, 0, 0, 0 };
+        private static readonly byte[] s_zeroLengthBytes = [0, 0, 0, 0];
 
         // Static Methods
 
@@ -3870,7 +3904,7 @@ namespace sttp
         private static List<IPAddress> ParseAddressList(string addressList)
         {
             string[] splitList = addressList.Split(';', ',');
-            List<IPAddress> ipAddressList = new();
+            List<IPAddress> ipAddressList = [];
 
             foreach (string address in splitList)
             {

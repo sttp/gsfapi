@@ -38,7 +38,7 @@ using sttp.tssc;
 namespace sttp
 {
     /// <summary>
-    /// Represents a serializable <see cref="Guid"/> signal ID to <see cref="int"/> index cross reference.
+    /// Represents a serializable <see cref="Guid"/> signal ID to <see cref="int"/> index cross-reference.
     /// </summary>
     /// <remarks>
     /// This class is used to create a runtime index to be used for data exchange so that a 32-bit integer
@@ -153,7 +153,7 @@ namespace sttp
         public long RefreshCount { get; private set; }
 
         /// <summary>
-        /// Gets or sets integer signal index cross reference dictionary.
+        /// Gets or sets integer signal index cross-reference dictionary.
         /// </summary>
         public ConcurrentDictionary<int, MeasurementKey> Reference
         {
@@ -225,7 +225,7 @@ namespace sttp
                 binaryLength += 4;
 
                 // Each unauthorized ID
-                binaryLength += 16 * (m_unauthorizedSignalIDs ?? Array.Empty<Guid>()).Length;
+                binaryLength += 16 * (m_unauthorizedSignalIDs ?? []).Length;
 
                 return binaryLength;
             }
@@ -257,7 +257,7 @@ namespace sttp
             if (m_encoding is null)
                 throw new InvalidOperationException("Attempt to generate binary image of signal index cache without setting a character encoding.");
 
-            Guid[] unauthorizedSignalIDs = m_unauthorizedSignalIDs ?? Array.Empty<Guid>();
+            Guid[] unauthorizedSignalIDs = m_unauthorizedSignalIDs ?? [];
             int binaryLength = BinaryLength;
             int offset = startIndex;
 
