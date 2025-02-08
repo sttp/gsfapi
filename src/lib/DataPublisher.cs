@@ -1720,12 +1720,12 @@ namespace sttp
         public override string GetShortStatus(int maxLength)
         {
             if (m_serverCommandChannel is not null)
-                return $"Publishing data to {m_serverCommandChannel.ClientIDs.Length} clients.".CenterText(maxLength);
+                return $"Published {ProcessedMeasurements:N0} data points to {m_serverCommandChannel.ClientIDs.Length:N0} clients.".CenterText(maxLength);
 
             if (m_clientCommandChannel is not null)
             {
                 if (m_clientCommandChannel.CurrentState == ClientState.Connected)
-                    return "Publishing data to one client via client-based connection.".CenterText(maxLength);
+                    return $"Published {ProcessedMeasurements:N0} data points via client-based connection.".CenterText(maxLength);
             }
 
             return "Currently not connected".CenterText(maxLength);
@@ -2132,7 +2132,7 @@ namespace sttp
             // Make sure publisher allows meta-data refresh, no need to notify clients of configuration change if they can't receive updates
             if (AllowMetadataRefresh)
             {
-                // This can be a lazy notification so we queue up work and return quickly
+                // This can be a lazy notification, so we queue up work and return quickly
                 ThreadPool.QueueUserWorkItem(_ =>
                 {
                     // Make a copy of client connection enumeration with ToArray() in case connections are added or dropped during notification
@@ -2667,7 +2667,7 @@ namespace sttp
                     connection.Dispose();
 
                     OnStatusMessage(MessageLevel.Info, clientID == m_proxyClientID ? 
-                        "Data publisher client-based connection disconnected from subscriber." : 
+                        $"Data publisher client-based connection disconnected from subscriber via {m_clientCommandChannel.ServerUri}." : 
                         "Client disconnected from command channel.");
                 }
 
@@ -3731,7 +3731,7 @@ namespace sttp
 
             ClientConnections[clientID] = connection;
 
-            OnStatusMessage(MessageLevel.Info, "Client connected to command channel.");
+            OnStatusMessage(MessageLevel.Info, $"Client connected to command channel {(m_clientCommandChannel is null ? "" : $" via {m_clientCommandChannel.ServerUri}")}.");
 
             if (connection.Authenticated)
             {
@@ -3830,14 +3830,14 @@ namespace sttp
                 if (m_proxyClientID is not null && ClientConnections.ContainsKey(m_proxyClientID.GetValueOrDefault()))
                     return;
 
-                OnStatusMessage(MessageLevel.Info, "Client-based command channel subscriber connection established.");
+                OnStatusMessage(MessageLevel.Info, $"Client-based command channel subscriber connection established via {m_clientCommandChannel.ServerUri}.");
 
                 m_proxyClientID ??= Guid.NewGuid();
                 ServerCommandChannelClientConnected(sender, new EventArgs<Guid>(m_proxyClientID.GetValueOrDefault()));
             }
             catch (Exception ex)
             {
-                OnProcessException(MessageLevel.Error, new InvalidOperationException($"Failed to establish client connection session: {ex.Message}", ex));
+                OnProcessException(MessageLevel.Error, new InvalidOperationException($"Failed to establish client connection session via {m_clientCommandChannel.ServerUri}: {ex.Message}", ex));
             }
         }
 
@@ -3845,15 +3845,26 @@ namespace sttp
         {
             ServerCommandChannelClientDisconnected(sender, new EventArgs<Guid>(m_proxyClientID.GetValueOrDefault()));
 
+            if (!Enabled)
+                return;
+
             // If user didn't initiate disconnect, restart the connection
-            if (Enabled)
-                m_clientCommandChannel?.ConnectAsync();
+            new Action(() =>
+            {
+                if (!Enabled || m_clientCommandChannel is null || m_clientCommandChannel.CurrentState != ClientState.Disconnected)
+                    return;
+
+                OnStatusMessage(MessageLevel.Info, $"Attempting to re-establish client-based command channel subscriber connection via {m_clientCommandChannel.ServerUri}...");
+                m_commandChannelConnectionAttempts = 0;
+                m_clientCommandChannel.ConnectAsync();
+            })
+            .DelayAndExecute(1000);
         }
 
         private void ClientCommandChannelConnectionException(object sender, EventArgs<Exception> e)
         {
             Exception ex = e.Argument;
-            OnProcessException(MessageLevel.Info, new ConnectionException($"Data publisher encountered an exception while attempting client-based command channel subscriber connection: {ex.Message}", ex));
+            OnProcessException(MessageLevel.Info, new ConnectionException($"Data publisher encountered an exception while attempting client-based command channel subscriber connection via {m_clientCommandChannel.ServerUri}: {ex.Message}", ex));
         }
 
         private void ClientCommandChannelConnectionAttempt(object sender, EventArgs e)
@@ -3862,7 +3873,7 @@ namespace sttp
             if (m_commandChannelConnectionAttempts > 0)
                 Thread.Sleep(2000);
 
-            OnStatusMessage(MessageLevel.Info, "Attempting client-based command channel connection to subscriber...");
+            OnStatusMessage(MessageLevel.Info, $"Attempting client-based command channel connection to subscriber via {m_clientCommandChannel.ServerUri}...");
             m_commandChannelConnectionAttempts++;
         }
 
@@ -3871,7 +3882,7 @@ namespace sttp
             Exception ex = e.Argument;
 
             if (!HandleSocketException(m_proxyClientID.GetValueOrDefault(), ex) && ex is not ObjectDisposedException)
-                OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data publisher encountered an exception while sending client-based command channel data to subscriber connection: {ex.Message}", ex));
+                OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data publisher encountered an exception while sending client-based command channel data to subscriber connection via {m_clientCommandChannel.ServerUri}: {ex.Message}", ex));
         }
 
         private void ClientCommandChannelReceiveDataComplete(object sender, EventArgs<byte[], int> e)
@@ -3884,7 +3895,7 @@ namespace sttp
             Exception ex = e.Argument;
 
             if (!HandleSocketException(m_proxyClientID.GetValueOrDefault(), ex) && ex is not ObjectDisposedException)
-                OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data publisher encountered an exception while receiving client-based command channel data from subscriber connection: {ex.Message}", ex));
+                OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data publisher encountered an exception while receiving client-based command channel data from subscriber connection via {m_clientCommandChannel.ServerUri}: {ex.Message}", ex));
         }
 
         #endregion

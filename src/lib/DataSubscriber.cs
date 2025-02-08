@@ -2360,10 +2360,10 @@ namespace sttp
         public override string GetShortStatus(int maxLength)
         {
             if (m_clientCommandChannel?.CurrentState == ClientState.Connected)
-                return "Subscriber is connected and receiving data points".CenterText(maxLength);
+                return $"Subscriber connection has received {ProcessedMeasurements:N0} data points".CenterText(maxLength);
 
             if (m_serverCommandChannel?.CurrentState == ServerState.Running && m_activeClientID != Guid.Empty)
-                return "Subscriber server-based connection is receiving data points".CenterText(maxLength);
+                return $"Subscriber server-based connection has received {ProcessedMeasurements:N0} points".CenterText(maxLength);
 
             return "Subscriber is not connected.".CenterText(maxLength);
         }
