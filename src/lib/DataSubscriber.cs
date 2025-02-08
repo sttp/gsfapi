@@ -3418,22 +3418,22 @@ namespace sttp
 
                             // Define SQL statement to insert new measurement record
                             string insertMeasurementSql = database.ParameterizedQueryString("INSERT INTO Measurement(DeviceID, HistorianID, PointTag, AlternateTag, SignalTypeID, PhasorSourceIndex, SignalReference, Description, Internal, Subscribed, Enabled) " +
-                                                                                            "VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, 0, 1)", "deviceID", "historianID", "pointTag", "alternateTag", "signalTypeID", "phasorSourceIndex", "signalReference", "description", "internal");
+                                                                                            "VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, 0, 1)", "deviceID", "historianID", "pointTag", "tempAlternateTagID", "signalTypeID", "phasorSourceIndex", "signalReference", "description", "internal");
 
                             // Define SQL statement to insert new measurement record
                             string identityInsertMeasurementSql = database.ParameterizedQueryString("INSERT INTO Measurement(PointID, DeviceID, HistorianID, PointTag, AlternateTag, SignalTypeID, PhasorSourceIndex, SignalReference, Description, Internal, Subscribed, Enabled) " +
-                                                                                                    "VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, 0, 1)", "pointID", "deviceID", "historianID", "pointTag", "alternateTag", "signalTypeID", "phasorSourceIndex", "signalReference", "description", "internal");
+                                                                                                    "VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, 0, 1)", "pointID", "deviceID", "historianID", "pointTag", "tempAlternateTagID", "signalTypeID", "phasorSourceIndex", "signalReference", "description", "internal");
 
-                            // Define SQL statement to update measurement's signal ID after insert
-                            string updateMeasurementSignalIDSql = database.ParameterizedQueryString("UPDATE Measurement SET SignalID = {0}, AlternateTag = NULL WHERE AlternateTag = {1}", "signalID", "alternateTag");
+                            // Define SQL statement to update measurement's signal ID after insert, restoring original signal ID and alternate tag from meta-data
+                            string updateMeasurementSignalIDSql = database.ParameterizedQueryString("UPDATE Measurement SET SignalID = {0}, AlternateTag = {1} WHERE AlternateTag = {2}", "signalID", "alternateTag", "tempAlternateTagID");
 
                             // Define SQL statement to update existing measurement record
-                            string updateMeasurementSql = database.ParameterizedQueryString("UPDATE Measurement SET HistorianID = {0}, PointTag = {1}, SignalTypeID = {2}, PhasorSourceIndex = {3}, SignalReference = {4}, Description = {5}, Internal = {6} WHERE SignalID = {7}",
-                                                                                            "historianID", "pointTag", "signalTypeID", "phasorSourceIndex", "signalReference", "description", "internal", "signalID");
+                            string updateMeasurementSql = database.ParameterizedQueryString("UPDATE Measurement SET HistorianID = {0}, PointTag = {1}, AlternateTag = {2}, SignalTypeID = {3}, PhasorSourceIndex = {4}, SignalReference = {5}, Description = {6}, Internal = {7} WHERE SignalID = {8}",
+                                                                                            "historianID", "pointTag", "alternateTag", "signalTypeID", "phasorSourceIndex", "signalReference", "description", "internal", "signalID");
 
                             // Define SQL statement to update existing measurement record
                             string identityUpdateMeasurementSql = database.ParameterizedQueryString("UPDATE Measurement SET DeviceID = {0}, HistorianID = {1}, PointTag = {2}, AlternateTag = {3}, SignalTypeID = {4}, PhasorSourceIndex = {5}, SignalReference = {6}, Description = {7}, Internal = {8}, Subscribed = 0, Enabled = 1, SignalID = {9} WHERE PointID = {10}",
-                                                                                                    "deviceID", "historianID", "pointTag", "alternateTag", "signalTypeID", "phasorSourceIndex", "signalReference", "description", "internal", "signalID", "pointID");
+                                                                                                    "deviceID", "historianID", "pointTag", "tempAlternateTagID", "signalTypeID", "phasorSourceIndex", "signalReference", "description", "internal", "signalID", "pointID");
 
                             // Define SQL statement to retrieve all measurement signal ID's for the current parent to check for mismatches - note that we use the ActiveMeasurements view
                             // since it associates measurements with their top-most parent runtime device ID, this allows us to easily query all measurements for the parent device
@@ -3498,8 +3498,10 @@ namespace sttp
                             DataColumnCollection measurementDetailColumns = measurementDetail.Columns;
                             bool phasorSourceIndexFieldExists = measurementDetailColumns.Contains("PhasorSourceIndex");
                             bool updatedOnFieldExists = measurementDetailColumns.Contains("UpdatedOn");
+                            bool alternateTagFieldExists = measurementDetailColumns.Contains("AlternateTag");
 
                             object phasorSourceIndex = DBNull.Value;
+                            object alternateTag = DBNull.Value;
 
                             if (UseIdentityInsertsForMetadata && database.IsSQLServer)
                                 command.ExecuteNonQuery("SET IDENTITY_INSERT Measurement ON");
@@ -3545,6 +3547,10 @@ namespace sttp
                                         phasorSourceIndex = index ?? (object)DBNull.Value;
                                     }
 
+                                    // Get alternate tag if field is defined
+                                    if (alternateTagFieldExists)
+                                        alternateTag = row.Field<string>("AlternateTag") ?? (object)DBNull.Value;
+
                                     // Make sure we have an associated device and signal type already defined for the measurement
                                     if (!string.IsNullOrWhiteSpace(deviceAcronym) && deviceIDs.ContainsKey(deviceAcronym) && !string.IsNullOrWhiteSpace(signalTypeAcronym) && signalTypeIDs.ContainsKey(signalTypeAcronym))
                                     {
@@ -3562,7 +3568,7 @@ namespace sttp
                                         // Determine if measurement record already exists
                                         if (Convert.ToInt32(command.ExecuteScalar(measurementExistsSql, MetadataSynchronizationTimeout, database.Guid(signalID))) == 0)
                                         {
-                                            string alternateTag = Guid.NewGuid().ToString();
+                                            string temporaryAlternateTagID = Guid.NewGuid().ToString();
 
                                             // Insert new measurement record
                                             if (UseIdentityInsertsForMetadata && MeasurementKey.TryParse(row.Field<string>("ID"), out MeasurementKey measurementKey))
@@ -3570,23 +3576,24 @@ namespace sttp
                                                 long pointID = (long)measurementKey.ID;
 
                                                 if (Convert.ToInt32(command.ExecuteScalar(identityMeasurementExistsSql, MetadataSynchronizationTimeout, pointID)) == 0)
-                                                    command.ExecuteNonQuery(identityInsertMeasurementSql, MetadataSynchronizationTimeout, pointID, deviceID, historianID, pointTag, alternateTag, signalTypeIDs[signalTypeAcronym], phasorSourceIndex, sourcePrefix + row.Field<string>("SignalReference"), row.Field<string>("Description") ?? string.Empty, database.Bool(Internal));
+                                                    command.ExecuteNonQuery(identityInsertMeasurementSql, MetadataSynchronizationTimeout, pointID, deviceID, historianID, pointTag, temporaryAlternateTagID, signalTypeIDs[signalTypeAcronym], phasorSourceIndex, sourcePrefix + row.Field<string>("SignalReference"), row.Field<string>("Description") ?? string.Empty, database.Bool(Internal));
                                                 else
-                                                    command.ExecuteNonQuery(identityUpdateMeasurementSql, MetadataSynchronizationTimeout, deviceID, historianID, pointTag, alternateTag, signalTypeIDs[signalTypeAcronym], phasorSourceIndex, sourcePrefix + row.Field<string>("SignalReference"), row.Field<string>("Description") ?? string.Empty, database.Bool(Internal), database.Guid(signalID), pointID);
+                                                    command.ExecuteNonQuery(identityUpdateMeasurementSql, MetadataSynchronizationTimeout, deviceID, historianID, pointTag, temporaryAlternateTagID, signalTypeIDs[signalTypeAcronym], phasorSourceIndex, sourcePrefix + row.Field<string>("SignalReference"), row.Field<string>("Description") ?? string.Empty, database.Bool(Internal), database.Guid(signalID), pointID);
                                             }
                                             else
                                             {
-                                                command.ExecuteNonQuery(insertMeasurementSql, MetadataSynchronizationTimeout, deviceID, historianID, pointTag, alternateTag, signalTypeIDs[signalTypeAcronym], phasorSourceIndex, sourcePrefix + row.Field<string>("SignalReference"), row.Field<string>("Description") ?? string.Empty, database.Bool(Internal));
+                                                command.ExecuteNonQuery(insertMeasurementSql, MetadataSynchronizationTimeout, deviceID, historianID, pointTag, temporaryAlternateTagID, signalTypeIDs[signalTypeAcronym], phasorSourceIndex, sourcePrefix + row.Field<string>("SignalReference"), row.Field<string>("Description") ?? string.Empty, database.Bool(Internal));
                                             }
 
                                             // Guids are normally auto-generated during insert - after insertion update the Guid so that it matches the source data. Most of the database
                                             // scripts have triggers that support properly assigning the Guid during an insert, but this code ensures the Guid will always get assigned.
-                                            command.ExecuteNonQuery(updateMeasurementSignalIDSql, MetadataSynchronizationTimeout, database.Guid(signalID), alternateTag);
+                                            // TODO: Ensure database schemas define an index on the AlternateTag field to optimize this update
+                                            command.ExecuteNonQuery(updateMeasurementSignalIDSql, MetadataSynchronizationTimeout, database.Guid(signalID), alternateTag, temporaryAlternateTagID);
                                         }
                                         else if (recordNeedsUpdating)
                                         {
                                             // Update existing measurement record. Note that this update assumes that measurements will remain associated with a static source device.
-                                            command.ExecuteNonQuery(updateMeasurementSql, MetadataSynchronizationTimeout, historianID, pointTag, signalTypeIDs[signalTypeAcronym], phasorSourceIndex, sourcePrefix + row.Field<string>("SignalReference"), row.Field<string>("Description") ?? string.Empty, database.Bool(Internal), database.Guid(signalID));
+                                            command.ExecuteNonQuery(updateMeasurementSql, MetadataSynchronizationTimeout, historianID, pointTag, alternateTag, signalTypeIDs[signalTypeAcronym], phasorSourceIndex, sourcePrefix + row.Field<string>("SignalReference"), row.Field<string>("Description") ?? string.Empty, database.Bool(Internal), database.Guid(signalID));
                                         }
                                     }
 
