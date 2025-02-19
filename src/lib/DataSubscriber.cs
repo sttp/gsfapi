@@ -2468,7 +2468,7 @@ public class DataSubscriber : InputAdapterBase
                         if (TotalBytesReceived == 0)
                         {
                             // At the point when data is being received, data monitor should be enabled
-                            if (!m_dataStreamMonitor?.Enabled ?? false)
+                            if (!(m_dataStreamMonitor?.Enabled ?? false))
                                 m_dataStreamMonitor.Enabled = true;
 
                             // Establish run-time log for subscriber
