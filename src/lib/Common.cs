@@ -30,46 +30,45 @@ using GSF.Threading;
 using Microsoft.Win32;
 #endif
 
-namespace sttp
+namespace sttp;
+
+/// <summary>
+/// Common static methods and extensions for transport library.
+/// </summary>
+public static class Common
 {
-    /// <summary>
-    /// Common static methods and extensions for transport library.
-    /// </summary>
-    public static class Common
+    static Common()
     {
-        static Common()
-        {
-        #if MONO
+    #if MONO
             UseManagedEncryption = true;
-        #else
-            const string FipsKeyOld = @"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Lsa";
-            const string FipsKeyNew = @"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Lsa\FipsAlgorithmPolicy";
+    #else
+        const string FipsKeyOld = @"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Lsa";
+        const string FipsKeyNew = @"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Lsa\FipsAlgorithmPolicy";
 
-            // Determine if the operating system configuration to set to use FIPS-compliant algorithms
-            UseManagedEncryption = (Registry.GetValue(FipsKeyNew, "Enabled", 0) ?? Registry.GetValue(FipsKeyOld, "FipsAlgorithmPolicy", 0)).ToString() == "0";
-        #endif
+        // Determine if the operating system configuration to set to use FIPS-compliant algorithms
+        UseManagedEncryption = (Registry.GetValue(FipsKeyNew, "Enabled", 0) ?? Registry.GetValue(FipsKeyOld, "FipsAlgorithmPolicy", 0)).ToString() == "0";
+    #endif
 
-            TimerScheduler = new SharedTimerScheduler();
-        }
-
-        /// <summary>
-        /// Gets flag that determines if managed encryption should be used.
-        /// </summary>
-        public static bool UseManagedEncryption { get; }
-
-        /// <summary>
-        /// Gets an AES symmetric algorithm to use for encryption or decryption.
-        /// </summary>
-        public static SymmetricAlgorithm SymmetricAlgorithm
-        {
-            get
-            {
-                Aes symmetricAlgorithm = UseManagedEncryption ? new AesManaged() : new AesCryptoServiceProvider();
-                symmetricAlgorithm.KeySize = 256;
-                return symmetricAlgorithm;
-            }
-        }
-
-        internal static readonly SharedTimerScheduler TimerScheduler;
+        TimerScheduler = new SharedTimerScheduler();
     }
+
+    /// <summary>
+    /// Gets flag that determines if managed encryption should be used.
+    /// </summary>
+    public static bool UseManagedEncryption { get; }
+
+    /// <summary>
+    /// Gets an AES symmetric algorithm to use for encryption or decryption.
+    /// </summary>
+    public static SymmetricAlgorithm SymmetricAlgorithm
+    {
+        get
+        {
+            Aes symmetricAlgorithm = UseManagedEncryption ? new AesManaged() : new AesCryptoServiceProvider();
+            symmetricAlgorithm.KeySize = 256;
+            return symmetricAlgorithm;
+        }
+    }
+
+    internal static readonly SharedTimerScheduler TimerScheduler;
 }
