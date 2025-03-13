@@ -2982,6 +2982,12 @@ public class DataSubscriber : InputAdapterBase
             return;
         }
 
+        decoder.SequenceNumber++;
+
+        // Do not increment to 0 on roll-over
+        if (decoder.SequenceNumber == 0)
+            decoder.SequenceNumber = 1;
+
         decoder.SetBuffer(buffer, responseIndex, packetLength - 3);
 
         while (decoder.TryGetMeasurement(out int id, out long time, out uint quality, out float value))
@@ -2999,12 +3005,6 @@ public class DataSubscriber : InputAdapterBase
 
             measurements.Add(measurement);
         }
-
-        decoder.SequenceNumber++;
-
-        // Do not increment to 0 on roll-over
-        if (decoder.SequenceNumber == 0)
-            decoder.SequenceNumber = 1;
     }
 
     private static bool IsUserCommand(ServerCommand command)
