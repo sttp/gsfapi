@@ -93,6 +93,7 @@ public class SubscriberConnection : IProvideStatus, IDisposable
         m_cipherIndex = 0;
         CacheUpdateLock = new object();
         PendingCacheUpdateLock = new object();
+        PublishBuffer = new BlockAllocatedMemoryStream();
 
         // Setup ping timer
         m_pingTimer = Common.TimerScheduler.CreateTimer(5000);
@@ -208,6 +209,11 @@ public class SubscriberConnection : IProvideStatus, IDisposable
     /// Gets <see cref="IServer"/> publication channel - that is, data channel if defined otherwise command channel.
     /// </summary>
     public IServer ServerPublishChannel => m_dataChannel ?? ServerCommandChannel;
+
+    /// <summary>
+    /// Gets buffer used to hold publish data for the <see cref="SubscriberConnection"/>.
+    /// </summary>
+    public BlockAllocatedMemoryStream PublishBuffer { get; }
 
     /// <summary>
     /// Gets or sets last publish time for subscriber connection.
@@ -494,6 +500,7 @@ public class SubscriberConnection : IProvideStatus, IDisposable
             DataChannel = null;
             ServerCommandChannel = null;
             ClientCommandChannel = null;
+            PublishBuffer.Dispose();
             m_subscription = null;
             m_parent = null;
         }
