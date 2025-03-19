@@ -1329,6 +1329,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                 return;
 
             ServerCommandChannel = null;
+            ClientCommandChannel = null;
 
             ClientConnections?.Values.AsParallel().ForAll(cc => cc.Dispose());
 
@@ -1485,6 +1486,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         if (bufferSize == 0)
             bufferSize = BufferSize;
 
+        if (!commandChannelSettings.ContainsKey("maxSendQueueSize") || int.TryParse(commandChannelSettings["maxSendQueueSize"], out int maxSendQueueSize))
+            maxSendQueueSize = clientBasedConnection ? TcpClient.DefaultMaxSendQueueSize : TcpServer.DefaultMaxSendQueueSize;
+
         if (settings.TryGetValue(nameof(UseSimpleTcpClient), out setting))
             UseSimpleTcpClient = setting.ParseBoolean();
 
@@ -1529,7 +1533,8 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                     CertificateChecker = m_certificateChecker,
                     SendBufferSize = BufferSize,
                     ReceiveBufferSize = bufferSize,
-                    NoDelay = true
+                    NoDelay = true,
+                    MaxSendQueueSize = maxSendQueueSize
                 };
 
                 // Assign command channel client reference and attach to needed events
@@ -1550,7 +1555,8 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                     PersistSettings = true,
                     SendBufferSize = BufferSize,
                     ReceiveBufferSize = BufferSize,
-                    NoDelay = true
+                    NoDelay = true,
+                    MaxSendQueueSize = maxSendQueueSize
                 };
 
                 // Assign command channel server reference and attach to needed events
@@ -1563,7 +1569,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             {
                 if (UseSimpleTcpClient)
                 {
-                    // Create a new simple TCP client
+                    // Create a new simple TCP client (class does not have a max send queue size)
                     TcpSimpleClient commandChannel = new()
                     {
                         PayloadAware = true,
@@ -1591,7 +1597,8 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                         MaxConnectionAttempts = -1,
                         SendBufferSize = BufferSize,
                         ReceiveBufferSize = bufferSize,
-                        NoDelay = true
+                        NoDelay = true,
+                        MaxSendQueueSize = maxSendQueueSize
                     };
 
                     // Assign command channel client reference and attach to needed events
@@ -1611,7 +1618,8 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                     PersistSettings = true,
                     SendBufferSize = BufferSize,
                     ReceiveBufferSize = BufferSize,
-                    NoDelay = true
+                    NoDelay = true,
+                    MaxSendQueueSize = maxSendQueueSize
                 };
 
                 // Assign command channel server reference and attach to needed events
