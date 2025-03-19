@@ -359,8 +359,6 @@ public class DataSubscriber : InputAdapterBase
     private UdpClient m_dataChannel;
     private Guid m_activeClientID;
     private string m_connectionID;
-    private bool m_tsscResetRequested;
-    private long m_tsscLastOOSReport;
     private SharedTimer m_dataStreamMonitor;
     private long m_commandChannelConnectionAttempts;
     private long m_dataChannelConnectionAttempts;
@@ -378,7 +376,6 @@ public class DataSubscriber : InputAdapterBase
     private long m_lastMissingCacheWarning;
     private Guid m_nodeID;
     private int m_sttpProtocolID;
-    private SecurityMode m_securityMode;
     private bool m_includeTime;
     private bool m_metadataRefreshPending;
     private readonly LongSynchronizedOperation m_synchronizeMetadataOperation;
@@ -475,11 +472,7 @@ public class DataSubscriber : InputAdapterBase
     /// <summary>
     /// Gets or sets the security mode used for communications over the command channel.
     /// </summary>
-    public SecurityMode SecurityMode
-    {
-        get => m_securityMode;
-        set => m_securityMode = value;
-    }
+    public SecurityMode SecurityMode { get; set; }
 
     /// <summary>
     /// Gets or sets logging path to be used to be runtime and outage logs of the subscriber which are required for
@@ -1019,7 +1012,7 @@ public class DataSubscriber : InputAdapterBase
             status.AppendLine($"                 Connected: {CommandChannelConnected}");
             status.AppendLine($"                Subscribed: {m_subscribed}");
             status.AppendLine($"             Security mode: {SecurityMode}");
-            status.AppendLine($"             Authenticated: {m_securityMode == SecurityMode.TLS && CommandChannelConnected}");
+            status.AppendLine($"             Authenticated: {SecurityMode == SecurityMode.TLS && CommandChannelConnected}");
             status.AppendLine($"         Compression modes: {CompressionModes}");
             status.AppendLine($"       Mutual subscription: {MutualSubscription}{(MutualSubscription ? $" - System has {(Internal ? "Owner" : "Renter")} Role" : "")}");
             status.AppendLine($" Mark received as internal: {Internal}");
@@ -1036,7 +1029,7 @@ public class DataSubscriber : InputAdapterBase
 
             status.AppendLine($"  Bypass statistics engine: {BypassStatistics}");
             status.AppendLine($"      Total bytes received: {TotalBytesReceived:N0}");
-            status.AppendLine($"      Data packet security: {(m_securityMode == SecurityMode.TLS && m_dataChannel is null ? "Secured via TLS" : m_keyIVs is null ? "Unencrypted" : "AES Encrypted")}");
+            status.AppendLine($"      Data packet security: {(SecurityMode == SecurityMode.TLS && m_dataChannel is null ? "Secured via TLS" : m_keyIVs is null ? "Unencrypted" : "AES Encrypted")}");
             status.AppendLine($"      Data monitor enabled: {m_dataStreamMonitor is not null && m_dataStreamMonitor.Enabled}");
             status.AppendLine($"              Logging path: {FilePath.TrimFileName(m_loggingPath.ToNonNullNorWhiteSpace(FilePath.GetAbsolutePath("")), 51)}");
             status.AppendLine($"No data reconnect interval: {(DataLossInterval > 0.0D ? $"{DataLossInterval:0.000} seconds" : "Disabled")}");
@@ -1316,8 +1309,10 @@ public class DataSubscriber : InputAdapterBase
             OperationalModes = operationalModes;
 
         // Set the security mode if explicitly defined
-        if (!settings.TryGetValue(nameof(SecurityMode), out setting) || !Enum.TryParse(setting, true, out m_securityMode))
-            m_securityMode = SecurityMode.None;
+        if (!settings.TryGetValue(nameof(SecurityMode), out setting) || !Enum.TryParse(setting, true, out SecurityMode securityMode))
+            securityMode = SecurityMode.None;
+
+        SecurityMode = securityMode;
 
         // Apply any version override (e.g., to downgrade to older version)
         if (settings.TryGetValue(nameof(Version), out setting) && int.TryParse(setting, out int value) && value < 32)
@@ -1464,7 +1459,7 @@ public class DataSubscriber : InputAdapterBase
         if (settings.TryGetValue(nameof(UseSimpleTcpClient), out setting))
             UseSimpleTcpClient = setting.ParseBoolean();
 
-        if (m_securityMode == SecurityMode.TLS)
+        if (securityMode == SecurityMode.TLS)
         {
             bool checkCertificateRevocation;
 
@@ -1730,7 +1725,7 @@ public class DataSubscriber : InputAdapterBase
         }
 
         // If active measurements are defined, attempt to defined desired subscription points from there
-        if ((m_securityMode == SecurityMode.TLS || FilterOutputMeasurements) && DataSource is not null && DataSource.Tables.Contains("ActiveMeasurements"))
+        if ((SecurityMode == SecurityMode.TLS || FilterOutputMeasurements) && DataSource is not null && DataSource.Tables.Contains("ActiveMeasurements"))
         {
             try
             {
@@ -2029,13 +2024,6 @@ public class DataSubscriber : InputAdapterBase
         else
         {
             OnProcessException(MessageLevel.Error, new InvalidOperationException("Cannot make publisher subscription without a connection string."));
-        }
-
-        // Reset decompresser on successful re-subscription
-        if (success)
-        {
-            m_tsscResetRequested = true;
-            m_tsscLastOOSReport = 0L;
         }
 
         return success;
@@ -2962,23 +2950,12 @@ public class DataSubscriber : InputAdapterBase
                 decoder = signalIndexCache.TsscDecoder = new TsscDecoder();
                 decoder.SequenceNumber = 0;
             }
-
-            m_tsscResetRequested = false;
-            m_tsscLastOOSReport = 0L;
         }
 
         if (decoder.SequenceNumber != sequenceNumber)
         {
-            if (!m_tsscResetRequested && Ticks.ToSeconds(DateTime.UtcNow.Ticks - m_tsscLastOOSReport) > 2.0)
-            {
-                OnProcessException(MessageLevel.Info, new InvalidDataException($"TSSC is out of sequence. Expecting: {decoder.SequenceNumber}, Received: {sequenceNumber}"));
-                m_tsscLastOOSReport = DateTime.UtcNow.Ticks;
-            }
-
-            // Ignore packets until the reset has occurred.
-            LogEventPublisher publisher = Log.RegisterEvent(MessageLevel.Debug, "TSSC", 0, MessageRate.EveryFewSeconds(1), 5);
-            publisher.ShouldRaiseMessageSupressionNotifications = false;
-            publisher.Publish($"TSSC is out of sequence. Expecting: {decoder.SequenceNumber}, Received: {sequenceNumber}");
+            OnProcessException(MessageLevel.Warning, new InvalidDataException($"TSSC is out of sequence. Expecting: {decoder.SequenceNumber}, Received: {sequenceNumber} -- resetting connection."));
+            Start();
             return;
         }
 
@@ -3615,25 +3592,24 @@ public class DataSubscriber : InputAdapterBase
 
                             // Query all the guid-based signal ID's for all measurement records associated with the parent device using run-time ID
                             DataTable measurementSignalIDs = command.RetrieveData(database.AdapterType, queryMeasurementSignalIDsSql, MetadataSynchronizationTimeout, (int)ID);
-                            Guid signalID;
 
                             // Walk through each database record and see if the measurement exists in the provided meta-data
                             foreach (DataRow measurementRow in measurementSignalIDs.Rows)
                             {
-                                signalID = database.Guid(measurementRow, "SignalID");
+                                Guid signalID = database.Guid(measurementRow, "SignalID");
 
                                 // Remove any measurements in the database that are associated with received devices and do not exist in the meta-data
-                                if (signalIDs.BinarySearch(signalID) < 0)
-                                {
-                                    // Measurement was not in the meta-data, get the measurement's actual record based ID for its associated device
-                                    object measurementDeviceID = command.ExecuteScalar(queryMeasurementDeviceIDSql, MetadataSynchronizationTimeout, database.Guid(signalID));
+                                if (signalIDs.BinarySearch(signalID) >= 0)
+                                    continue;
 
-                                    // If the unknown measurement is directly associated with a device that exists in the meta-data it is assumed that this measurement
-                                    // was removed from the publishing system and no longer exists therefore we remove it from the local measurement cache. If the user
-                                    // needs custom local measurements associated with a remote device, they should be associated with the parent device only.
-                                    if (measurementDeviceID is not null && measurementDeviceID is not DBNull && deviceIDs.ContainsValue(Convert.ToInt32(measurementDeviceID)))
-                                        command.ExecuteNonQuery(deleteMeasurementSql, MetadataSynchronizationTimeout, database.Guid(signalID));
-                                }
+                                // Measurement was not in the meta-data, get the measurement's actual record based ID for its associated device
+                                object measurementDeviceID = command.ExecuteScalar(queryMeasurementDeviceIDSql, MetadataSynchronizationTimeout, database.Guid(signalID));
+
+                                // If the unknown measurement is directly associated with a device that exists in the meta-data it is assumed that this measurement
+                                // was removed from the publishing system and no longer exists therefore we remove it from the local measurement cache. If the user
+                                // needs custom local measurements associated with a remote device, they should be associated with the parent device only.
+                                if (measurementDeviceID is not null && measurementDeviceID is not DBNull && deviceIDs.ContainsValue(Convert.ToInt32(measurementDeviceID)))
+                                    command.ExecuteNonQuery(deleteMeasurementSql, MetadataSynchronizationTimeout, database.Guid(signalID));
                             }
 
                             UpdateSyncProgress();
@@ -4166,7 +4142,6 @@ public class DataSubscriber : InputAdapterBase
         DataSet dataSource = DataSource;
         SignalIndexCache signalIndexCache;
         DataTable measurementTable;
-        IEnumerable<IGrouping<DeviceStatisticsHelper<SubscribedDevice>, Guid>> groups;
 
         lock (m_signalIndexCacheLock)
             signalIndexCache = m_signalIndexCache?[m_cacheIndex];
@@ -4188,7 +4163,7 @@ public class DataSubscriber : InputAdapterBase
                 return;
 
             // Get expected measurement counts
-            groups = signalIndexCache.AuthorizedSignalIDs
+            IEnumerable<IGrouping<DeviceStatisticsHelper<SubscribedDevice>, Guid>> groups = signalIndexCache.AuthorizedSignalIDs
                 .Where(signalID => subscribedDevicesLookup.TryGetValue(signalID, out _))
                 .Select(signalID => Tuple.Create(subscribedDevicesLookup[signalID], signalID))
                 .ToList()
@@ -4886,21 +4861,17 @@ public class DataSubscriber : InputAdapterBase
     /// <returns><c>true</c> if certificate exists; otherwise, <c>false</c>.</returns>
     internal static bool RemoteCertificateExists(ref string remoteCertificate)
     {
-        string fullPath = FilePath.GetAbsolutePath(remoteCertificate);
-        CategorizedSettingsElement remoteCertificateElement;
+        if (File.Exists(FilePath.GetAbsolutePath(remoteCertificate))) 
+            return true;
 
-        if (!File.Exists(fullPath))
-        {
-            remoteCertificateElement = ConfigurationFile.Current.Settings["systemSettings"]["RemoteCertificatesPath"];
+        CategorizedSettingsElement remoteCertificateElement = ConfigurationFile.Current.Settings["systemSettings"]["RemoteCertificatesPath"];
 
-            if (remoteCertificateElement is not null)
-            {
-                remoteCertificate = Path.Combine(remoteCertificateElement.Value, remoteCertificate);
-                fullPath = FilePath.GetAbsolutePath(remoteCertificate);
-            }
-        }
+        if (remoteCertificateElement is null)
+            return false;
 
-        return File.Exists(fullPath);
+        remoteCertificate = Path.Combine(remoteCertificateElement.Value, remoteCertificate);
+
+        return File.Exists(FilePath.GetAbsolutePath(remoteCertificate));
     }
 
     #endregion
