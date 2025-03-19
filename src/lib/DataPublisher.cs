@@ -808,14 +808,12 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     private readonly ConcurrentDictionary<Guid, IServer> m_clientPublicationChannels;
     private readonly Dictionary<Guid, Dictionary<int, string>> m_clientNotifications;
     private readonly object m_clientNotificationsLock;
-    private readonly BlockAllocatedMemoryStream m_publishBuffer;
     private SharedTimer m_cipherKeyRotationTimer;
     private long m_commandChannelConnectionAttempts;
     private Guid? m_proxyClientID;
     private RoutingTables m_routingTables;
     private bool m_encryptPayload;
 
-    private long m_lastPublishBufferSize;
     private long m_totalMeasurementsPerSecond;
     private long m_measurementsPerSecondCount;
     private long m_measurementsInSecond;
@@ -842,7 +840,6 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         m_clientPublicationChannels = new ConcurrentDictionary<Guid, IServer>();
         m_clientNotifications = new Dictionary<Guid, Dictionary<int, string>>();
         m_clientNotificationsLock = new object();
-        m_publishBuffer = new BlockAllocatedMemoryStream();
         SecurityMode = DefaultSecurityMode;
         m_encryptPayload = DefaultEncryptPayload;
         SharedDatabase = DefaultSharedDatabase;
@@ -1102,13 +1099,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             status.AppendLine($"       Mutual Subscription: {MutualSubscription}");
             status.AppendLine($"        Reporting interval: {MeasurementReportingInterval:N0} per subscriber");
             status.AppendLine($"  Buffer block retransmits: {BufferBlockRetransmissions:N0}");
-            status.AppendLine($"  Max publication interval: {Time.ToElapsedTimeString(MaxPublishInterval / 1000.0D, 3)}");
-
-            if (MaxPublishInterval > 0L)
-            {
-                status.AppendLine($"       Last publish buffer: {SI2.ToScaledString(m_lastPublishBufferSize, 3, "B")}");
-                status.AppendLine($"    Pending publish buffer: {SI2.ToScaledString(m_publishBuffer.Length, 3, "B")}");
-            }
+            status.AppendLine($"  Max publication interval: {(MaxPublishInterval == 0L ? "Unset - publishing at receive rate" : Time.ToElapsedTimeString(MaxPublishInterval / 1000.0D, 3))}");
 
             return status.ToString();
         }
@@ -2462,20 +2453,16 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             return false;
 
         BlockAllocatedMemoryStream workingBuffer = null;
-        bool locked = false;
         bool success = false;
 
         try
         {
-            if (MaxPublishInterval > 0L)
-                Monitor.Enter(m_publishBuffer, ref locked);
-
             // Create a new working buffer
             bool dataPacketResponse = responseCode == (byte)ServerResponse.DataPacket;
             bool useDataChannel = dataPacketResponse || responseCode == (byte)ServerResponse.BufferBlock;
 
             // Initialize target working buffer
-            workingBuffer = MaxPublishInterval == 0L ? new BlockAllocatedMemoryStream() : m_publishBuffer;
+            workingBuffer = MaxPublishInterval == 0L ? new BlockAllocatedMemoryStream() : connection.PublishBuffer;
 
             // Add response code
             workingBuffer.WriteByte(responseCode);
@@ -2605,17 +2592,10 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             {
                 workingBuffer?.Dispose();
             }
-            else
+            else if (success)
             {
-                if (success)
-                {
-                    connection.LastPublishTime = DateTime.UtcNow.Ticks;
-                    m_lastPublishBufferSize = m_publishBuffer.Length;
-                    m_publishBuffer.Clear();
-                }
-
-                if (locked)
-                    Monitor.Exit(m_publishBuffer);
+                connection.LastPublishTime = DateTime.UtcNow.Ticks;
+                connection.PublishBuffer.Clear();
             }
         }
 
