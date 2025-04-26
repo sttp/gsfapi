@@ -23,9 +23,6 @@
 //
 //******************************************************************************************************
 
-using GSF;
-using System;
-
 namespace sttp;
 
 /// <summary>
@@ -154,7 +151,7 @@ public sealed class SubscriptionInfo
     /// </list>
     /// </para>
     /// </remarks>
-    public string StartTime { get; set; }
+    public string? StartTime { get; set; }
 
     /// <summary>
     /// Gets or sets the stop time of the requested
@@ -202,13 +199,13 @@ public sealed class SubscriptionInfo
     /// </list>
     /// </para>
     /// </remarks>
-    public string StopTime { get; set; }
+    public string? StopTime { get; set; }
 
     /// <summary>
     /// Gets or sets the additional constraint parameters
     /// supplied to temporal adapters in a temporal session.
     /// </summary>
-    public string ConstraintParameters { get; set; }
+    public string? ConstraintParameters { get; set; }
 
     /// <summary>
     /// Gets or sets the processing interval requested by the subscriber.
@@ -247,7 +244,7 @@ public sealed class SubscriptionInfo
     /// be applied to the connection string sent to the publisher
     /// during subscription.
     /// </summary>
-    public string ExtraConnectionStringParameters { get; set; }
+    public string? ExtraConnectionStringParameters { get; set; }
 
     #endregion
 }

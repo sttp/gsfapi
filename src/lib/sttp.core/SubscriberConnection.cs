@@ -23,19 +23,6 @@
 //
 //******************************************************************************************************
 
-using GSF;
-using GSF.Communication;
-using GSF.Diagnostics;
-using GSF.IO;
-using GSF.Threading;
-using System;
-using System.Collections.Generic;
-using System.Net;
-using System.Net.Sockets;
-using System.Security.Cryptography;
-using System.Text;
-using TcpClient = GSF.Communication.TcpClient;
-
 namespace sttp;
 
 /// <summary>
@@ -52,23 +39,23 @@ public class SubscriberConnection : IProvideStatus, IDisposable
     private const int IVIndex = 1;      // Index of initialization vector component in keyIV array
 
     // Fields
-    private DataPublisher m_parent;
+    private readonly DataPublisher m_parent;
     private Guid m_subscriberID;
     private string m_connectionID;
     private readonly string m_hostName;
     private readonly IPAddress m_ipAddress;
-    private string m_subscriberInfo;
-    private SubscriberAdapter m_subscription;
+    private string? m_subscriberInfo;
+    private SubscriberAdapter? m_subscription;
     private volatile bool m_authenticated;
-    private volatile byte[][][] m_keyIVs;
+    private volatile byte[][][]? m_keyIVs;
     private volatile int m_cipherIndex;
-    private UdpServer m_dataChannel;
-    private string m_configurationString;
+    private UdpServer? m_dataChannel;
+    private string? m_configurationString;
     private bool m_connectionEstablished;
-    private SharedTimer m_pingTimer;
-    private SharedTimer m_reconnectTimer;
+    private readonly SharedTimer m_pingTimer;
+    private readonly SharedTimer m_reconnectTimer;
     private OperationalModes m_operationalModes;
-    private Encoding m_encoding;
+    private Encoding? m_encoding;
     private bool m_disposed;
 
     #endregion
@@ -81,8 +68,8 @@ public class SubscriberConnection : IProvideStatus, IDisposable
     /// <param name="parent">Parent data publisher.</param>
     /// <param name="clientID">Client ID of associated connection.</param>
     /// <param name="serverCommandChannel"><see cref="TcpServer"/> command channel used to lookup connection information.</param>
-    /// <param name="clientCommandChannel"><see cref="TcpClient"/> command channel used to lookup connection information.</param>
-    public SubscriberConnection(DataPublisher parent, Guid clientID, IServer serverCommandChannel, IClient clientCommandChannel)
+    /// <param name="clientCommandChannel"><see cref="System.Net.Sockets.TcpClient"/> command channel used to lookup connection information.</param>
+    public SubscriberConnection(DataPublisher parent, Guid clientID, IServer? serverCommandChannel, IClient? clientCommandChannel)
     {
         m_parent = parent;
         ClientID = clientID;
@@ -106,7 +93,7 @@ public class SubscriberConnection : IProvideStatus, IDisposable
         m_reconnectTimer.AutoReset = false;
         m_reconnectTimer.Elapsed += ReconnectTimer_Elapsed;
 
-        LookupEndPointInfo(clientID, GetCommandChannelSocket().RemoteEndPoint as IPEndPoint, ref m_ipAddress, ref m_hostName, ref m_connectionID);
+        LookupEndPointInfo(clientID, GetCommandChannelSocket()?.RemoteEndPoint as IPEndPoint, ref m_ipAddress!, ref m_hostName!, ref m_connectionID!);
     }
 
     /// <summary>
@@ -134,12 +121,12 @@ public class SubscriberConnection : IProvideStatus, IDisposable
     /// <summary>
     /// Gets the current signal index cache of this <see cref="SubscriberAdapter"/>.
     /// </summary>
-    public SignalIndexCache SignalIndexCache { get; internal set; }
+    public SignalIndexCache? SignalIndexCache { get; internal set; }
 
     /// <summary>
     /// Gets the pending Signal Index Cache.
     /// </summary>
-    public SignalIndexCache NextSignalIndexCache { get; internal set; }
+    public SignalIndexCache? NextSignalIndexCache { get; internal set; }
 
     /// <summary>
     /// Gets the lock object for updating Signal Index Cache properties.
@@ -159,7 +146,7 @@ public class SubscriberConnection : IProvideStatus, IDisposable
     /// <summary>
     /// Gets or sets reference to <see cref="UdpServer"/> data channel, attaching to or detaching from events as needed, associated with this <see cref="SubscriberConnection"/>.
     /// </summary>
-    public UdpServer DataChannel
+    public UdpServer? DataChannel
     {
         get => m_dataChannel;
         set
@@ -198,17 +185,17 @@ public class SubscriberConnection : IProvideStatus, IDisposable
     /// <summary>
     /// Gets <see cref="IServer"/> command channel.
     /// </summary>
-    public IServer ServerCommandChannel { get; private set; }
+    public IServer? ServerCommandChannel { get; private set; }
 
     /// <summary>
     /// Gets <see cref="IClient"/> command channel.
     /// </summary>
-    public IClient ClientCommandChannel { get; private set; }
+    public IClient? ClientCommandChannel { get; private set; }
 
     /// <summary>
     /// Gets <see cref="IServer"/> publication channel - that is, data channel if defined otherwise command channel.
     /// </summary>
-    public IServer ServerPublishChannel => m_dataChannel ?? ServerCommandChannel;
+    public IServer? ServerPublishChannel => m_dataChannel ?? ServerCommandChannel;
 
     /// <summary>
     /// Gets buffer used to hold publish data for the <see cref="SubscriberConnection"/>.
@@ -231,7 +218,7 @@ public class SubscriberConnection : IProvideStatus, IDisposable
 
             try
             {
-                Socket commandChannelSocket = GetCommandChannelSocket();
+                Socket? commandChannelSocket = GetCommandChannelSocket();
 
                 if (commandChannelSocket is not null)
                     isConnected = commandChannelSocket.Connected;
@@ -281,19 +268,19 @@ public class SubscriberConnection : IProvideStatus, IDisposable
     /// <summary>
     /// Gets or sets the subscriber acronym of this <see cref="SubscriberConnection"/>.
     /// </summary>
-    public string SubscriberAcronym { get; set; }
+    public string? SubscriberAcronym { get; set; }
 
     /// <summary>
     /// Gets or sets the subscriber name of this <see cref="SubscriberConnection"/>.
     /// </summary>
-    public string SubscriberName { get; set; }
+    public string? SubscriberName { get; set; }
 
     /// <summary>
     /// Gets or sets subscriber info for this <see cref="SubscriberConnection"/>.
     /// </summary>
     public string SubscriberInfo
     {
-        get => string.IsNullOrWhiteSpace(m_subscriberInfo) ? SubscriberName : m_subscriberInfo;
+        get => string.IsNullOrWhiteSpace(m_subscriberInfo) ? SubscriberName ?? "undefined" : m_subscriberInfo;
         set
         {
             if (string.IsNullOrWhiteSpace(value))
@@ -304,9 +291,9 @@ public class SubscriberConnection : IProvideStatus, IDisposable
             {
                 Dictionary<string, string> settings = value.ParseKeyValuePairs();
 
-                settings.TryGetValue("source", out string source);
-                settings.TryGetValue("version", out string version);
-                settings.TryGetValue("updatedOn", out string updatedOn);
+                settings.TryGetValue("source", out string? source);
+                settings.TryGetValue("version", out string? version);
+                settings.TryGetValue("updatedOn", out string? updatedOn);
 
                 m_subscriberInfo = $"{source.ToNonNullNorWhiteSpace("unknown source")} version {version.ToNonNullNorWhiteSpace("?.?.?.?")} updated on {updatedOn.ToNonNullNorWhiteSpace("undefined date")}";
             }
@@ -330,7 +317,7 @@ public class SubscriberConnection : IProvideStatus, IDisposable
     /// <summary>
     /// Gets active and standby keys and initialization vectors.
     /// </summary>
-    public byte[][][] KeyIVs => m_keyIVs;
+    public byte[][][]? KeyIVs => m_keyIVs;
 
     /// <summary>
     /// Gets current cipher index.
@@ -349,7 +336,7 @@ public class SubscriberConnection : IProvideStatus, IDisposable
     /// This cache is for holding any updates while waiting for confirmation of
     /// receipt of signal index cache updates from the data subscriber.
     /// </remarks>
-    public SignalIndexCache PendingSignalIndexCache { get; set; }
+    public SignalIndexCache? PendingSignalIndexCache { get; set; }
 
     /// <summary>
     /// Gets the lock object for updating Signal Index Cache properties.
@@ -359,7 +346,7 @@ public class SubscriberConnection : IProvideStatus, IDisposable
     /// <summary>
     /// Gets or sets the list of valid IP addresses that this client can connect from.
     /// </summary>
-    public List<IPAddress> ValidIPAddresses { get; set; }
+    public List<IPAddress> ValidIPAddresses { get; set; } = [];
 
     /// <summary>
     /// Gets the IP address of the remote client connection.
@@ -369,7 +356,7 @@ public class SubscriberConnection : IProvideStatus, IDisposable
     /// <summary>
     /// Gets or sets subscription associated with this <see cref="SubscriberConnection"/>.
     /// </summary>
-    internal SubscriberAdapter Subscription
+    internal SubscriberAdapter? Subscription
     {
         get => m_subscription;
         set
@@ -384,7 +371,7 @@ public class SubscriberConnection : IProvideStatus, IDisposable
     /// <summary>
     /// Gets the subscriber name of this <see cref="SubscriberConnection"/>.
     /// </summary>
-    public string Name => SubscriberName;
+    public string Name => SubscriberName ?? "undefined";
 
     /// <summary>
     /// Gets or sets a set of flags that define ways in
@@ -426,11 +413,11 @@ public class SubscriberConnection : IProvideStatus, IDisposable
             status.AppendLine($"           Subscriber name: {SubscriberName}");
             status.AppendLine($"        Subscriber acronym: {SubscriberAcronym}");
             status.AppendLine($"  Publish channel protocol: {ServerPublishChannel?.TransportProtocol.ToString() ?? "Not configured"}");
-            status.AppendLine($"      Data packet security: {(m_parent?.SecurityMode == SecurityMode.TLS && m_dataChannel is null ? "Secured via TLS" : m_keyIVs is null ? "Unencrypted" : "AES Encrypted")}");
+            status.AppendLine($"      Data packet security: {(m_parent.SecurityMode == SecurityMode.TLS && m_dataChannel is null ? "Secured via TLS" : m_keyIVs is null ? "Unencrypted" : "AES Encrypted")}");
             status.AppendLine($"       Current cache index: {CurrentCacheIndex}");
-            status.AppendLine($"Signal index cache records: {SignalIndexCache?.Reference?.Count ?? 0:N0}");
+            status.AppendLine($"Signal index cache records: {SignalIndexCache?.Reference.Count ?? 0:N0}");
 
-            IServer serverCommandChannel = ServerCommandChannel;
+            IServer? serverCommandChannel = ServerCommandChannel;
 
             if (serverCommandChannel is not null)
             {
@@ -438,7 +425,7 @@ public class SubscriberConnection : IProvideStatus, IDisposable
                 status.Append(serverCommandChannel.Status);
             }
 
-            IClient clientCommandChannel = ClientCommandChannel;
+            IClient? clientCommandChannel = ClientCommandChannel;
 
             if (clientCommandChannel is not null)
             {
@@ -483,26 +470,17 @@ public class SubscriberConnection : IProvideStatus, IDisposable
             if (!disposing)
                 return;
 
-            if (m_pingTimer is not null)
-            {
-                m_pingTimer.Elapsed -= PingTimer_Elapsed;
-                m_pingTimer.Dispose();
-                m_pingTimer = null;
-            }
+            m_pingTimer.Elapsed -= PingTimer_Elapsed;
+            m_pingTimer.Dispose();
 
-            if (m_reconnectTimer is not null)
-            {
-                m_reconnectTimer.Elapsed -= ReconnectTimer_Elapsed;
-                m_reconnectTimer.Dispose();
-                m_reconnectTimer = null;
-            }
+            m_reconnectTimer.Elapsed -= ReconnectTimer_Elapsed;
+            m_reconnectTimer.Dispose();
 
             DataChannel = null;
             ServerCommandChannel = null;
             ClientCommandChannel = null;
             PublishBuffer.Dispose();
             m_subscription = null;
-            m_parent = null;
         }
         finally
         {
@@ -515,7 +493,11 @@ public class SubscriberConnection : IProvideStatus, IDisposable
     /// </summary>
     internal void UpdateKeyIVs()
     {
+    #if NET
+        using (Aes symmetricAlgorithm = Aes.Create())
+    #else
         using (AesManaged symmetricAlgorithm = new())
+    #endif
         {
             symmetricAlgorithm.KeySize = 256;
             symmetricAlgorithm.GenerateKey();
@@ -581,7 +563,7 @@ public class SubscriberConnection : IProvideStatus, IDisposable
                     using (BlockAllocatedMemoryStream buffer = new())
                     {
                         // Write even key
-                        byte[] bufferLen = BigEndian.GetBytes(m_keyIVs[EvenKey][KeyIndex].Length);
+                        byte[] bufferLen = BigEndian.GetBytes(m_keyIVs![EvenKey][KeyIndex].Length);
                         buffer.Write(bufferLen, 0, bufferLen.Length);
                         buffer.Write(m_keyIVs[EvenKey][KeyIndex], 0, m_keyIVs[EvenKey][KeyIndex].Length);
 
@@ -638,45 +620,45 @@ public class SubscriberConnection : IProvideStatus, IDisposable
     /// connection to send and receive data over the command channel.
     /// </summary>
     /// <returns>The socket instance used by the client to send and receive data over the command channel.</returns>
-    public Socket GetCommandChannelSocket()
+    public Socket? GetCommandChannelSocket()
     {
         return ServerCommandChannel switch
         {
-            TcpServer tcpServerCommandChannel when tcpServerCommandChannel.TryGetClient(ClientID, out TransportProvider<Socket> tcpProvider) => tcpProvider.Provider,
-            TlsServer tlsServerCommandChannel when tlsServerCommandChannel.TryGetClient(ClientID, out TransportProvider<TlsServer.TlsSocket> tlsProvider) => tlsProvider.Provider?.Socket,
-            _ => (ClientCommandChannel as TcpClient)?.Client ?? (ClientCommandChannel as TcpSimpleClient)?.Client
+            TcpServer tcpServerCommandChannel when tcpServerCommandChannel.TryGetClient(ClientID, out TransportProvider<Socket>? tcpProvider) => tcpProvider!.Provider,
+            TlsServer tlsServerCommandChannel when tlsServerCommandChannel.TryGetClient(ClientID, out TransportProvider<TlsServer.TlsSocket>? tlsProvider) => tlsProvider!.Provider?.Socket,
+            _ => (ClientCommandChannel as TcpClient)?.Client
         };
     }
 
     // Send a no-op keep-alive ping to make sure the client is still connected
-    private void PingTimer_Elapsed(object sender, EventArgs<DateTime> e)
+    private void PingTimer_Elapsed(object? sender, EventArgs<DateTime> e)
     {
         m_parent.SendClientResponse(ClientID, ServerResponse.NoOP, ServerCommand.Subscribe);
     }
 
-    private void DataChannel_ClientConnectingException(object sender, EventArgs<Exception> e)
+    private void DataChannel_ClientConnectingException(object? sender, EventArgs<Exception> e)
     {
         Exception ex = e.Argument;
         m_parent.OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data channel exception occurred while sending client data to \"{m_connectionID}\": {ex.Message}", ex));
     }
 
-    private void DataChannel_SendClientDataException(object sender, EventArgs<Guid, Exception> e)
+    private void DataChannel_SendClientDataException(object? sender, EventArgs<Guid, Exception> e)
     {
         Exception ex = e.Argument2;
         m_parent.OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data channel exception occurred while sending client data to \"{m_connectionID}\": {ex.Message}", ex));
     }
 
-    private void DataChannel_ServerStarted(object sender, EventArgs e)
+    private void DataChannel_ServerStarted(object? sender, EventArgs e)
     {
         m_parent.OnStatusMessage(MessageLevel.Info, "Data channel started.");
     }
 
-    private void DataChannel_ServerStopped(object sender, EventArgs e)
+    private void DataChannel_ServerStopped(object? sender, EventArgs e)
     {
         if (m_connectionEstablished)
         {
             m_parent.OnStatusMessage(MessageLevel.Info, "Data channel stopped unexpectedly, restarting data channel...");
-            m_reconnectTimer?.Start();
+            m_reconnectTimer.Start();
         }
         else
         {
@@ -684,10 +666,13 @@ public class SubscriberConnection : IProvideStatus, IDisposable
         }
     }
 
-    private void ReconnectTimer_Elapsed(object sender, EventArgs<DateTime> e)
+    private void ReconnectTimer_Elapsed(object? sender, EventArgs<DateTime> e)
     {
         try
         {
+            if (m_configurationString is null)
+                throw new InvalidOperationException("Data channel configuration string is not defined.");
+
             m_parent.OnStatusMessage(MessageLevel.Info, "Attempting to restart data channel...");
             DataChannel = null;
 
@@ -704,7 +689,7 @@ public class SubscriberConnection : IProvideStatus, IDisposable
         }
     }
 
-    #endregion
+#endregion
 
     #region [ Static ]
 
@@ -716,15 +701,15 @@ public class SubscriberConnection : IProvideStatus, IDisposable
     /// <param name="clientID"><see cref="Guid"/> based client ID.</param>
     /// <param name="remoteEndPoint">Remote <see cref="IPEndPoint"/>.</param>
     /// <returns>End-user connection ID for an <see cref="IPEndPoint"/>.</returns>
-    public static string GetEndPointConnectionID(Guid clientID, IPEndPoint remoteEndPoint)
+    public static string GetEndPointConnectionID(Guid clientID, IPEndPoint? remoteEndPoint)
     {
-        IPAddress ipAddress = IPAddress.None;
-        string hostName = null;
-        string connectionID = "";
+        IPAddress? ipAddress = IPAddress.None;
+        string? hostName = null;
+        string? connectionID = "";
             
         LookupEndPointInfo(clientID, remoteEndPoint, ref ipAddress, ref hostName, ref connectionID);
 
-        return connectionID;
+        return connectionID ?? "";
     }
 
     /// <summary>
@@ -735,7 +720,7 @@ public class SubscriberConnection : IProvideStatus, IDisposable
     /// <param name="ipAddress">Parsed IP address.</param>
     /// <param name="hostName">Looked-up DNS host name.</param>
     /// <param name="connectionID">String based connection identifier for human reference.</param>
-    public static void LookupEndPointInfo(Guid clientID, IPEndPoint remoteEndPoint, ref IPAddress ipAddress, ref string hostName, ref string connectionID)
+    public static void LookupEndPointInfo(Guid clientID, IPEndPoint? remoteEndPoint, ref IPAddress? ipAddress, ref string? hostName, ref string? connectionID)
     {
         // Attempt to lookup remote connection identification for logging purposes
         try

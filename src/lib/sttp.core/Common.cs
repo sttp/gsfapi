@@ -23,8 +23,9 @@
 //
 //******************************************************************************************************
 
-using System.Security.Cryptography;
-using GSF.Threading;
+#if NET
+#define MONO
+#endif
 
 #if !MONO
 using Microsoft.Win32;
@@ -40,13 +41,13 @@ public static class Common
     static Common()
     {
     #if MONO
-            UseManagedEncryption = true;
+        UseManagedEncryption = true;
     #else
         const string FipsKeyOld = @"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Lsa";
         const string FipsKeyNew = @"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Lsa\FipsAlgorithmPolicy";
 
         // Determine if the operating system configuration to set to use FIPS-compliant algorithms
-        UseManagedEncryption = (Registry.GetValue(FipsKeyNew, "Enabled", 0) ?? Registry.GetValue(FipsKeyOld, "FipsAlgorithmPolicy", 0)).ToString() == "0";
+        UseManagedEncryption = ((Registry.GetValue(FipsKeyNew, "Enabled", 0) ?? Registry.GetValue(FipsKeyOld, "FipsAlgorithmPolicy", 0))?.ToString() ?? "0") == "0";
     #endif
 
         TimerScheduler = new SharedTimerScheduler();
@@ -64,7 +65,12 @@ public static class Common
     {
         get
         {
+        #if NET
+            Aes symmetricAlgorithm = Aes.Create();
+        #else
             Aes symmetricAlgorithm = UseManagedEncryption ? new AesManaged() : new AesCryptoServiceProvider();
+        #endif
+
             symmetricAlgorithm.KeySize = 256;
             return symmetricAlgorithm;
         }

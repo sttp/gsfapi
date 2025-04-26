@@ -21,15 +21,6 @@
 //
 //******************************************************************************************************
 
-using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Linq;
-using System.Text.RegularExpressions;
-using GSF;
-using GSF.Data;
-using GSF.TimeSeries.Adapters;
-
 namespace sttp;
 
 /// <summary>
@@ -45,9 +36,9 @@ public class SubscriberRightsLookup
     /// </summary>
     /// <param name="dataSource">The source of metadata providing the tables required by the rights logic.</param>
     /// <param name="subscriberID">The ID of the subscriber whose rights are being looked up.</param>
-    public SubscriberRightsLookup(DataSet dataSource, Guid subscriberID)
+    public SubscriberRightsLookup(DataSet? dataSource, Guid subscriberID)
     {
-        HasRightsFunc = BuildLookup(dataSource, subscriberID);
+        HasRightsFunc = dataSource is null ? _ => false : BuildLookup(dataSource, subscriberID);
     }
 
     #endregion
@@ -85,7 +76,7 @@ public class SubscriberRightsLookup
         // If subscriber has been disabled or removed
         // from the list of valid subscribers,
         // they no longer have rights to any signals
-        DataRow subscriber = dataSource.Tables["Subscribers"].Select($"ID = '{subscriberID}' AND Enabled <> 0").FirstOrDefault();
+        DataRow? subscriber = dataSource.Tables["Subscribers"]?.Select($"ID = '{subscriberID}' AND Enabled <> 0").FirstOrDefault();
 
         if (subscriber is null)
             return _ => false;
@@ -93,10 +84,10 @@ public class SubscriberRightsLookup
         //=================================================================
         // Check group implicitly authorized signals
 
-        DataRow[] subscriberMeasurementGroups = dataSource.Tables["SubscriberMeasurementGroups"].Select($"SubscriberID = '{subscriberID}'");
+        DataRow[] subscriberMeasurementGroups = dataSource.Tables["SubscriberMeasurementGroups"]?.Select($"SubscriberID = '{subscriberID}'") ?? [];
 
         subscriberMeasurementGroups
-            .Join(dataSource.Tables["MeasurementGroups"].Select(),
+            .Join(dataSource.Tables["MeasurementGroups"]?.Select() ?? [],
                 row => row.ConvertField<int>("MeasurementGroupID"),
                 row => row.ConvertField<int>("ID"),
                 (subscriberMeasurementGroup, measurementGroup) =>
@@ -116,9 +107,9 @@ public class SubscriberRightsLookup
         //=================================================================
         // Check implicitly authorized signals
 
-        List<Match> matches = Regex.Matches(subscriber["AccessControlFilter"].ToNonNullString().ReplaceControlCharacters(), FilterRegex, RegexOptions.IgnoreCase)
+        Match[] matches = Regex.Matches(subscriber["AccessControlFilter"].ToNonNullString().ReplaceControlCharacters(), FilterRegex, RegexOptions.IgnoreCase)
             .Cast<Match>()
-            .ToList();
+            .ToArray();
 
         // Combine individual allow statements into a single measurement filter
         string allowFilter = string.Join(" OR ", matches
@@ -132,13 +123,13 @@ public class SubscriberRightsLookup
 
         if (!string.IsNullOrEmpty(allowFilter))
         {
-            foreach (DataRow row in dataSource.Tables["ActiveMeasurements"].Select(allowFilter))
+            foreach (DataRow row in dataSource.Tables["ActiveMeasurements"]?.Select(allowFilter) ?? [])
                 authorizedSignals.Add(row.ConvertField<Guid>("SignalID"));
         }
 
         if (!string.IsNullOrEmpty(denyFilter))
         {
-            foreach (DataRow row in dataSource.Tables["ActiveMeasurements"].Select(denyFilter))
+            foreach (DataRow row in dataSource.Tables["ActiveMeasurements"]?.Select(denyFilter) ?? [])
                 authorizedSignals.Remove(row.ConvertField<Guid>("SignalID"));
         }
 
@@ -146,7 +137,7 @@ public class SubscriberRightsLookup
         // Check explicit group authorizations
 
         subscriberMeasurementGroups
-            .Join(dataSource.Tables["MeasurementGroupMeasurements"].Select(),
+            .Join(dataSource.Tables["MeasurementGroupMeasurements"]?.Select() ?? [],
                 row => row.ConvertField<int>("MeasurementGroupID"),
                 row => row.ConvertField<int>("MeasurementGroupID"),
                 (subscriberMeasurementGroup, measurementGroupMeasurement) => new
@@ -172,7 +163,7 @@ public class SubscriberRightsLookup
         //===================================================================
         // Check explicit authorizations
 
-        DataRow[] explicitAuthorizations = dataSource.Tables["SubscriberMeasurements"].Select($"SubscriberID = '{subscriberID}'");
+        DataRow[] explicitAuthorizations = dataSource.Tables["SubscriberMeasurements"]?.Select($"SubscriberID = '{subscriberID}'") ?? [];
 
         // Add all explicitly authorized signals to authorizedSignals
         foreach (DataRow explicitAuthorization in explicitAuthorizations)

@@ -27,12 +27,6 @@
 //
 //******************************************************************************************************
 
-using System;
-using GSF;
-using GSF.Parsing;
-using GSF.TimeSeries;
-using GSF.TimeSeries.Transport;
-
 namespace sttp;
 
 #region [ Enumerations ]
@@ -195,7 +189,7 @@ public class CompactMeasurement : Measurement, IBinaryMeasurement
     /// <param name="baseTimeOffsets">Base time offset array - set to <c>null</c> to use full fidelity measurement time.</param>
     /// <param name="timeIndex">Time index to use for base offset.</param>
     /// <param name="useMillisecondResolution">Flag that determines if millisecond resolution is in use for this serialization.</param>
-    public CompactMeasurement(SignalIndexCache signalIndexCache, bool includeTime = true, long[] baseTimeOffsets = null, int timeIndex = 0, bool useMillisecondResolution = false)
+    public CompactMeasurement(SignalIndexCache signalIndexCache, bool includeTime = true, long[]? baseTimeOffsets = null, int timeIndex = 0, bool useMillisecondResolution = false)
     {
         m_signalIndexCache = signalIndexCache;
         IncludeTime = includeTime;
@@ -215,7 +209,7 @@ public class CompactMeasurement : Measurement, IBinaryMeasurement
     /// <param name="baseTimeOffsets">Base time offset array - set to <c>null</c> to use full fidelity measurement time.</param>
     /// <param name="timeIndex">Time index to use for base offset.</param>
     /// <param name="useMillisecondResolution">Flag that determines if millisecond resolution is in use for this serialization.</param>
-    public CompactMeasurement(IMeasurement measurement, SignalIndexCache signalIndexCache, bool includeTime = true, long[] baseTimeOffsets = null, int timeIndex = 0, bool useMillisecondResolution = false)
+    public CompactMeasurement(IMeasurement measurement, SignalIndexCache signalIndexCache, bool includeTime = true, long[]? baseTimeOffsets = null, int timeIndex = 0, bool useMillisecondResolution = false)
     {
         Metadata = measurement.Metadata;
         Value = measurement.Value;
@@ -335,7 +329,7 @@ public class CompactMeasurement : Measurement, IBinaryMeasurement
         set
         {
             // Attempt to restore signal identification
-            if (m_signalIndexCache.Reference.TryGetValue(value, out MeasurementKey key))
+            if (m_signalIndexCache.Reference.TryGetValue(value, out MeasurementKey? key) && key is not null)
                 Metadata = key.Metadata;
             else
                 throw new InvalidOperationException($"Failed to find associated signal identification for runtime ID {value}");

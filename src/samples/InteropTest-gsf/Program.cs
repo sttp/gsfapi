@@ -32,7 +32,7 @@ namespace InteropTest;
 
 class Program
 {
-    private static readonly object s_coutLock = new object();
+    private static readonly object s_coutLock = new();
     private static StreamWriter s_export;
     private static ulong s_processCount;
     private static bool s_ready;
@@ -72,7 +72,7 @@ class Program
         }
 
         // Initialize the subscribers, maintaining the life-time of SubscriberHandler instances within main
-        DataSubscriber subscriber = new DataSubscriber();
+        DataSubscriber subscriber = new();
         subscriber.StatusMessage += (_, e) => StatusMessage(e.Argument);
         subscriber.ProcessException += (_, e) => ErrorMessage(e.Argument.Message);
         subscriber.ConnectionEstablished += subscriber_ConnectionEstablished;
