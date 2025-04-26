@@ -107,6 +107,7 @@ public class SubscriberRightsLookup
         //=================================================================
         // Check implicitly authorized signals
 
+        // ReSharper disable once RedundantEnumerableCastCall
         Match[] matches = Regex.Matches(subscriber["AccessControlFilter"].ToNonNullString().ReplaceControlCharacters(), FilterRegex, RegexOptions.IgnoreCase)
             .Cast<Match>()
             .ToArray();

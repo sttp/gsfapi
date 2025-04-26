@@ -4917,7 +4917,8 @@ public class DataSubscriber : InputAdapterBase
         try
         {
             // ReSharper disable once JoinDeclarationAndInitializer
-            string localCertificate = null;
+            // ReSharper disable once RedundantAssignment
+            string localCertificate = null!;
 
         #if NET
             localCertificate = ConfigSettings.Default[ConfigSettings.SystemSettingsCategory]["LocalCertificate"];

@@ -329,7 +329,7 @@ public class CompactMeasurement : Measurement, IBinaryMeasurement
         set
         {
             // Attempt to restore signal identification
-            if (m_signalIndexCache.Reference.TryGetValue(value, out MeasurementKey? key) && key is not null)
+            if (m_signalIndexCache.Reference.TryGetValue(value, out MeasurementKey? key) /* && key is not null */)
                 Metadata = key.Metadata;
             else
                 throw new InvalidOperationException($"Failed to find associated signal identification for runtime ID {value}");

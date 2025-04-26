@@ -28,7 +28,7 @@ namespace sttp.tssc;
 /// </summary>
 public class TsscDecoder
 {
-    private byte[] m_data = default!;
+    private byte[] m_data = null!;
     private int m_position;
     private int m_lastPosition;
 
@@ -40,8 +40,8 @@ public class TsscDecoder
     private long m_prevTimeDelta3;
     private long m_prevTimeDelta4;
 
-    private TsscPointMetadata m_lastPoint = default!;
-    private IndexedArray<TsscPointMetadata> m_points = default!;
+    private TsscPointMetadata m_lastPoint = null!;
+    private IndexedArray<TsscPointMetadata?> m_points = null!;
 
     internal ushort SequenceNumber;
 
@@ -64,7 +64,7 @@ public class TsscDecoder
     /// </remarks>
     public void Reset()
     {
-        m_points = new IndexedArray<TsscPointMetadata>();
+        m_points = new IndexedArray<TsscPointMetadata?>();
         m_lastPoint = new TsscPointMetadata(null!, ReadBit, ReadBits5);
         m_data = [];
         m_position = 0;
@@ -149,11 +149,11 @@ public class TsscDecoder
 
         id = m_lastPoint.PrevNextPointId1;
             
-        TsscPointMetadata nextPoint = m_points[m_lastPoint.PrevNextPointId1];
+        TsscPointMetadata? nextPoint = m_points[m_lastPoint.PrevNextPointId1];
 
         if (nextPoint is null)
         {
-            nextPoint = new TsscPointMetadata(null, ReadBit, ReadBits5);
+            nextPoint = new TsscPointMetadata(null!, ReadBit, ReadBits5);
             m_points[id] = nextPoint;
             nextPoint.PrevNextPointId1 = id + 1;
         }

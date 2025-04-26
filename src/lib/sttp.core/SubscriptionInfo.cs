@@ -48,7 +48,7 @@ public sealed class SubscriptionInfo
     /// Gets or sets the filter expression used to define which
     /// measurements are being requested by the subscriber.
     /// </summary>
-    public string FilterExpression { get; set; }
+    public string FilterExpression { get; set; } = null!;
 
     /// <summary>
     /// Gets or sets the flag that determines whether to use the
