@@ -2516,12 +2516,12 @@ public class DataSubscriber : InputAdapterBase
                             m_metadataRefreshPending = false;
                         break;
                     case ServerResponse.DataPacket:
-                    {
-                        long now = DateTime.UtcNow.Ticks;
+                        {
+                            long now = DateTime.UtcNow.Ticks;
 
-                        // Deserialize data packet
-                        List<IMeasurement> measurements = [];
-                        Ticks timestamp = default;
+                            // Deserialize data packet
+                            List<IMeasurement> measurements = [];
+                            Ticks timestamp = default;
 
                         if (TotalBytesReceived == 0)
                         {
@@ -2529,22 +2529,22 @@ public class DataSubscriber : InputAdapterBase
                             if (!(m_dataStreamMonitor?.Enabled ?? false))
                                 m_dataStreamMonitor!.Enabled = true;
 
-                            // Establish run-time log for subscriber
-                            if (AutoConnect || m_dataGapRecoveryEnabled)
-                            {
-                                if (m_runTimeLog is null)
+                                // Establish run-time log for subscriber
+                                if (AutoConnect || m_dataGapRecoveryEnabled)
                                 {
-                                    m_runTimeLog = new RunTimeLog { FileName = GetLoggingPath($"{Name}_RunTimeLog.txt") };
-                                    m_runTimeLog.ProcessException += RunTimeLog_ProcessException;
-                                    m_runTimeLog.Initialize();
+                                    if (m_runTimeLog is null)
+                                    {
+                                        m_runTimeLog = new RunTimeLog { FileName = GetLoggingPath($"{Name}_RunTimeLog.txt") };
+                                        m_runTimeLog.ProcessException += RunTimeLog_ProcessException;
+                                        m_runTimeLog.Initialize();
+                                    }
+                                    else
+                                    {
+                                        // Mark the start of any data transmissions
+                                        m_runTimeLog.StartTime = DateTimeOffset.UtcNow;
+                                        m_runTimeLog.Enabled = true;
+                                    }
                                 }
-                                else
-                                {
-                                    // Mark the start of any data transmissions
-                                    m_runTimeLog.StartTime = DateTimeOffset.UtcNow;
-                                    m_runTimeLog.Enabled = true;
-                                }
-                            }
 
                             // The duration between last disconnection and start of data transmissions
                             // represents a gap in data - if data gap recovery is enabled, we log
@@ -2553,13 +2553,13 @@ public class DataSubscriber : InputAdapterBase
                                 m_dataGapRecoverer?.LogDataGap(m_runTimeLog!.StopTime, DateTimeOffset.UtcNow);
                         }
 
-                        // Track total data packet bytes received from any channel
-                        TotalBytesReceived += m_lastBytesReceived;
-                        m_monitoredBytesReceived += m_lastBytesReceived;
+                            // Track total data packet bytes received from any channel
+                            TotalBytesReceived += m_lastBytesReceived;
+                            m_monitoredBytesReceived += m_lastBytesReceived;
 
-                        // Get data packet flags
-                        DataPacketFlags flags = (DataPacketFlags)buffer[responseIndex];
-                        responseIndex++;
+                            // Get data packet flags
+                            DataPacketFlags flags = (DataPacketFlags)buffer[responseIndex];
+                            responseIndex++;
 
                         SignalIndexCache? signalIndexCache;
                         bool compactMeasurementFormat = (byte)(flags & DataPacketFlags.Compact) > 0;
@@ -2569,25 +2569,25 @@ public class DataSubscriber : InputAdapterBase
                         byte[] packet = buffer;
                         int packetLength = responseLength - 1;
 
-                        lock (m_signalIndexCacheLock)
-                            signalIndexCache = m_signalIndexCache?[cacheIndex];
+                            lock (m_signalIndexCacheLock)
+                                signalIndexCache = m_signalIndexCache?[cacheIndex];
 
-                        // Decrypt data packet payload if keys are available
-                        if (m_keyIVs is not null)
-                        {
-                            // Get a local copy of volatile keyIVs reference since this can change at any time
-                            keyIVs = m_keyIVs;
+                            // Decrypt data packet payload if keys are available
+                            if (m_keyIVs is not null)
+                            {
+                                // Get a local copy of volatile keyIVs reference since this can change at any time
+                                keyIVs = m_keyIVs;
 
-                            // Decrypt payload portion of data packet
-                            packet = Common.SymmetricAlgorithm.Decrypt(packet, responseIndex, packetLength, keyIVs[cipherIndex][0], keyIVs[cipherIndex][1]);
-                            responseIndex = 0;
-                            packetLength = packet.Length;
-                        }
+                                // Decrypt payload portion of data packet
+                                packet = Common.SymmetricAlgorithm.Decrypt(packet, responseIndex, packetLength, keyIVs[cipherIndex][0], keyIVs[cipherIndex][1]);
+                                responseIndex = 0;
+                                packetLength = packet.Length;
+                            }
 
-                        // Deserialize number of measurements that follow
-                        int count = BigEndian.ToInt32(packet, responseIndex);
-                        responseIndex += 4;
-                        packetLength -= 4;
+                            // Deserialize number of measurements that follow
+                            int count = BigEndian.ToInt32(packet, responseIndex);
+                            responseIndex += 4;
+                            packetLength -= 4;
 
                         if (compressedPayload)
                         {
@@ -2634,30 +2634,30 @@ public class DataSubscriber : InputAdapterBase
                                     bool useMillisecondResolution = UseMillisecondResolution;
                                 #pragma warning restore 618
 
-                                    // Deserialize compact measurement format
-                                    CompactMeasurement measurement = new(signalIndexCache, m_includeTime, m_baseTimeOffsets, m_timeIndex, useMillisecondResolution);
-                                    responseIndex += measurement.ParseBinaryImage(packet, responseIndex, length - responseIndex);
+                                        // Deserialize compact measurement format
+                                        CompactMeasurement measurement = new(signalIndexCache, m_includeTime, m_baseTimeOffsets, m_timeIndex, useMillisecondResolution);
+                                        responseIndex += measurement.ParseBinaryImage(packet, responseIndex, length - responseIndex);
 
-                                    // Apply timestamp from frame if not included in transmission
-                                    if (!measurement.IncludeTime)
-                                        measurement.Timestamp = timestamp;
+                                        // Apply timestamp from frame if not included in transmission
+                                        if (!measurement.IncludeTime)
+                                            measurement.Timestamp = timestamp;
 
-                                    measurements.Add(measurement);
-                                }
-                                else if (m_lastMissingCacheWarning + MissingCacheWarningInterval < now)
-                                {
-                                    // Warning message for missing signal index cache
-                                    if (m_lastMissingCacheWarning != 0L)
-                                        OnStatusMessage(MessageLevel.Error, "Signal index cache has not arrived. No compact measurements can be parsed.");
+                                        measurements.Add(measurement);
+                                    }
+                                    else if (m_lastMissingCacheWarning + MissingCacheWarningInterval < now)
+                                    {
+                                        // Warning message for missing signal index cache
+                                        if (m_lastMissingCacheWarning != 0L)
+                                            OnStatusMessage(MessageLevel.Error, "Signal index cache has not arrived. No compact measurements can be parsed.");
 
-                                    m_lastMissingCacheWarning = now;
+                                        m_lastMissingCacheWarning = now;
+                                    }
                                 }
                             }
-                        }
 
-                        // Calculate statistics
-                        subscribedDevicesLookup = m_subscribedDevicesLookup;
-                        statisticsHelper = null;
+                            // Calculate statistics
+                            subscribedDevicesLookup = m_subscribedDevicesLookup;
+                            statisticsHelper = null;
 
                         if (subscribedDevicesLookup is not null)
                         {
@@ -2671,26 +2671,26 @@ public class DataSubscriber : InputAdapterBase
                             {
                                 statisticsHelper = deviceGroup.Key;
 
-                                foreach (IGrouping<Ticks, IMeasurement> frame in deviceGroup.GroupBy(measurement => measurement.Timestamp))
-                                {
-                                    // Determine the number of measurements received with valid values
-                                    const MeasurementStateFlags ErrorFlags = MeasurementStateFlags.BadData | MeasurementStateFlags.BadTime | MeasurementStateFlags.SystemError;
-
-                                    static bool hasError(MeasurementStateFlags stateFlags)
+                                    foreach (IGrouping<Ticks, IMeasurement> frame in deviceGroup.GroupBy(measurement => measurement.Timestamp))
                                     {
-                                        return (stateFlags & ErrorFlags) != MeasurementStateFlags.Normal;
-                                    }
+                                        // Determine the number of measurements received with valid values
+                                        const MeasurementStateFlags ErrorFlags = MeasurementStateFlags.BadData | MeasurementStateFlags.BadTime | MeasurementStateFlags.SystemError;
 
-                                    int measurementsReceived = frame.Count(measurement => !double.IsNaN(measurement.Value));
-                                    int measurementsWithError = frame.Count(measurement => !double.IsNaN(measurement.Value) && hasError(measurement.StateFlags));
+                                        static bool hasError(MeasurementStateFlags stateFlags)
+                                        {
+                                            return (stateFlags & ErrorFlags) != MeasurementStateFlags.Normal;
+                                        }
+
+                                        int measurementsReceived = frame.Count(measurement => !double.IsNaN(measurement.Value));
+                                        int measurementsWithError = frame.Count(measurement => !double.IsNaN(measurement.Value) && hasError(measurement.StateFlags));
 
                                     IMeasurement? statusFlags = null;
                                     IMeasurement? frequency = null;
                                     IMeasurement? deltaFrequency = null;
 
-                                    // Attempt to update real-time
-                                    if (!UseLocalClockAsRealTime && frame.Key > m_realTime)
-                                        m_realTime = frame.Key;
+                                        // Attempt to update real-time
+                                        if (!UseLocalClockAsRealTime && frame.Key > m_realTime)
+                                            m_realTime = frame.Key;
 
                                     // Search the frame for status flags, frequency, and delta frequency
                                     foreach (IMeasurement measurement in frame)
@@ -2721,11 +2721,11 @@ public class DataSubscriber : InputAdapterBase
                                                 statisticsHelper.Device.DeviceErrors++;
                                         }
 
-                                        measurementsReceived--;
+                                            measurementsReceived--;
 
-                                        if (hasError(statusFlags.StateFlags))
-                                            measurementsWithError--;
-                                    }
+                                            if (hasError(statusFlags.StateFlags))
+                                                measurementsWithError--;
+                                        }
 
                                     // Zero is not a valid value for frequency.
                                     // If frequency is zero, invalidate both frequency and delta frequency
@@ -2734,22 +2734,22 @@ public class DataSubscriber : InputAdapterBase
                                         if (!this.TemporalConstraintIsDefined())
                                             statisticsHelper?.MarkDeviceTimestamp(frequency.Timestamp);
 
-                                        if (frequency.Value == 0.0D)
-                                        {
-                                            if (deltaFrequency is null || double.IsNaN(deltaFrequency.Value))
-                                                measurementsReceived--;
-                                            else
-                                                measurementsReceived -= 2;
-
-                                            if (hasError(frequency.StateFlags))
+                                            if (frequency.Value == 0.0D)
                                             {
                                                 if (deltaFrequency is null || double.IsNaN(deltaFrequency.Value))
-                                                    measurementsWithError--;
+                                                    measurementsReceived--;
                                                 else
-                                                    measurementsWithError -= 2;
+                                                    measurementsReceived -= 2;
+
+                                                if (hasError(frequency.StateFlags))
+                                                {
+                                                    if (deltaFrequency is null || double.IsNaN(deltaFrequency.Value))
+                                                        measurementsWithError--;
+                                                    else
+                                                        measurementsWithError -= 2;
+                                                }
                                             }
                                         }
-                                    }
 
                                     // Track the number of measurements received
                                     statisticsHelper?.AddToMeasurementsReceived(measurementsReceived);
@@ -2758,33 +2758,33 @@ public class DataSubscriber : InputAdapterBase
                             }
                         }
 
-                        OnNewMeasurements(measurements);
+                            OnNewMeasurements(measurements);
 
-                        // Gather statistics on received data
-                        DateTime timeReceived = RealTime;
+                            // Gather statistics on received data
+                            DateTime timeReceived = RealTime;
 
-                        if (!UseLocalClockAsRealTime && timeReceived.Ticks - m_lastStatisticsHelperUpdate > Ticks.PerSecond)
-                        {
-                            UpdateStatisticsHelpers();
-                            m_lastStatisticsHelperUpdate = m_realTime;
-                        }
+                            if (!UseLocalClockAsRealTime && timeReceived.Ticks - m_lastStatisticsHelperUpdate > Ticks.PerSecond)
+                            {
+                                UpdateStatisticsHelpers();
+                                m_lastStatisticsHelperUpdate = m_realTime;
+                            }
 
-                        LifetimeMeasurements += measurements.Count;
-                        UpdateMeasurementsPerSecond(timeReceived, measurements.Count);
+                            LifetimeMeasurements += measurements.Count;
+                            UpdateMeasurementsPerSecond(timeReceived, measurements.Count);
 
-                        foreach (IMeasurement measurement in measurements)
-                        {
-                            long latency = timeReceived.Ticks - (long)measurement.Timestamp;
+                            foreach (IMeasurement measurement in measurements)
+                            {
+                                long latency = timeReceived.Ticks - (long)measurement.Timestamp;
 
-                            // Throw out latencies that exceed one hour as invalid
-                            if (Math.Abs(latency) > Time.SecondsPerHour * Ticks.PerSecond)
-                                continue;
+                                // Throw out latencies that exceed one hour as invalid
+                                if (Math.Abs(latency) > Time.SecondsPerHour * Ticks.PerSecond)
+                                    continue;
 
-                            if (m_lifetimeMinimumLatency > latency || m_lifetimeMinimumLatency == 0)
-                                m_lifetimeMinimumLatency = latency;
+                                if (m_lifetimeMinimumLatency > latency || m_lifetimeMinimumLatency == 0)
+                                    m_lifetimeMinimumLatency = latency;
 
-                            if (m_lifetimeMaximumLatency < latency || m_lifetimeMaximumLatency == 0)
-                                m_lifetimeMaximumLatency = latency;
+                                if (m_lifetimeMaximumLatency < latency || m_lifetimeMaximumLatency == 0)
+                                    m_lifetimeMaximumLatency = latency;
 
                             m_lifetimeTotalLatency += latency;
                             m_lifetimeLatencyMeasurements++;
@@ -2793,81 +2793,81 @@ public class DataSubscriber : InputAdapterBase
                         break;
                     }
                     case ServerResponse.BufferBlock:
-                    {
-                        // Buffer block received - wrap as a buffer block measurement and expose back to consumer
-                        uint sequenceNumber = BigEndian.ToUInt32(buffer, responseIndex);
-                        int bufferCacheIndex = (int)(sequenceNumber - m_expectedBufferBlockSequenceNumber);
-                        int signalCacheIndex = Version > 1 ? buffer[responseIndex + 4] : 0;
-
-                        // Check if this buffer block has already been processed (e.g., mistaken retransmission due to timeout)
-                        if (bufferCacheIndex >= 0 && (bufferCacheIndex >= m_bufferBlockCache.Count || m_bufferBlockCache[bufferCacheIndex] is null))
                         {
-                            // Send confirmation that buffer block is received
-                            SendServerCommand(ServerCommand.ConfirmBufferBlock, buffer.BlockCopy(responseIndex, 4));
+                            // Buffer block received - wrap as a buffer block measurement and expose back to consumer
+                            uint sequenceNumber = BigEndian.ToUInt32(buffer, responseIndex);
+                            int bufferCacheIndex = (int)(sequenceNumber - m_expectedBufferBlockSequenceNumber);
+                            int signalCacheIndex = Version > 1 ? buffer[responseIndex + 4] : 0;
 
-                            if (Version > 1)
-                                responseIndex += 1;
+                            // Check if this buffer block has already been processed (e.g., mistaken retransmission due to timeout)
+                            if (bufferCacheIndex >= 0 && (bufferCacheIndex >= m_bufferBlockCache.Count || m_bufferBlockCache[bufferCacheIndex] is null))
+                            {
+                                // Send confirmation that buffer block is received
+                                SendServerCommand(ServerCommand.ConfirmBufferBlock, buffer.BlockCopy(responseIndex, 4));
 
-                            // Get measurement key from signal index cache
-                            int signalIndex = BigEndian.ToInt32(buffer, responseIndex + 4);
+                                if (Version > 1)
+                                    responseIndex += 1;
+
+                                // Get measurement key from signal index cache
+                                int signalIndex = BigEndian.ToInt32(buffer, responseIndex + 4);
 
                             SignalIndexCache? signalIndexCache;
 
-                            lock (m_signalIndexCacheLock)
-                                signalIndexCache = m_signalIndexCache?[signalCacheIndex];
+                                lock (m_signalIndexCacheLock)
+                                    signalIndexCache = m_signalIndexCache?[signalCacheIndex];
 
                             if (signalIndexCache is null || !signalIndexCache.Reference.TryGetValue(signalIndex, out MeasurementKey? measurementKey))
                                 throw new InvalidOperationException($"Failed to find associated signal identification for runtime ID {signalIndex}");
 
-                            // Skip the sequence number and signal index when creating the buffer block measurement
-                            BufferBlockMeasurement bufferBlockMeasurement = new(buffer, responseIndex + 8, responseLength - 8)
-                            {
-                                Metadata = measurementKey.Metadata
-                            };
-
-                            // Determine if this is the next buffer block in the sequence
-                            if (sequenceNumber == m_expectedBufferBlockSequenceNumber)
-                            {
-                                List<IMeasurement> bufferBlockMeasurements = [];
-                                int i;
-
-                                // Add the buffer block measurement to the list of measurements to be published
-                                bufferBlockMeasurements.Add(bufferBlockMeasurement);
-                                m_expectedBufferBlockSequenceNumber++;
-
-                                // Add cached buffer block measurements to the list of measurements to be published
-                                for (i = 1; i < m_bufferBlockCache.Count; i++)
+                                // Skip the sequence number and signal index when creating the buffer block measurement
+                                BufferBlockMeasurement bufferBlockMeasurement = new(buffer, responseIndex + 8, responseLength - 8)
                                 {
-                                    if (m_bufferBlockCache[i] is null)
-                                        break;
+                                    Metadata = measurementKey.Metadata
+                                };
+
+                                // Determine if this is the next buffer block in the sequence
+                                if (sequenceNumber == m_expectedBufferBlockSequenceNumber)
+                                {
+                                    List<IMeasurement> bufferBlockMeasurements = [];
+                                    int i;
+
+                                    // Add the buffer block measurement to the list of measurements to be published
+                                    bufferBlockMeasurements.Add(bufferBlockMeasurement);
+                                    m_expectedBufferBlockSequenceNumber++;
+
+                                    // Add cached buffer block measurements to the list of measurements to be published
+                                    for (i = 1; i < m_bufferBlockCache.Count; i++)
+                                    {
+                                        if (m_bufferBlockCache[i] is null)
+                                            break;
 
                                     bufferBlockMeasurements.Add(m_bufferBlockCache[i]!);
                                     m_expectedBufferBlockSequenceNumber++;
                                 }
 
-                                // Remove published measurements from the buffer block queue
-                                if (m_bufferBlockCache.Count > 0)
-                                    m_bufferBlockCache.RemoveRange(0, i);
+                                    // Remove published measurements from the buffer block queue
+                                    if (m_bufferBlockCache.Count > 0)
+                                        m_bufferBlockCache.RemoveRange(0, i);
 
-                                // Publish measurements
-                                OnNewMeasurements(bufferBlockMeasurements);
-                            }
-                            else
-                            {
-                                // Ensure that the list has at least as many
-                                // elements as it needs to cache this measurement
-                                for (int i = m_bufferBlockCache.Count; i <= bufferCacheIndex; i++)
-                                    m_bufferBlockCache.Add(null);
+                                    // Publish measurements
+                                    OnNewMeasurements(bufferBlockMeasurements);
+                                }
+                                else
+                                {
+                                    // Ensure that the list has at least as many
+                                    // elements as it needs to cache this measurement
+                                    for (int i = m_bufferBlockCache.Count; i <= bufferCacheIndex; i++)
+                                        m_bufferBlockCache.Add(null);
 
-                                // Insert this buffer block into the proper location in the list
-                                m_bufferBlockCache[bufferCacheIndex] = bufferBlockMeasurement;
+                                    // Insert this buffer block into the proper location in the list
+                                    m_bufferBlockCache[bufferCacheIndex] = bufferBlockMeasurement;
+                                }
                             }
+
+                            LifetimeMeasurements += 1;
+                            UpdateMeasurementsPerSecond(DateTime.UtcNow, 1);
+                            break;
                         }
-
-                        LifetimeMeasurements += 1;
-                        UpdateMeasurementsPerSecond(DateTime.UtcNow, 1);
-                        break;
-                    }
                     case ServerResponse.DataStartTime:
                         // Raise data start time event
                         OnDataStartTime(BigEndian.ToInt64(buffer, responseIndex));
@@ -2877,33 +2877,33 @@ public class DataSubscriber : InputAdapterBase
                         OnProcessingComplete(InterpretResponseMessage(buffer, responseIndex, responseLength));
                         break;
                     case ServerResponse.UpdateSignalIndexCache:
-                    {
-                        int version = Version;
-                        int cacheIndex = 0;
-
-                        // Get active cache index
-                        if (version > 1)
-                            cacheIndex = buffer[responseIndex++];
-
-                        // Deserialize new signal index cache
-                        SignalIndexCache remoteSignalIndexCache = DeserializeSignalIndexCache(buffer.BlockCopy(responseIndex, responseLength));
-                        SignalIndexCache signalIndexCache = new(DataSource, remoteSignalIndexCache);
-
-                        lock (m_signalIndexCacheLock)
                         {
-                            Interlocked.CompareExchange(ref m_signalIndexCache, new SignalIndexCache[version > 1 ? 2 : 1], null);
+                            int version = Version;
+                            int cacheIndex = 0;
 
-                            m_signalIndexCache[cacheIndex] = signalIndexCache;
-                            m_remoteSignalIndexCache = remoteSignalIndexCache;
-                            m_cacheIndex = cacheIndex;
+                            // Get active cache index
+                            if (version > 1)
+                                cacheIndex = buffer[responseIndex++];
+
+                            // Deserialize new signal index cache
+                            SignalIndexCache remoteSignalIndexCache = DeserializeSignalIndexCache(buffer.BlockCopy(responseIndex, responseLength));
+                            SignalIndexCache signalIndexCache = new(DataSource, remoteSignalIndexCache);
+
+                            lock (m_signalIndexCacheLock)
+                            {
+                                Interlocked.CompareExchange(ref m_signalIndexCache, new SignalIndexCache[version > 1 ? 2 : 1], null);
+
+                                m_signalIndexCache[cacheIndex] = signalIndexCache;
+                                m_remoteSignalIndexCache = remoteSignalIndexCache;
+                                m_cacheIndex = cacheIndex;
+                            }
+
+                            if (version > 1)
+                                SendServerCommand(ServerCommand.ConfirmSignalIndexCache);
+
+                            FixExpectedMeasurementCounts();
+                            break;
                         }
-
-                        if (version > 1)
-                            SendServerCommand(ServerCommand.ConfirmSignalIndexCache);
-
-                        FixExpectedMeasurementCounts();
-                        break;
-                    }
                     case ServerResponse.UpdateBaseTimes:
                         // Get active time index
                         m_timeIndex = BigEndian.ToInt32(buffer, responseIndex);
@@ -3954,6 +3954,40 @@ public class DataSubscriber : InputAdapterBase
                 m_dataStreamMonitor.Enabled = true;
         }
     }
+
+    // Since Gemstone data extensions moved position of timeout parameter to a more logical ordinal location so that it will not
+    // conflict with parameters, we establish overloads for .NET core / framework versions of needed data extension methods
+#if NET
+    private DataTable RetrieveData(AdoDataConnection _, DbCommand command, string sql, params object?[] parameters)
+    {
+        return command.RetrieveData(MetadataSynchronizationTimeout, sql, parameters);
+    }
+
+    private void ExecuteNonQuery(DbCommand command, string sql, params object?[] parameters)
+    {
+        command.ExecuteNonQuery(MetadataSynchronizationTimeout, sql, parameters);
+    }
+
+    private object? ExecuteScalar(DbCommand command, string sql, params object?[] parameters)
+    {
+        return command.ExecuteScalar(MetadataSynchronizationTimeout, sql, parameters);
+    }
+#else
+    private DataTable RetrieveData(AdoDataConnection database, IDbCommand command, string sql, params object?[] parameters)
+    {
+        return command.RetrieveData(database.AdapterType, sql, MetadataSynchronizationTimeout, parameters);
+    }
+
+    private void ExecuteNonQuery(IDbCommand command, string sql, params object?[] parameters)
+    {
+        command.ExecuteNonQuery(sql, MetadataSynchronizationTimeout, parameters);
+    }
+
+    private object? ExecuteScalar(IDbCommand command, string sql, params object?[] parameters)
+    {
+        return command.ExecuteScalar(sql, MetadataSynchronizationTimeout, parameters);
+    }
+#endif
 
     // Since Gemstone data extensions moved position of timeout parameter to a more logical ordinal location so that it will not
     // conflict with parameters, we establish overloads for .NET core / framework versions of needed data extension methods
