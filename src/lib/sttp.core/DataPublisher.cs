@@ -32,6 +32,7 @@
 //       Modified Header.
 //
 //******************************************************************************************************
+// ReSharper disable ArrangeObjectCreationWhenTypeNotEvident
 // ReSharper disable UseUtf8StringLiteral
 
 namespace sttp;
@@ -776,7 +777,11 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     private Dictionary<X509Certificate, DataRow>? m_subscriberIdentities;
     private readonly ConcurrentDictionary<Guid, IServer> m_clientPublicationChannels;
     private readonly Dictionary<Guid, Dictionary<int, string>> m_clientNotifications;
+#if NET
+    private readonly Lock m_clientNotificationsLock;
+#else
     private readonly object m_clientNotificationsLock;
+#endif
     private readonly SharedTimer m_cipherKeyRotationTimer;
     private readonly RoutingTables m_routingTables;
     private long m_commandChannelConnectionAttempts;
@@ -808,7 +813,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         ClientConnections = new ConcurrentDictionary<Guid, SubscriberConnection>();
         m_clientPublicationChannels = new ConcurrentDictionary<Guid, IServer>();
         m_clientNotifications = new Dictionary<Guid, Dictionary<int, string>>();
-        m_clientNotificationsLock = new object();
+        m_clientNotificationsLock = new();
         SecurityMode = DefaultSecurityMode;
         m_encryptPayload = DefaultEncryptPayload;
         SharedDatabase = DefaultSharedDatabase;
@@ -1089,10 +1094,10 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             // Only server command channel settings are persisted to config file
             base.Name = value.ToUpper();
 
-        #if !NET
+#if !NET
             if (m_serverCommandChannel is IPersistSettings commandChannel)
                 commandChannel.SettingsCategory = value.Replace("!", "").ToLower();
-        #endif
+#endif
         }
     }
 
@@ -1439,10 +1444,10 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         if (bufferSize == 0)
             bufferSize = BufferSize;
 
-        #if !NET
+#if !NET
         if (settings.TryGetValue(nameof(UseSimpleTcpClient), out setting))
             UseSimpleTcpClient = setting.ParseBoolean();
-        #endif
+#endif
         
         if (SecurityMode == SecurityMode.TLS)
         {
@@ -1485,9 +1490,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                     SendBufferSize = BufferSize,
                     ReceiveBufferSize = bufferSize,
                     NoDelay = true,
-                #if !NET
+#if !NET
                     PersistSettings = false,
-                #endif
+#endif
                 };
 
                 // Assign command channel client reference and attach to needed events
@@ -1507,10 +1512,10 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                     SendBufferSize = BufferSize,
                     ReceiveBufferSize = BufferSize,
                     NoDelay = true,
-                #if !NET
+#if !NET
                     PersistSettings = true,
                     SettingsCategory = Name.Replace("!", "").ToLower(),
-                #endif
+#endif
                 };
 
                 // Assign command channel server reference and attach to needed events
@@ -1521,7 +1526,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         {
             if (clientBasedConnection)
             {
-            #if !NET
+#if !NET
                 if (UseSimpleTcpClient)
                 {
                     // Create a new simple TCP client
@@ -1542,7 +1547,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                 }
                 else
                 {
-            #endif
+#endif
                     // Create a new TCP client
                     TcpClient commandChannel = new()
                     {
@@ -1553,16 +1558,16 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                         SendBufferSize = BufferSize,
                         ReceiveBufferSize = bufferSize,
                         NoDelay = true,
-                    #if !NET
+#if !NET
                         PersistSettings = false,
-                    #endif
+#endif
                     };
 
                     // Assign command channel client reference and attach to needed events
                     ClientCommandChannel = commandChannel;
-            #if !NET
+#if !NET
                 }
-            #endif
+#endif
             }
             else
             {
@@ -1576,10 +1581,10 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                     SendBufferSize = BufferSize,
                     ReceiveBufferSize = BufferSize,
                     NoDelay = true,
-                #if !NET
+#if !NET
                     PersistSettings = true,
                     SettingsCategory = Name.Replace("!", "").ToLower(),
-                #endif
+#endif
                 };
 
                 // Assign command channel server reference and attach to needed events
@@ -2353,7 +2358,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                     if (!File.Exists(remoteCertificateFile))
                         continue;
 
+                #pragma warning disable SYSLIB0057
                     X509Certificate certificate = new X509Certificate2(remoteCertificateFile);
+                #pragma warning restore SYSLIB0057
                     m_certificateChecker.Trust(certificate, policy);
                     m_subscriberIdentities.Add(certificate, subscriber);
                 }

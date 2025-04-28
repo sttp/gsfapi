@@ -22,6 +22,7 @@
 //       Modified Header.
 //
 //******************************************************************************************************
+// ReSharper disable ArrangeObjectCreationWhenTypeNotEvident
 
 namespace sttp;
 
@@ -78,8 +79,8 @@ public class SubscriberConnection : IProvideStatus, IDisposable
         m_subscriberID = clientID;
         m_keyIVs = null;
         m_cipherIndex = 0;
-        CacheUpdateLock = new object();
-        PendingCacheUpdateLock = new object();
+        CacheUpdateLock = new();
+        PendingCacheUpdateLock = new();
         PublishBuffer = new BlockAllocatedMemoryStream();
 
         // Setup ping timer
@@ -131,7 +132,11 @@ public class SubscriberConnection : IProvideStatus, IDisposable
     /// <summary>
     /// Gets the lock object for updating Signal Index Cache properties.
     /// </summary>
+#if NET
+    internal Lock CacheUpdateLock { get; }
+#else
     internal object CacheUpdateLock { get; }
+#endif
 
     /// <summary>
     /// Gets the current Signal Index Cache index, i.e., zero or one.
@@ -341,7 +346,11 @@ public class SubscriberConnection : IProvideStatus, IDisposable
     /// <summary>
     /// Gets the lock object for updating Signal Index Cache properties.
     /// </summary>
+#if NET
+    internal Lock PendingCacheUpdateLock { get; }
+#else
     internal object PendingCacheUpdateLock { get; }
+#endif
 
     /// <summary>
     /// Gets or sets the list of valid IP addresses that this client can connect from.
@@ -443,7 +452,7 @@ public class SubscriberConnection : IProvideStatus, IDisposable
         }
     }
 
-    #endregion
+#endregion
 
     #region [ Methods ]
 
@@ -493,11 +502,11 @@ public class SubscriberConnection : IProvideStatus, IDisposable
     /// </summary>
     internal void UpdateKeyIVs()
     {
-    #if NET
+#if NET
         using (Aes symmetricAlgorithm = Aes.Create())
-    #else
+#else
         using (AesManaged symmetricAlgorithm = new())
-    #endif
+#endif
         {
             symmetricAlgorithm.KeySize = 256;
             symmetricAlgorithm.GenerateKey();

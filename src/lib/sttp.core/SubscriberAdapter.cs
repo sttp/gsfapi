@@ -22,10 +22,11 @@
 //       Modified Header.
 //
 //******************************************************************************************************
+// ReSharper disable ArrangeObjectCreationWhenTypeNotEvident
+// ReSharper disable PossibleMultipleEnumeration
 
 using sttp.tssc;
 
-// ReSharper disable PossibleMultipleEnumeration
 namespace sttp;
 
 /// <summary>
@@ -60,7 +61,11 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
     private readonly CompressionModes m_compressionModes;
     private bool m_resetTsscEncoder;
     private TsscEncoder? m_tsscEncoder;
+#if NET
+    private readonly Lock m_tsscSyncLock;
+#else
     private readonly object m_tsscSyncLock;
+#endif
     private byte[] m_tsscWorkingBuffer = default!;
     private ushort m_tsscSequenceNumber;
     private long m_lastPublishTime;
@@ -75,7 +80,11 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
     private IaonSession? m_iaonSession;
 
     private readonly List<byte[]?> m_bufferBlockCache;
+#if NET
+    private readonly Lock m_bufferBlockCacheLock;
+#else
     private readonly object m_bufferBlockCacheLock;
+#endif
     private uint m_bufferBlockSequenceNumber;
     private uint m_expectedBufferBlockConfirmationNumber;
     private SharedTimer m_bufferBlockRetransmissionTimer = default!;
@@ -83,7 +92,7 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
 
     private bool m_disposed;
 
-    #endregion
+#endregion
 
     #region [ Constructors ]
 
@@ -101,8 +110,8 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
         SubscriberID = subscriberID;
         m_compressionModes = compressionModes;
         m_bufferBlockCache = [];
-        m_bufferBlockCacheLock = new object();
-        m_tsscSyncLock = new object();
+        m_bufferBlockCacheLock = new();
+        m_tsscSyncLock = new();
         m_parent.ClientConnections.TryGetValue(ClientID, out SubscriberConnection? connection);
         m_connection = connection ?? throw new NullReferenceException("Subscriber adapter failed to find associated connection");
         m_connection.SignalIndexCache = new SignalIndexCache { SubscriberID = subscriberID };
