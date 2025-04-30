@@ -750,10 +750,17 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// Default value for <see cref="MetadataTables"/>.
     /// </summary>
     public const string DefaultMetadataTables =
+    #if NET
+        "SELECT UniqueID, OriginalSource, IsConcentrator, Acronym, Name, AccessID, ParentAcronym, ProtocolName, FramesPerSecond, CompanyAcronym, VendorAcronym, VendorDeviceName, Longitude, Latitude, InterconnectionName, ContactList, Enabled, UpdatedOn FROM DeviceDetail WHERE IsConcentrator = 0;" +
+        "SELECT DeviceAcronym, ID, SignalID, PointTag, AlternateTag, SignalReference, SignalAcronym, PhasorSourceIndex, Description, Internal, Enabled, UpdatedOn FROM MeasurementDetail;" +
+        "SELECT ID, DeviceAcronym, Label, Type, Phase, DestinationPhasorID, SourceIndex, BaseKV, UpdatedOn FROM PhasorDetail;" +
+        "SELECT VersionNumber FROM SchemaVersion";
+    #else
         "SELECT NodeID, UniqueID, OriginalSource, IsConcentrator, Acronym, Name, AccessID, ParentAcronym, ProtocolName, FramesPerSecond, CompanyAcronym, VendorAcronym, VendorDeviceName, Longitude, Latitude, InterconnectionName, ContactList, Enabled, UpdatedOn FROM DeviceDetail WHERE IsConcentrator = 0;" +
         "SELECT DeviceAcronym, ID, SignalID, PointTag, AlternateTag, SignalReference, SignalAcronym, PhasorSourceIndex, Description, Internal, Enabled, UpdatedOn FROM MeasurementDetail;" +
         "SELECT ID, DeviceAcronym, Label, Type, Phase, DestinationPhasorID, SourceIndex, BaseKV, UpdatedOn FROM PhasorDetail;" +
         "SELECT VersionNumber FROM SchemaVersion";
+    #endif
 
     /// <summary>
     /// Default value for <see cref="MutualSubscription"/>.
