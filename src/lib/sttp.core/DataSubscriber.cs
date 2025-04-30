@@ -1440,10 +1440,10 @@ public class DataSubscriber : InputAdapterBase
 
         bool serverBasedConnection = !commandChannelSettings.TryGetValue("server", out string? server) || string.IsNullOrWhiteSpace(server);
 
-    #if !NET
+#if !NET
         if (settings.TryGetValue(nameof(UseSimpleTcpClient), out setting))
             UseSimpleTcpClient = setting.ParseBoolean();
-    #endif
+#endif
 
         if (securityMode == SecurityMode.TLS)
         {
@@ -1593,6 +1593,12 @@ public class DataSubscriber : InputAdapterBase
                 }
             #endif
             }
+        }
+
+        if (commandChannelSettings.TryGetValue("DataChannelLocalPort", out setting) && ushort.TryParse(setting, out ushort dataChannelLocalPort))
+        {
+            settings["commandChannel"] = commandChannelConnectionString;
+            settings["port"] = dataChannelLocalPort.ToString();
         }
 
         // Check for simplified compression setup flag
