@@ -28,6 +28,8 @@
 // ReSharper disable ArrangeObjectCreationWhenTypeNotEvident
 // ReSharper disable BadControlBracesIndent
 
+#pragma warning disable SYSLIB0057
+
 using sttp.tssc;
 
 namespace sttp;
@@ -166,7 +168,7 @@ public class DataSubscriber : InputAdapterBase
             }
             finally
             {
-                m_disposed = true;  // Prevent duplicate dispose.
+                m_disposed = true; // Prevent duplicate dispose.
             }
         }
 
@@ -253,10 +255,10 @@ public class DataSubscriber : InputAdapterBase
     /// </summary>
     public const long DefaultParsingExceptionWindow = 50000000L; // 5 seconds
 
-    private const int EvenKey = 0;      // Even key/IV index
-    private const int OddKey = 1;       // Odd key/IV index
-    private const int KeyIndex = 0;     // Index of cipher key component in keyIV array
-    private const int IVIndex = 1;      // Index of initialization vector component in keyIV array
+    private const int EvenKey = 0; // Even key/IV index
+    private const int OddKey = 1; // Odd key/IV index
+    private const int KeyIndex = 0; // Index of cipher key component in keyIV array
+    private const int IVIndex = 1; // Index of initialization vector component in keyIV array
 
     private const long MissingCacheWarningInterval = 20000000;
 
@@ -390,7 +392,7 @@ public class DataSubscriber : InputAdapterBase
 
     private bool m_disposed;
 
-#endregion
+    #endregion
 
     #region [ Constructors ]
 
@@ -423,11 +425,11 @@ public class DataSubscriber : InputAdapterBase
         // Default to not using transactions for meta-data on SQL server (helps avoid deadlocks)
         try
         {
-#if NET
+        #if NET
             using AdoDataConnection database = new(ConfigSettings.Default);
-#else
+        #else
             using AdoDataConnection database = new("systemSettings");
-#endif
+        #endif
             UseTransactionForMetadata = database.DatabaseType != DatabaseType.SQLServer;
         }
         catch
@@ -887,11 +889,11 @@ public class DataSubscriber : InputAdapterBase
         set
         {
             base.DataSource = value;
-#if NET
+        #if NET
             m_registerStatisticsOperation.RunAsync();
-#else
+        #else
             m_registerStatisticsOperation.RunOnce();
-#endif
+        #endif
 
             bool outputMeasurementsUpdated = AutoConnect && UpdateOutputMeasurements();
 
@@ -972,9 +974,7 @@ public class DataSubscriber : InputAdapterBase
             if (string.IsNullOrWhiteSpace(dataChannelServerUri))
                 return commandChannelServerUri;
 
-            return string.IsNullOrWhiteSpace(commandChannelServerUri) ?
-                dataChannelServerUri :
-                $"{commandChannelServerUri} / {dataChannelServerUri}";
+            return string.IsNullOrWhiteSpace(commandChannelServerUri) ? dataChannelServerUri : $"{commandChannelServerUri} / {dataChannelServerUri}";
         }
     }
 
@@ -1043,9 +1043,9 @@ public class DataSubscriber : InputAdapterBase
                 status.AppendLine("----------------------".CenterText(50));
                 status.Append(m_clientCommandChannel.Status);
 
-#if !NET
+            #if !NET
                 status.AppendLine($"   Using simple TCP client: {UseSimpleTcpClient}");
-#endif
+            #endif
             }
 
             if (m_serverCommandChannel is not null)
@@ -1274,8 +1274,8 @@ public class DataSubscriber : InputAdapterBase
         }
         finally
         {
-            m_disposed = true;          // Prevent duplicate dispose.
-            base.Dispose(disposing);    // Call base class Dispose().
+            m_disposed = true; // Prevent duplicate dispose.
+            base.Dispose(disposing); // Call base class Dispose().
         }
     }
 
@@ -1363,9 +1363,9 @@ public class DataSubscriber : InputAdapterBase
             AutoEnableIndependentlySyncedDevices = setting.ParseBoolean();
 
         // Check if user wants to request that publisher use millisecond resolution to conserve bandwidth
-#pragma warning disable CS0618 // Type or member is obsolete
+    #pragma warning disable CS0618 // Type or member is obsolete
         UseMillisecondResolution = !settings.TryGetValue(nameof(UseMillisecondResolution), out setting) || setting.ParseBoolean();
-#pragma warning restore CS0618
+    #pragma warning restore CS0618
 
         // Check if user has defined any meta-data filter expressions
         if (settings.TryGetValue(nameof(MetadataFilters), out setting))
@@ -1440,10 +1440,10 @@ public class DataSubscriber : InputAdapterBase
 
         bool serverBasedConnection = !commandChannelSettings.TryGetValue("server", out string? server) || string.IsNullOrWhiteSpace(server);
 
-#if !NET
+    #if !NET
         if (settings.TryGetValue(nameof(UseSimpleTcpClient), out setting))
             UseSimpleTcpClient = setting.ParseBoolean();
-#endif
+    #endif
 
         if (securityMode == SecurityMode.TLS)
         {
@@ -1490,9 +1490,9 @@ public class DataSubscriber : InputAdapterBase
                     ReceiveBufferSize = bufferSize,
                     SendBufferSize = bufferSize,
                     NoDelay = true,
-#if !NET
+                #if !NET
                     PersistSettings = false,
-#endif
+                #endif
                 };
 
                 // Assign command channel server reference and attach to needed events
@@ -1514,9 +1514,9 @@ public class DataSubscriber : InputAdapterBase
                     ReceiveBufferSize = bufferSize,
                     SendBufferSize = bufferSize,
                     NoDelay = true,
-#if !NET
+                #if !NET
                     PersistSettings = false,
-#endif
+                #endif
                 };
 
                 // Assign command channel client reference and attach to needed events
@@ -1538,9 +1538,9 @@ public class DataSubscriber : InputAdapterBase
                     ReceiveBufferSize = bufferSize,
                     SendBufferSize = bufferSize,
                     NoDelay = true,
-#if !NET
+                #if !NET
                     PersistSettings = false,
-#endif
+                #endif
                 };
 
                 // Assign command channel server reference and attach to needed events
@@ -1548,7 +1548,7 @@ public class DataSubscriber : InputAdapterBase
             }
             else
             {
-#if !NET
+            #if !NET
                 if (UseSimpleTcpClient)
                 {
                     // Create a new simple TCP client
@@ -1570,7 +1570,7 @@ public class DataSubscriber : InputAdapterBase
                 }
                 else
                 {
-#endif
+            #endif
                 // Create a new TCP client
                 TcpClient commandChannel = new()
                 {
@@ -1582,16 +1582,16 @@ public class DataSubscriber : InputAdapterBase
                     ReceiveBufferSize = bufferSize,
                     SendBufferSize = bufferSize,
                     NoDelay = true,
-#if !NET
+                #if !NET
                     PersistSettings = false,
-#endif
+                #endif
                 };
 
                 // Assign command channel client reference and attach to needed events
                 ClientCommandChannel = commandChannel;
-#if !NET
+            #if !NET
                 }
-#endif
+            #endif
             }
         }
 
@@ -1624,16 +1624,16 @@ public class DataSubscriber : InputAdapterBase
             else
             {
                 // Make sure setting exists to allow user to by-pass data gap recovery at a configuration level
-#if NET
+            #if NET
                 SettingsSection systemSettings = ConfigSettings.Instance[ConfigSettings.SystemSettingsCategory];
                 object? dataGapRecoveryEnabledSetting = systemSettings["DataGapRecoveryEnabled"];
                 bool dataGapRecoveryEnabled = (dataGapRecoveryEnabledSetting?.ToString() ?? "false").ParseBoolean();
-#else
+            #else
                 ConfigurationFile configFile = ConfigurationFile.Current;
                 CategorizedSettingsElementCollection systemSettings = configFile.Settings["systemSettings"];
                 CategorizedSettingsElement dataGapRecoveryEnabledSetting = systemSettings["DataGapRecoveryEnabled"];
                 bool dataGapRecoveryEnabled = dataGapRecoveryEnabledSetting is not null && dataGapRecoveryEnabledSetting.ValueAsBoolean();
-#endif
+            #endif
 
                 // See if this node should process phasor source validation
                 if (dataGapRecoveryEnabled)
@@ -1726,9 +1726,9 @@ public class DataSubscriber : InputAdapterBase
             if (Settings.TryGetValue("outputMeasurements", out string? setting))
                 OutputMeasurements = ParseOutputMeasurements(DataSource, true, setting);
 
-#pragma warning disable CA2245
+        #pragma warning disable CA2245
             OutputSourceIDs = OutputSourceIDs;
-#pragma warning restore CA2245
+        #pragma warning restore CA2245
         }
 
         // If active measurements are defined, attempt to defined desired subscription points from there
@@ -1756,9 +1756,7 @@ public class DataSubscriber : InputAdapterBase
 
                 // Combine subscribed output measurement with any existing output measurement and return unique set
                 if (subscribedMeasurements.Count > 0)
-                    OutputMeasurements = OutputMeasurements is null ?
-                        subscribedMeasurements.ToArray() :
-                        subscribedMeasurements.Concat(OutputMeasurements).Distinct().ToArray();
+                    OutputMeasurements = OutputMeasurements is null ? subscribedMeasurements.ToArray() : subscribedMeasurements.Concat(OutputMeasurements).Distinct().ToArray();
             }
             catch (Exception ex)
             {
@@ -1828,11 +1826,11 @@ public class DataSubscriber : InputAdapterBase
         connectionString.Append($"requestNaNValueFilter={info.RequestNaNValueFilter};");
 
         Version version = assemblyInfo.Version ?? new Version(0, 0, 0);
-#if NET
+    #if NET
         const string SourceLib = nameof(Gemstone);
-#else
+    #else
         const string SourceLib = nameof(GSF);
-#endif
+    #endif
         connectionString.Append($"assemblyInfo={{source=STTP {SourceLib} Library ({assemblyInfo.Name}.dll); version={version.Major}.{version.Minor}.{version.Build}; updatedOn={assemblyInfo.BuildDate:yyyy-MM-dd HH:mm:ss} }};");
 
         if (!string.IsNullOrWhiteSpace(info.FilterExpression))
@@ -1859,9 +1857,9 @@ public class DataSubscriber : InputAdapterBase
             m_dataStreamMonitor.Interval = (int)(2.0D * info.LagTime * 1000.0D);
 
         // Set millisecond resolution member variable for compact measurement parsing
-#pragma warning disable 618
+    #pragma warning disable 618
         UseMillisecondResolution = info.UseMillisecondResolution;
-#pragma warning restore 618
+    #pragma warning restore 618
 
         return Subscribe(info.UseCompactMeasurementFormat, connectionString.ToString());
     }
@@ -1939,9 +1937,9 @@ public class DataSubscriber : InputAdapterBase
             Dictionary<string, string> settings = dataChannel.ParseKeyValuePairs();
 
             if (settings.TryGetValue("port", out string? setting) || settings.TryGetValue("localPort", out setting))
-#pragma warning disable CA1806
+        #pragma warning disable CA1806
                 int.TryParse(setting, out port);
-#pragma warning restore CA1806
+        #pragma warning restore CA1806
         }
 
         return Subscribe(new SubscriptionInfo
@@ -2208,11 +2206,11 @@ public class DataSubscriber : InputAdapterBase
         try
         {
             m_receivedMetadata = metadata;
-#if NET
+        #if NET
             m_synchronizeMetadataOperation.RunAsync();
-#else
+        #else
             m_synchronizeMetadataOperation.RunOnceAsync();
-#endif
+        #endif
         }
         catch (Exception ex)
         {
@@ -2290,11 +2288,11 @@ public class DataSubscriber : InputAdapterBase
         long now = UseLocalClockAsRealTime ? DateTime.UtcNow.Ticks : 0L;
         List<DeviceStatisticsHelper<SubscribedDevice>>? statisticsHelpers = m_statisticsHelpers;
 
-#if NET
+    #if NET
         m_registerStatisticsOperation.RunAsync();
-#else
+    #else
         m_registerStatisticsOperation.RunOnceAsync();
-#endif
+    #endif
         m_expectedBufferBlockSequenceNumber = 0u;
         m_commandChannelConnectionAttempts = 0;
         m_dataChannelConnectionAttempts = 0;
@@ -2344,11 +2342,11 @@ public class DataSubscriber : InputAdapterBase
     protected override void AttemptDisconnection()
     {
         // Unregister device statistics
-#if NET
+    #if NET
         m_registerStatisticsOperation.RunAsync();
-#else
+    #else
         m_registerStatisticsOperation.RunOnceAsync();
-#endif
+    #endif
 
         // Stop data stream monitor
         if (m_dataStreamMonitor is not null)
@@ -2464,6 +2462,7 @@ public class DataSubscriber : InputAdapterBase
                                 m_metadataRefreshPending = false;
                                 break;
                         }
+
                         break;
                     case ServerResponse.Failed:
                         OnStatusMessage(MessageLevel.Info, $"Failure code received in response to server command \"{commandCode}\": {InterpretResponseMessage(buffer, responseIndex, responseLength)}");
@@ -2472,357 +2471,358 @@ public class DataSubscriber : InputAdapterBase
                             m_metadataRefreshPending = false;
                         break;
                     case ServerResponse.DataPacket:
+                    {
+                        long now = DateTime.UtcNow.Ticks;
+
+                        // Deserialize data packet
+                        List<IMeasurement> measurements = [];
+                        Ticks timestamp = default;
+
+                        if (TotalBytesReceived == 0)
                         {
-                            long now = DateTime.UtcNow.Ticks;
+                            // At the point when data is being received, data monitor should be enabled
+                            if (!(m_dataStreamMonitor?.Enabled ?? false))
+                                m_dataStreamMonitor!.Enabled = true;
 
-                            // Deserialize data packet
-                            List<IMeasurement> measurements = [];
-                            Ticks timestamp = default;
-
-                            if (TotalBytesReceived == 0)
+                            // Establish run-time log for subscriber
+                            if (AutoConnect || m_dataGapRecoveryEnabled)
                             {
-                                // At the point when data is being received, data monitor should be enabled
-                                if (!(m_dataStreamMonitor?.Enabled ?? false))
-                                    m_dataStreamMonitor!.Enabled = true;
-
-                                // Establish run-time log for subscriber
-                                if (AutoConnect || m_dataGapRecoveryEnabled)
+                                if (m_runTimeLog is null)
                                 {
-                                    if (m_runTimeLog is null)
-                                    {
-                                        m_runTimeLog = new RunTimeLog { FileName = GetLoggingPath($"{Name}_RunTimeLog.txt") };
-                                        m_runTimeLog.ProcessException += RunTimeLog_ProcessException;
-                                        m_runTimeLog.Initialize();
-                                    }
-                                    else
-                                    {
-                                        // Mark the start of any data transmissions
-                                        m_runTimeLog.StartTime = DateTimeOffset.UtcNow;
-                                        m_runTimeLog.Enabled = true;
-                                    }
-                                }
-
-                                // The duration between last disconnection and start of data transmissions
-                                // represents a gap in data - if data gap recovery is enabled, we log
-                                // this as a gap for recovery:
-                                if (m_dataGapRecoveryEnabled)
-                                    m_dataGapRecoverer?.LogDataGap(m_runTimeLog!.StopTime, DateTimeOffset.UtcNow);
-                            }
-
-                            // Track total data packet bytes received from any channel
-                            TotalBytesReceived += m_lastBytesReceived;
-                            m_monitoredBytesReceived += m_lastBytesReceived;
-
-                            // Get data packet flags
-                            DataPacketFlags flags = (DataPacketFlags)buffer[responseIndex];
-                            responseIndex++;
-
-                            SignalIndexCache? signalIndexCache;
-                            bool compactMeasurementFormat = (byte)(flags & DataPacketFlags.Compact) > 0;
-                            bool compressedPayload = (byte)(flags & DataPacketFlags.Compressed) > 0;
-                            int cipherIndex = (flags & DataPacketFlags.CipherIndex) > 0 ? 1 : 0;
-                            int cacheIndex = (flags & DataPacketFlags.CacheIndex) > 0 ? 1 : 0;
-                            byte[] packet = buffer;
-                            int packetLength = responseLength - 1;
-
-                            lock (m_signalIndexCacheLock)
-                                signalIndexCache = m_signalIndexCache?[cacheIndex];
-
-                            // Decrypt data packet payload if keys are available
-                            if (m_keyIVs is not null)
-                            {
-                                // Get a local copy of volatile keyIVs reference since this can change at any time
-                                keyIVs = m_keyIVs;
-
-                                // Decrypt payload portion of data packet
-                                packet = Common.SymmetricAlgorithm.Decrypt(packet, responseIndex, packetLength, keyIVs[cipherIndex][0], keyIVs[cipherIndex][1]);
-                                responseIndex = 0;
-                                packetLength = packet.Length;
-                            }
-
-                            // Deserialize number of measurements that follow
-                            int count = BigEndian.ToInt32(packet, responseIndex);
-                            responseIndex += 4;
-                            packetLength -= 4;
-
-                            if (compressedPayload)
-                            {
-                                if (CompressionModes.HasFlag(CompressionModes.TSSC))
-                                {
-                                    if (signalIndexCache is not null)
-                                    {
-                                        try
-                                        {
-                                            // Decompress TSSC serialized measurements from payload
-                                            ParseTSSCMeasurements(packet, packetLength, signalIndexCache, ref responseIndex, measurements);
-                                        }
-                                        catch (Exception ex)
-                                        {
-                                            OnProcessException(MessageLevel.Error, new InvalidOperationException($"Decompression failure: (Decoded {measurements.Count} of {count} measurements) - {ex.Message}", ex));
-                                        }
-                                    }
+                                    m_runTimeLog = new RunTimeLog { FileName = GetLoggingPath($"{Name}_RunTimeLog.txt") };
+                                    m_runTimeLog.ProcessException += RunTimeLog_ProcessException;
+                                    m_runTimeLog.Initialize();
                                 }
                                 else
                                 {
-                                    OnProcessException(MessageLevel.Error, new InvalidOperationException("Decompression failure: Unexpected compression type in use - STTP currently only supports TSSC payload compression"));
+                                    // Mark the start of any data transmissions
+                                    m_runTimeLog.StartTime = DateTimeOffset.UtcNow;
+                                    m_runTimeLog.Enabled = true;
+                                }
+                            }
+
+                            // The duration between last disconnection and start of data transmissions
+                            // represents a gap in data - if data gap recovery is enabled, we log
+                            // this as a gap for recovery:
+                            if (m_dataGapRecoveryEnabled)
+                                m_dataGapRecoverer?.LogDataGap(m_runTimeLog!.StopTime, DateTimeOffset.UtcNow);
+                        }
+
+                        // Track total data packet bytes received from any channel
+                        TotalBytesReceived += m_lastBytesReceived;
+                        m_monitoredBytesReceived += m_lastBytesReceived;
+
+                        // Get data packet flags
+                        DataPacketFlags flags = (DataPacketFlags)buffer[responseIndex];
+                        responseIndex++;
+
+                        SignalIndexCache? signalIndexCache;
+                        bool compactMeasurementFormat = (byte)(flags & DataPacketFlags.Compact) > 0;
+                        bool compressedPayload = (byte)(flags & DataPacketFlags.Compressed) > 0;
+                        int cipherIndex = (flags & DataPacketFlags.CipherIndex) > 0 ? 1 : 0;
+                        int cacheIndex = (flags & DataPacketFlags.CacheIndex) > 0 ? 1 : 0;
+                        byte[] packet = buffer;
+                        int packetLength = responseLength - 1;
+
+                        lock (m_signalIndexCacheLock)
+                            signalIndexCache = m_signalIndexCache?[cacheIndex];
+
+                        // Decrypt data packet payload if keys are available
+                        if (m_keyIVs is not null)
+                        {
+                            // Get a local copy of volatile keyIVs reference since this can change at any time
+                            keyIVs = m_keyIVs;
+
+                            // Decrypt payload portion of data packet
+                            packet = Common.SymmetricAlgorithm.Decrypt(packet, responseIndex, packetLength, keyIVs[cipherIndex][0], keyIVs[cipherIndex][1]);
+                            responseIndex = 0;
+                            packetLength = packet.Length;
+                        }
+
+                        // Deserialize number of measurements that follow
+                        int count = BigEndian.ToInt32(packet, responseIndex);
+                        responseIndex += 4;
+                        packetLength -= 4;
+
+                        if (compressedPayload)
+                        {
+                            if (CompressionModes.HasFlag(CompressionModes.TSSC))
+                            {
+                                if (signalIndexCache is not null)
+                                {
+                                    try
+                                    {
+                                        // Decompress TSSC serialized measurements from payload
+                                        ParseTSSCMeasurements(packet, packetLength, signalIndexCache, ref responseIndex, measurements);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        OnProcessException(MessageLevel.Error, new InvalidOperationException($"Decompression failure: (Decoded {measurements.Count} of {count} measurements) - {ex.Message}", ex));
+                                    }
                                 }
                             }
                             else
                             {
-                                // Deserialize measurements
-                                for (int i = 0; i < count; i++)
+                                OnProcessException(MessageLevel.Error, new InvalidOperationException("Decompression failure: Unexpected compression type in use - STTP currently only supports TSSC payload compression"));
+                            }
+                        }
+                        else
+                        {
+                            // Deserialize measurements
+                            for (int i = 0; i < count; i++)
+                            {
+                                if (!compactMeasurementFormat)
                                 {
-                                    if (!compactMeasurementFormat)
-                                    {
-#if NET
-                                        throw new NotSupportedException("Full measurement format not supported in Gemstone STTP implementation");
-#else
-                                        // Deserialize full measurement format
-                                        SerializableMeasurement measurement = new(Encoding);
-                                        responseIndex += measurement.ParseBinaryImage(packet, responseIndex, length - responseIndex);
-                                        measurements.Add(measurement);
-#endif
-                                    }
-                                    // ReSharper disable once RedundantIfElseBlock
-                                    else if (signalIndexCache is not null)
-                                    {
-#pragma warning disable 618
-                                        bool useMillisecondResolution = UseMillisecondResolution;
-#pragma warning restore 618
+                                #if NET
+                                    throw new NotSupportedException("Full measurement format not supported in Gemstone STTP implementation");
+                                #else
+                                    // Deserialize full measurement format
+                                    SerializableMeasurement measurement = new(Encoding);
+                                    responseIndex += measurement.ParseBinaryImage(packet, responseIndex, length - responseIndex);
+                                    measurements.Add(measurement);
+                                #endif
+                                }
+                                // ReSharper disable once RedundantIfElseBlock
+                                else if (signalIndexCache is not null)
+                                {
+                                #pragma warning disable 618
+                                    bool useMillisecondResolution = UseMillisecondResolution;
+                                #pragma warning restore 618
 
-                                        // Deserialize compact measurement format
-                                        CompactMeasurement measurement = new(signalIndexCache, m_includeTime, m_baseTimeOffsets, m_timeIndex, useMillisecondResolution);
-                                        responseIndex += measurement.ParseBinaryImage(packet, responseIndex, length - responseIndex);
+                                    // Deserialize compact measurement format
+                                    CompactMeasurement measurement = new(signalIndexCache, m_includeTime, m_baseTimeOffsets, m_timeIndex, useMillisecondResolution);
+                                    responseIndex += measurement.ParseBinaryImage(packet, responseIndex, length - responseIndex);
 
-                                        // Apply timestamp from frame if not included in transmission
-                                        if (!measurement.IncludeTime)
-                                            measurement.Timestamp = timestamp;
+                                    // Apply timestamp from frame if not included in transmission
+                                    if (!measurement.IncludeTime)
+                                        measurement.Timestamp = timestamp;
 
-                                        measurements.Add(measurement);
-                                    }
-                                    else if (m_lastMissingCacheWarning + MissingCacheWarningInterval < now)
-                                    {
-                                        // Warning message for missing signal index cache
-                                        if (m_lastMissingCacheWarning != 0L)
-                                            OnStatusMessage(MessageLevel.Error, "Signal index cache has not arrived. No compact measurements can be parsed.");
+                                    measurements.Add(measurement);
+                                }
+                                else if (m_lastMissingCacheWarning + MissingCacheWarningInterval < now)
+                                {
+                                    // Warning message for missing signal index cache
+                                    if (m_lastMissingCacheWarning != 0L)
+                                        OnStatusMessage(MessageLevel.Error, "Signal index cache has not arrived. No compact measurements can be parsed.");
 
-                                        m_lastMissingCacheWarning = now;
-                                    }
+                                    m_lastMissingCacheWarning = now;
                                 }
                             }
+                        }
 
-                            // Calculate statistics
-                            subscribedDevicesLookup = m_subscribedDevicesLookup;
-                            statisticsHelper = null;
+                        // Calculate statistics
+                        subscribedDevicesLookup = m_subscribedDevicesLookup;
+                        statisticsHelper = null;
 
-                            if (subscribedDevicesLookup is not null)
+                        if (subscribedDevicesLookup is not null)
+                        {
+                            IEnumerable<IGrouping<DeviceStatisticsHelper<SubscribedDevice>?, IMeasurement>> deviceGroups = measurements
+                                .Where(measurement => subscribedDevicesLookup.TryGetValue(measurement.ID, out statisticsHelper))
+                                .Select(measurement => Tuple.Create(statisticsHelper, measurement))
+                                .ToList()
+                                .GroupBy(tuple => tuple.Item1, tuple => tuple.Item2);
+
+                            foreach (IGrouping<DeviceStatisticsHelper<SubscribedDevice>?, IMeasurement> deviceGroup in deviceGroups)
                             {
-                                IEnumerable<IGrouping<DeviceStatisticsHelper<SubscribedDevice>?, IMeasurement>> deviceGroups = measurements
-                                    .Where(measurement => subscribedDevicesLookup.TryGetValue(measurement.ID, out statisticsHelper))
-                                    .Select(measurement => Tuple.Create(statisticsHelper, measurement))
-                                    .ToList()
-                                    .GroupBy(tuple => tuple.Item1, tuple => tuple.Item2);
+                                statisticsHelper = deviceGroup.Key;
 
-                                foreach (IGrouping<DeviceStatisticsHelper<SubscribedDevice>?, IMeasurement> deviceGroup in deviceGroups)
+                                foreach (IGrouping<Ticks, IMeasurement> frame in deviceGroup.GroupBy(measurement => measurement.Timestamp))
                                 {
-                                    statisticsHelper = deviceGroup.Key;
+                                    // Determine the number of measurements received with valid values
+                                    const MeasurementStateFlags ErrorFlags = MeasurementStateFlags.BadData | MeasurementStateFlags.BadTime | MeasurementStateFlags.SystemError;
 
-                                    foreach (IGrouping<Ticks, IMeasurement> frame in deviceGroup.GroupBy(measurement => measurement.Timestamp))
+                                    static bool hasError(MeasurementStateFlags stateFlags)
                                     {
-                                        // Determine the number of measurements received with valid values
-                                        const MeasurementStateFlags ErrorFlags = MeasurementStateFlags.BadData | MeasurementStateFlags.BadTime | MeasurementStateFlags.SystemError;
+                                        return (stateFlags & ErrorFlags) != MeasurementStateFlags.Normal;
+                                    }
 
-                                        static bool hasError(MeasurementStateFlags stateFlags)
+                                    int measurementsReceived = frame.Count(measurement => !double.IsNaN(measurement.Value));
+                                    int measurementsWithError = frame.Count(measurement => !double.IsNaN(measurement.Value) && hasError(measurement.StateFlags));
+
+                                    IMeasurement? statusFlags = null;
+                                    IMeasurement? frequency = null;
+                                    IMeasurement? deltaFrequency = null;
+
+                                    // Attempt to update real-time
+                                    if (!UseLocalClockAsRealTime && frame.Key > m_realTime)
+                                        m_realTime = frame.Key;
+
+                                    // Search the frame for status flags, frequency, and delta frequency
+                                    foreach (IMeasurement measurement in frame)
+                                    {
+                                        if (measurement.ID == statisticsHelper?.Device.StatusFlagsID)
+                                            statusFlags = measurement;
+                                        else if (measurement.ID == statisticsHelper?.Device.FrequencyID)
+                                            frequency = measurement;
+                                        else if (measurement.ID == statisticsHelper?.Device.DeltaFrequencyID)
+                                            deltaFrequency = measurement;
+                                    }
+
+                                    // If we are receiving status flags for this device,
+                                    // count the data quality, time quality, and device errors
+                                    if (statusFlags is not null)
+                                    {
+                                        if (statisticsHelper is not null)
                                         {
-                                            return (stateFlags & ErrorFlags) != MeasurementStateFlags.Normal;
+                                            uint commonStatusFlags = (uint)statusFlags.Value;
+
+                                            if ((commonStatusFlags & (uint)Bits.Bit19) > 0)
+                                                statisticsHelper.Device.DataQualityErrors++;
+
+                                            if ((commonStatusFlags & (uint)Bits.Bit18) > 0)
+                                                statisticsHelper.Device.TimeQualityErrors++;
+
+                                            if ((commonStatusFlags & (uint)Bits.Bit16) > 0)
+                                                statisticsHelper.Device.DeviceErrors++;
                                         }
 
-                                        int measurementsReceived = frame.Count(measurement => !double.IsNaN(measurement.Value));
-                                        int measurementsWithError = frame.Count(measurement => !double.IsNaN(measurement.Value) && hasError(measurement.StateFlags));
+                                        measurementsReceived--;
 
-                                        IMeasurement? statusFlags = null;
-                                        IMeasurement? frequency = null;
-                                        IMeasurement? deltaFrequency = null;
+                                        if (hasError(statusFlags.StateFlags))
+                                            measurementsWithError--;
+                                    }
 
-                                        // Attempt to update real-time
-                                        if (!UseLocalClockAsRealTime && frame.Key > m_realTime)
-                                            m_realTime = frame.Key;
+                                    // Zero is not a valid value for frequency.
+                                    // If frequency is zero, invalidate both frequency and delta frequency
+                                    if (frequency is not null)
+                                    {
+                                        if (!this.TemporalConstraintIsDefined())
+                                            statisticsHelper?.MarkDeviceTimestamp(frequency.Timestamp);
 
-                                        // Search the frame for status flags, frequency, and delta frequency
-                                        foreach (IMeasurement measurement in frame)
+                                        if (frequency.Value == 0.0D)
                                         {
-                                            if (measurement.ID == statisticsHelper?.Device.StatusFlagsID)
-                                                statusFlags = measurement;
-                                            else if (measurement.ID == statisticsHelper?.Device.FrequencyID)
-                                                frequency = measurement;
-                                            else if (measurement.ID == statisticsHelper?.Device.DeltaFrequencyID)
-                                                deltaFrequency = measurement;
-                                        }
+                                            if (deltaFrequency is null || double.IsNaN(deltaFrequency.Value))
+                                                measurementsReceived--;
+                                            else
+                                                measurementsReceived -= 2;
 
-                                        // If we are receiving status flags for this device,
-                                        // count the data quality, time quality, and device errors
-                                        if (statusFlags is not null)
-                                        {
-                                            if (statisticsHelper is not null)
-                                            {
-                                                uint commonStatusFlags = (uint)statusFlags.Value;
-
-                                                if ((commonStatusFlags & (uint)Bits.Bit19) > 0)
-                                                    statisticsHelper.Device.DataQualityErrors++;
-
-                                                if ((commonStatusFlags & (uint)Bits.Bit18) > 0)
-                                                    statisticsHelper.Device.TimeQualityErrors++;
-
-                                                if ((commonStatusFlags & (uint)Bits.Bit16) > 0)
-                                                    statisticsHelper.Device.DeviceErrors++;
-                                            }
-
-                                            measurementsReceived--;
-
-                                            if (hasError(statusFlags.StateFlags))
-                                                measurementsWithError--;
-                                        }
-
-                                        // Zero is not a valid value for frequency.
-                                        // If frequency is zero, invalidate both frequency and delta frequency
-                                        if (frequency is not null)
-                                        {
-                                            if (!this.TemporalConstraintIsDefined())
-                                                statisticsHelper?.MarkDeviceTimestamp(frequency.Timestamp);
-
-                                            if (frequency.Value == 0.0D)
+                                            if (hasError(frequency.StateFlags))
                                             {
                                                 if (deltaFrequency is null || double.IsNaN(deltaFrequency.Value))
-                                                    measurementsReceived--;
+                                                    measurementsWithError--;
                                                 else
-                                                    measurementsReceived -= 2;
-
-                                                if (hasError(frequency.StateFlags))
-                                                {
-                                                    if (deltaFrequency is null || double.IsNaN(deltaFrequency.Value))
-                                                        measurementsWithError--;
-                                                    else
-                                                        measurementsWithError -= 2;
-                                                }
+                                                    measurementsWithError -= 2;
                                             }
                                         }
-
-                                        // Track the number of measurements received
-                                        statisticsHelper?.AddToMeasurementsReceived(measurementsReceived);
-                                        statisticsHelper?.AddToMeasurementsWithError(measurementsWithError);
                                     }
+
+                                    // Track the number of measurements received
+                                    statisticsHelper?.AddToMeasurementsReceived(measurementsReceived);
+                                    statisticsHelper?.AddToMeasurementsWithError(measurementsWithError);
                                 }
                             }
-
-                            OnNewMeasurements(measurements);
-
-                            // Gather statistics on received data
-                            DateTime timeReceived = RealTime;
-
-                            if (!UseLocalClockAsRealTime && timeReceived.Ticks - m_lastStatisticsHelperUpdate > Ticks.PerSecond)
-                            {
-                                UpdateStatisticsHelpers();
-                                m_lastStatisticsHelperUpdate = m_realTime;
-                            }
-
-                            LifetimeMeasurements += measurements.Count;
-                            UpdateMeasurementsPerSecond(timeReceived, measurements.Count);
-
-                            foreach (IMeasurement measurement in measurements)
-                            {
-                                long latency = timeReceived.Ticks - (long)measurement.Timestamp;
-
-                                // Throw out latencies that exceed one hour as invalid
-                                if (Math.Abs(latency) > Time.SecondsPerHour * Ticks.PerSecond)
-                                    continue;
-
-                                if (m_lifetimeMinimumLatency > latency || m_lifetimeMinimumLatency == 0)
-                                    m_lifetimeMinimumLatency = latency;
-
-                                if (m_lifetimeMaximumLatency < latency || m_lifetimeMaximumLatency == 0)
-                                    m_lifetimeMaximumLatency = latency;
-
-                                m_lifetimeTotalLatency += latency;
-                                m_lifetimeLatencyMeasurements++;
-                            }
-                            break;
                         }
-                    case ServerResponse.BufferBlock:
+
+                        OnNewMeasurements(measurements);
+
+                        // Gather statistics on received data
+                        DateTime timeReceived = RealTime;
+
+                        if (!UseLocalClockAsRealTime && timeReceived.Ticks - m_lastStatisticsHelperUpdate > Ticks.PerSecond)
                         {
-                            // Buffer block received - wrap as a buffer block measurement and expose back to consumer
-                            uint sequenceNumber = BigEndian.ToUInt32(buffer, responseIndex);
-                            int bufferCacheIndex = (int)(sequenceNumber - m_expectedBufferBlockSequenceNumber);
-                            int signalCacheIndex = Version > 1 ? buffer[responseIndex + 4] : 0;
-
-                            // Check if this buffer block has already been processed (e.g., mistaken retransmission due to timeout)
-                            if (bufferCacheIndex >= 0 && (bufferCacheIndex >= m_bufferBlockCache.Count || m_bufferBlockCache[bufferCacheIndex] is null))
-                            {
-                                // Send confirmation that buffer block is received
-                                SendServerCommand(ServerCommand.ConfirmBufferBlock, buffer.BlockCopy(responseIndex, 4));
-
-                                if (Version > 1)
-                                    responseIndex += 1;
-
-                                // Get measurement key from signal index cache
-                                int signalIndex = BigEndian.ToInt32(buffer, responseIndex + 4);
-
-                                SignalIndexCache? signalIndexCache;
-
-                                lock (m_signalIndexCacheLock)
-                                    signalIndexCache = m_signalIndexCache?[signalCacheIndex];
-
-                                if (signalIndexCache is null || !signalIndexCache.Reference.TryGetValue(signalIndex, out MeasurementKey? measurementKey))
-                                    throw new InvalidOperationException($"Failed to find associated signal identification for runtime ID {signalIndex}");
-
-                                // Skip the sequence number and signal index when creating the buffer block measurement
-                                BufferBlockMeasurement bufferBlockMeasurement = new(buffer, responseIndex + 8, responseLength - 8)
-                                {
-                                    Metadata = measurementKey.Metadata
-                                };
-
-                                // Determine if this is the next buffer block in the sequence
-                                if (sequenceNumber == m_expectedBufferBlockSequenceNumber)
-                                {
-                                    List<IMeasurement> bufferBlockMeasurements = [];
-                                    int i;
-
-                                    // Add the buffer block measurement to the list of measurements to be published
-                                    bufferBlockMeasurements.Add(bufferBlockMeasurement);
-                                    m_expectedBufferBlockSequenceNumber++;
-
-                                    // Add cached buffer block measurements to the list of measurements to be published
-                                    for (i = 1; i < m_bufferBlockCache.Count; i++)
-                                    {
-                                        if (m_bufferBlockCache[i] is null)
-                                            break;
-
-                                        bufferBlockMeasurements.Add(m_bufferBlockCache[i]!);
-                                        m_expectedBufferBlockSequenceNumber++;
-                                    }
-
-                                    // Remove published measurements from the buffer block queue
-                                    if (m_bufferBlockCache.Count > 0)
-                                        m_bufferBlockCache.RemoveRange(0, i);
-
-                                    // Publish measurements
-                                    OnNewMeasurements(bufferBlockMeasurements);
-                                }
-                                else
-                                {
-                                    // Ensure that the list has at least as many
-                                    // elements as it needs to cache this measurement
-                                    for (int i = m_bufferBlockCache.Count; i <= bufferCacheIndex; i++)
-                                        m_bufferBlockCache.Add(null);
-
-                                    // Insert this buffer block into the proper location in the list
-                                    m_bufferBlockCache[bufferCacheIndex] = bufferBlockMeasurement;
-                                }
-                            }
-
-                            LifetimeMeasurements += 1;
-                            UpdateMeasurementsPerSecond(DateTime.UtcNow, 1);
-                            break;
+                            UpdateStatisticsHelpers();
+                            m_lastStatisticsHelperUpdate = m_realTime;
                         }
+
+                        LifetimeMeasurements += measurements.Count;
+                        UpdateMeasurementsPerSecond(timeReceived, measurements.Count);
+
+                        foreach (IMeasurement measurement in measurements)
+                        {
+                            long latency = timeReceived.Ticks - (long)measurement.Timestamp;
+
+                            // Throw out latencies that exceed one hour as invalid
+                            if (Math.Abs(latency) > Time.SecondsPerHour * Ticks.PerSecond)
+                                continue;
+
+                            if (m_lifetimeMinimumLatency > latency || m_lifetimeMinimumLatency == 0)
+                                m_lifetimeMinimumLatency = latency;
+
+                            if (m_lifetimeMaximumLatency < latency || m_lifetimeMaximumLatency == 0)
+                                m_lifetimeMaximumLatency = latency;
+
+                            m_lifetimeTotalLatency += latency;
+                            m_lifetimeLatencyMeasurements++;
+                        }
+
+                        break;
+                    }
+                    case ServerResponse.BufferBlock:
+                    {
+                        // Buffer block received - wrap as a buffer block measurement and expose back to consumer
+                        uint sequenceNumber = BigEndian.ToUInt32(buffer, responseIndex);
+                        int bufferCacheIndex = (int)(sequenceNumber - m_expectedBufferBlockSequenceNumber);
+                        int signalCacheIndex = Version > 1 ? buffer[responseIndex + 4] : 0;
+
+                        // Check if this buffer block has already been processed (e.g., mistaken retransmission due to timeout)
+                        if (bufferCacheIndex >= 0 && (bufferCacheIndex >= m_bufferBlockCache.Count || m_bufferBlockCache[bufferCacheIndex] is null))
+                        {
+                            // Send confirmation that buffer block is received
+                            SendServerCommand(ServerCommand.ConfirmBufferBlock, buffer.BlockCopy(responseIndex, 4));
+
+                            if (Version > 1)
+                                responseIndex += 1;
+
+                            // Get measurement key from signal index cache
+                            int signalIndex = BigEndian.ToInt32(buffer, responseIndex + 4);
+
+                            SignalIndexCache? signalIndexCache;
+
+                            lock (m_signalIndexCacheLock)
+                                signalIndexCache = m_signalIndexCache?[signalCacheIndex];
+
+                            if (signalIndexCache is null || !signalIndexCache.Reference.TryGetValue(signalIndex, out MeasurementKey? measurementKey))
+                                throw new InvalidOperationException($"Failed to find associated signal identification for runtime ID {signalIndex}");
+
+                            // Skip the sequence number and signal index when creating the buffer block measurement
+                            BufferBlockMeasurement bufferBlockMeasurement = new(buffer, responseIndex + 8, responseLength - 8)
+                            {
+                                Metadata = measurementKey.Metadata
+                            };
+
+                            // Determine if this is the next buffer block in the sequence
+                            if (sequenceNumber == m_expectedBufferBlockSequenceNumber)
+                            {
+                                List<IMeasurement> bufferBlockMeasurements = [];
+                                int i;
+
+                                // Add the buffer block measurement to the list of measurements to be published
+                                bufferBlockMeasurements.Add(bufferBlockMeasurement);
+                                m_expectedBufferBlockSequenceNumber++;
+
+                                // Add cached buffer block measurements to the list of measurements to be published
+                                for (i = 1; i < m_bufferBlockCache.Count; i++)
+                                {
+                                    if (m_bufferBlockCache[i] is null)
+                                        break;
+
+                                    bufferBlockMeasurements.Add(m_bufferBlockCache[i]!);
+                                    m_expectedBufferBlockSequenceNumber++;
+                                }
+
+                                // Remove published measurements from the buffer block queue
+                                if (m_bufferBlockCache.Count > 0)
+                                    m_bufferBlockCache.RemoveRange(0, i);
+
+                                // Publish measurements
+                                OnNewMeasurements(bufferBlockMeasurements);
+                            }
+                            else
+                            {
+                                // Ensure that the list has at least as many
+                                // elements as it needs to cache this measurement
+                                for (int i = m_bufferBlockCache.Count; i <= bufferCacheIndex; i++)
+                                    m_bufferBlockCache.Add(null);
+
+                                // Insert this buffer block into the proper location in the list
+                                m_bufferBlockCache[bufferCacheIndex] = bufferBlockMeasurement;
+                            }
+                        }
+
+                        LifetimeMeasurements += 1;
+                        UpdateMeasurementsPerSecond(DateTime.UtcNow, 1);
+                        break;
+                    }
                     case ServerResponse.DataStartTime:
                         // Raise data start time event
                         OnDataStartTime(BigEndian.ToInt64(buffer, responseIndex));
@@ -2832,33 +2832,33 @@ public class DataSubscriber : InputAdapterBase
                         OnProcessingComplete(InterpretResponseMessage(buffer, responseIndex, responseLength));
                         break;
                     case ServerResponse.UpdateSignalIndexCache:
+                    {
+                        int version = Version;
+                        int cacheIndex = 0;
+
+                        // Get active cache index
+                        if (version > 1)
+                            cacheIndex = buffer[responseIndex++];
+
+                        // Deserialize new signal index cache
+                        SignalIndexCache remoteSignalIndexCache = DeserializeSignalIndexCache(buffer.BlockCopy(responseIndex, responseLength));
+                        SignalIndexCache signalIndexCache = new(DataSource, remoteSignalIndexCache);
+
+                        lock (m_signalIndexCacheLock)
                         {
-                            int version = Version;
-                            int cacheIndex = 0;
+                            Interlocked.CompareExchange(ref m_signalIndexCache, new SignalIndexCache[version > 1 ? 2 : 1], null);
 
-                            // Get active cache index
-                            if (version > 1)
-                                cacheIndex = buffer[responseIndex++];
-
-                            // Deserialize new signal index cache
-                            SignalIndexCache remoteSignalIndexCache = DeserializeSignalIndexCache(buffer.BlockCopy(responseIndex, responseLength));
-                            SignalIndexCache signalIndexCache = new(DataSource, remoteSignalIndexCache);
-
-                            lock (m_signalIndexCacheLock)
-                            {
-                                Interlocked.CompareExchange(ref m_signalIndexCache, new SignalIndexCache[version > 1 ? 2 : 1], null);
-
-                                m_signalIndexCache[cacheIndex] = signalIndexCache;
-                                m_remoteSignalIndexCache = remoteSignalIndexCache;
-                                m_cacheIndex = cacheIndex;
-                            }
-
-                            if (version > 1)
-                                SendServerCommand(ServerCommand.ConfirmSignalIndexCache);
-
-                            FixExpectedMeasurementCounts();
-                            break;
+                            m_signalIndexCache[cacheIndex] = signalIndexCache;
+                            m_remoteSignalIndexCache = remoteSignalIndexCache;
+                            m_cacheIndex = cacheIndex;
                         }
+
+                        if (version > 1)
+                            SendServerCommand(ServerCommand.ConfirmSignalIndexCache);
+
+                        FixExpectedMeasurementCounts();
+                        break;
+                    }
                     case ServerResponse.UpdateBaseTimes:
                         // Get active time index
                         m_timeIndex = BigEndian.ToInt32(buffer, responseIndex);
@@ -3089,9 +3089,9 @@ public class DataSubscriber : InputAdapterBase
             }
 
             // Start unsynchronized subscription
-#pragma warning disable 618
+        #pragma warning disable 618
             return Subscribe(true, Throttled, filterExpression.ToString(), dataChannel, startTime: startTimeConstraint, stopTime: stopTimeConstraint, processingInterval: processingInterval, publishInterval: PublishInterval);
-#pragma warning restore 618
+        #pragma warning restore 618
         }
 
         Unsubscribe();
@@ -3142,17 +3142,17 @@ public class DataSubscriber : InputAdapterBase
             DateTime latestUpdateTime = DateTime.MinValue;
 
             // Open the configuration database using settings found in the config file
-#if NET
+        #if NET
             using (AdoDataConnection database = new(ConfigSettings.Default))
             using (DbCommand command = database.Connection.CreateCommand())
             {
                 DbTransaction? transaction = null;
-#else
+        #else
             using (AdoDataConnection database = new("systemSettings"))
             using (IDbCommand command = database.Connection.CreateCommand())
             {
                 IDbTransaction? transaction = null;
-#endif
+        #endif
                 if (UseTransactionForMetadata)
                     transaction = database.Connection.BeginTransaction(database.DefaultIsolationLevel);
 
@@ -3266,9 +3266,9 @@ public class DataSubscriber : InputAdapterBase
                             // ReSharper disable once AccessToDisposedClosure
                             IEnumerable<Guid> retiredUniqueIDs =
                                 RetrieveData(database, command, queryUniqueDeviceIDsSql, parentIDValue)
-                                .Select()
-                                .Select(deviceRow => database.Guid(deviceRow, "UniqueID"))
-                                .Except(uniqueIDs);
+                                    .Select()
+                                    .Select(deviceRow => database.Guid(deviceRow, "UniqueID"))
+                                    .Except(uniqueIDs);
 
                             foreach (Guid retiredUniqueID in retiredUniqueIDs)
                                 ExecuteNonQuery(command, deleteDeviceSql, database.Guid(retiredUniqueID));
@@ -3378,10 +3378,10 @@ public class DataSubscriber : InputAdapterBase
                                     // ownership is inferred by setting 'OriginalSource' to null. When gateway doesn't own device records (i.e., the "internal" flag is false), this means the device's measurements can only be consumed
                                     // locally - from a device record perspective this means the 'OriginalSource' field is set to the acronym of the PDC or PMU that generated the source measurements. This field allows a mirrored source
                                     // restriction to be implemented later to ensure all devices in an output protocol came from the same original source connection, if desired.
-                                    object originalSource = SyncIndependentDevices ? parentID.ToString() : Internal ? DBNull.Value :
-                                        string.IsNullOrEmpty(row.Field<string>("ParentAcronym")) ?
-                                            sourcePrefix + row.Field<string>("Acronym") :
-                                            sourcePrefix + row.Field<string>("ParentAcronym");
+                                    object originalSource = SyncIndependentDevices ? parentID.ToString() :
+                                        Internal ? DBNull.Value :
+                                        string.IsNullOrEmpty(row.Field<string>("ParentAcronym")) ? sourcePrefix + row.Field<string>("Acronym") :
+                                        sourcePrefix + row.Field<string>("ParentAcronym");
 
                                     // Determine if device record already exists
                                     if (Convert.ToInt32(ExecuteScalar(command, deviceExistsSql, database.Guid(uniqueID))) == 0)
@@ -3525,7 +3525,6 @@ public class DataSubscriber : InputAdapterBase
 
                         try
                         {
-
                             foreach (DataRow row in measurementRows)
                             {
                                 bool recordNeedsUpdating;
@@ -3778,9 +3777,7 @@ public class DataSubscriber : InputAdapterBase
                             // Remove any phasor records associated with existing devices in this session but no longer exist in the meta-data
                             foreach (int id in deviceIDs.Values)
                             {
-                                string deleteSql = definedSourceIndices.TryGetValue(id, out List<int>? sourceIndices) ?
-                                    $"{deletePhasorSql} AND SourceIndex NOT IN ({string.Join(",", sourceIndices)})" :
-                                    deletePhasorSql;
+                                string deleteSql = definedSourceIndices.TryGetValue(id, out List<int>? sourceIndices) ? $"{deletePhasorSql} AND SourceIndex NOT IN ({string.Join(",", sourceIndices)})" : deletePhasorSql;
 
                                 ExecuteNonQuery(command, deleteSql, id);
                             }
@@ -4073,11 +4070,11 @@ public class DataSubscriber : InputAdapterBase
         {
             TcpServer tcpServerCommandChannel when tcpServerCommandChannel.TryGetClient(clientID, out TransportProvider<Socket>? tcpProvider) => tcpProvider?.Provider,
             TlsServer tlsServerCommandChannel when tlsServerCommandChannel.TryGetClient(clientID, out TransportProvider<TlsServer.TlsSocket>? tlsProvider) => tlsProvider?.Provider?.Socket,
-#if NET
+        #if NET
             _ => (m_clientCommandChannel as TcpClient)?.Client
-#else
+        #else
             _ => (m_clientCommandChannel as TcpClient)?.Client ?? (m_clientCommandChannel as TcpSimpleClient)?.Client
-#endif
+        #endif
         };
     }
 
@@ -4581,7 +4578,7 @@ public class DataSubscriber : InputAdapterBase
             // FUTURE: Missing data detection could be complex. For example, no need to continue logging data outages for devices that are offline - but how to detect?
             // If data channel is UDP, measurements are missing for time span and data gap recovery enabled, request missing
             //if m_dataChannel is not null && m_dataGapRecoveryEnabled && m_dataGapRecoverer is not null && m_lastMeasurementCheck > 0 &&
-            //    statisticsHelper.Device.MeasurementsExpected - statisticsHelper.Device.MeasurementsReceived > m_minimumMissingMeasurementThreshold)
+            //    statisticsHelper.Device.MeasurementsExpected - statisticsHelper.Device.MeasurementsReceived > m_minimumMissingMeasurementThresholdID
             //    m_dataGapRecoverer.LogDataGap(m_lastMeasurementCheck - Ticks.FromSeconds(m_transmissionDelayTimeAdjustment), now);
         }
 
@@ -4612,9 +4609,7 @@ public class DataSubscriber : InputAdapterBase
     /// <returns>File path within any defined logging path.</returns>
     protected string GetLoggingPath(string filePath)
     {
-        return string.IsNullOrWhiteSpace(m_loggingPath) ?
-            FilePath.GetAbsolutePath(filePath) :
-            Path.Combine(m_loggingPath, filePath);
+        return string.IsNullOrWhiteSpace(m_loggingPath) ? FilePath.GetAbsolutePath(filePath) : Path.Combine(m_loggingPath, filePath);
     }
 
     private void DataStreamMonitor_Elapsed(object? sender, EventArgs<DateTime> e)
@@ -4682,9 +4677,7 @@ public class DataSubscriber : InputAdapterBase
         // Notify consumer that connection was successfully established
         OnConnectionEstablished();
 
-        OnStatusMessage(MessageLevel.Info, m_serverCommandChannel is null ?
-            "Data subscriber command channel connection to publisher was established." :
-            "Data subscriber server-based command channel established a new client connection from the publisher.");
+        OnStatusMessage(MessageLevel.Info, m_serverCommandChannel is null ? "Data subscriber command channel connection to publisher was established." : "Data subscriber server-based command channel established a new client connection from the publisher.");
 
         if (AutoConnect && Enabled)
             StartSubscription();
@@ -4697,9 +4690,7 @@ public class DataSubscriber : InputAdapterBase
     {
         OnConnectionTerminated();
 
-        OnStatusMessage(MessageLevel.Info, m_serverCommandChannel is null ?
-            "Data subscriber command channel connection to publisher was terminated." :
-            "Data subscriber server-based command channel client connection from the publisher was terminated.");
+        OnStatusMessage(MessageLevel.Info, m_serverCommandChannel is null ? "Data subscriber command channel connection to publisher was terminated." : "Data subscriber server-based command channel client connection from the publisher was terminated.");
 
         DisconnectClient();
     }
@@ -4925,14 +4916,14 @@ public class DataSubscriber : InputAdapterBase
             // ReSharper disable once RedundantAssignment
             string localCertificate = null!;
 
-#if NET
+        #if NET
             localCertificate = ConfigSettings.Default[ConfigSettings.SystemSettingsCategory]["LocalCertificate"];
-#else
+        #else
             CategorizedSettingsElement localCertificateElement = ConfigurationFile.Current.Settings["systemSettings"]["LocalCertificate"];
         
             if (localCertificateElement is not null)
                 localCertificate = localCertificateElement.Value;
-#endif
+        #endif
 
             if (localCertificate is null || !File.Exists(FilePath.GetAbsolutePath(localCertificate)))
                 throw new InvalidOperationException("Unable to find local certificate. Local certificate file must exist when using TLS security mode.");
@@ -4958,19 +4949,19 @@ public class DataSubscriber : InputAdapterBase
             if (File.Exists(FilePath.GetAbsolutePath(remoteCertificate)))
                 return true;
 
-#if NET
+        #if NET
             string remoteCertificatePath = ConfigSettings.Default[ConfigSettings.SystemSettingsCategory]["RemoteCertificatesPath"];
 
             if (string.IsNullOrWhiteSpace(remoteCertificatePath))
                 return false;
-#else
+        #else
             CategorizedSettingsElement remoteCertificateElement = ConfigurationFile.Current.Settings["systemSettings"]["RemoteCertificatesPath"];
 
             if (remoteCertificateElement is null)
                 return false;
 
             string remoteCertificatePath = remoteCertificateElement.Value;
-#endif
+        #endif
 
             remoteCertificate = Path.Combine(remoteCertificatePath, remoteCertificate);
 
