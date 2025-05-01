@@ -349,8 +349,10 @@ public class DataSubscriber : InputAdapterBase
     private DateTime m_lastReceivedAt;
     private long m_monitoredBytesReceived;
     private long m_lastMissingCacheWarning;
+#if !NET
     private Guid m_nodeID;
     private int m_sttpProtocolID;
+#endif
     private bool m_includeTime;
     private bool m_metadataRefreshPending;
     private readonly LongSynchronizedOperation m_synchronizeMetadataOperation;
@@ -1440,10 +1442,10 @@ public class DataSubscriber : InputAdapterBase
 
         bool serverBasedConnection = !commandChannelSettings.TryGetValue("server", out string? server) || string.IsNullOrWhiteSpace(server);
 
-#if !NET
+    #if !NET
         if (settings.TryGetValue(nameof(UseSimpleTcpClient), out setting))
             UseSimpleTcpClient = setting.ParseBoolean();
-#endif
+    #endif
 
         if (securityMode == SecurityMode.TLS)
         {
@@ -3182,6 +3184,7 @@ public class DataSubscriber : InputAdapterBase
                     // Get any historian associated with the subscriber device
                     object? historianID = ExecuteScalar(command, $"SELECT HistorianID FROM Device WHERE ID = {parentID}");
 
+                #if !NET
                     // Determine the active node ID - we cache this since this value won't change for the lifetime of this class
                     if (m_nodeID == Guid.Empty)
                         m_nodeID = Guid.Parse(ExecuteScalar(command, $"SELECT NodeID FROM IaonInputAdapter WHERE ID = {(int)ID}")?.ToString() ?? Guid.Empty.ToString());
@@ -3189,6 +3192,7 @@ public class DataSubscriber : InputAdapterBase
                     // Determine the protocol record auto-inc ID value for STTP - this value is also cached since it shouldn't change for the lifetime of this class
                     if (m_sttpProtocolID == 0)
                         m_sttpProtocolID = int.Parse(ExecuteScalar(command, "SELECT ID FROM Protocol WHERE Acronym='STTP'")?.ToString() ?? "0");
+                #endif
 
                     // Ascertain total number of actions required for all meta-data synchronization so some level feed back can be provided on progress
                     InitSyncProgress(metadata.Tables.Cast<DataTable>().Select(dataTable => (long)dataTable.Rows.Count).Sum() + 3);
@@ -3209,17 +3213,24 @@ public class DataSubscriber : InputAdapterBase
                         // Define SQL statement to query if this device is already defined (this should always be based on the unique guid-based device ID)
                         string deviceExistsSql = database.ParameterizedQueryString("SELECT COUNT(*) FROM Device WHERE UniqueID = {0}", "uniqueID");
 
+                    #if NET
+                        //                                                                             0         1            2        3     4               5         6          7         8            9                 10              11
+                        // Define SQL statement to insert new device record
+                        string insertDeviceSql = database.ParameterizedQueryString("INSERT INTO Device(ParentID, HistorianID, Acronym, Name, OriginalSource, AccessID, Longitude, Latitude, ContactList, ConnectionString, IsConcentrator, Enabled) " +
+                                                                                   "VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, 0, " + (SyncIndependentDevices ? AutoEnableIndependentlySyncedDevices ? "1" : "0" : "1") + ")",
+                                                                                   "parentID", "historianID", "acronym", "name", "originalSource", "accessID", "longitude", "latitude", "contactList", "connectionString");
+
+                        // Define SQL statement to update existing device record
+                        string updateDeviceSql = database.ParameterizedQueryString("UPDATE Device SET Acronym = {0}, Name = {1}, OriginalSource = {2}, HistorianID = {3}, AccessID = {4}, Longitude = {5}, Latitude = {6}, ContactList = {7} WHERE UniqueID = {8}",
+                            "acronym", "name", "originalSource", "historianID", "accessID", "longitude", "latitude", "contactList", "uniqueID");
+
+                        string updateDeviceWithConnectionStringSql = database.ParameterizedQueryString("UPDATE Device SET Acronym = {0}, Name = {1}, OriginalSource = {2}, HistorianID = {3}, AccessID = {4}, Longitude = {5}, Latitude = {6}, ContactList = {7}, ConnectionString = {8} WHERE UniqueID = {9}",
+                            "acronym", "name", "originalSource", "historianID", "accessID", "longitude", "latitude", "contactList", "connectionString", "uniqueID");
+                    #else
                         // Define SQL statement to insert new device record
                         string insertDeviceSql = database.ParameterizedQueryString("INSERT INTO Device(NodeID, ParentID, HistorianID, Acronym, Name, ProtocolID, FramesPerSecond, OriginalSource, AccessID, Longitude, Latitude, ContactList, ConnectionString, IsConcentrator, Enabled) " +
                                                                                    "VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11}, {12}, 0, " + (SyncIndependentDevices ? AutoEnableIndependentlySyncedDevices ? "1" : "0" : "1") + ")",
-                            "nodeID", "parentID", "historianID", "acronym", "name", "protocolID", "framesPerSecond", "originalSource", "accessID", "longitude", "latitude", "contactList", "connectionString");
-
-                        // Define SQL statement to update device's guid-based unique ID after insert
-                        string updateDeviceUniqueIDSql = database.ParameterizedQueryString("UPDATE Device SET UniqueID = {0} WHERE Acronym = {1}", "uniqueID", "acronym");
-
-                        // Define SQL statement to query if a device can be safely updated
-                        string deviceParentRestriction = SyncIndependentDevices ? "OriginalSource <> {1}" : "(ParentID <> {1} OR ParentID IS NULL)";
-                        string deviceIsUpdateableSql = database.ParameterizedQueryString("SELECT COUNT(*) FROM Device WHERE UniqueID = {0} AND " + deviceParentRestriction, "uniqueID", "parentID");
+                                                                                   "nodeID", "parentID", "historianID", "acronym", "name", "protocolID", "framesPerSecond", "originalSource", "accessID", "longitude", "latitude", "contactList", "connectionString");
 
                         // Define SQL statement to update existing device record
                         string updateDeviceSql = database.ParameterizedQueryString("UPDATE Device SET Acronym = {0}, Name = {1}, OriginalSource = {2}, ProtocolID = {3}, FramesPerSecond = {4}, HistorianID = {5}, AccessID = {6}, Longitude = {7}, Latitude = {8}, ContactList = {9} WHERE UniqueID = {10}",
@@ -3227,6 +3238,14 @@ public class DataSubscriber : InputAdapterBase
 
                         string updateDeviceWithConnectionStringSql = database.ParameterizedQueryString("UPDATE Device SET Acronym = {0}, Name = {1}, OriginalSource = {2}, ProtocolID = {3}, FramesPerSecond = {4}, HistorianID = {5}, AccessID = {6}, Longitude = {7}, Latitude = {8}, ContactList = {9}, ConnectionString = {10} WHERE UniqueID = {11}",
                             "acronym", "name", "originalSource", "protocolID", "framesPerSecond", "historianID", "accessID", "longitude", "latitude", "contactList", "connectionString", "uniqueID");
+                    #endif
+
+                        // Define SQL statement to update device's guid-based unique ID after insert
+                        string updateDeviceUniqueIDSql = database.ParameterizedQueryString("UPDATE Device SET UniqueID = {0} WHERE Acronym = {1}", "uniqueID", "acronym");
+
+                        // Define SQL statement to query if a device can be safely updated
+                        string deviceParentRestriction = SyncIndependentDevices ? "OriginalSource <> {1}" : "(ParentID <> {1} OR ParentID IS NULL)";
+                        string deviceIsUpdateableSql = database.ParameterizedQueryString("SELECT COUNT(*) FROM Device WHERE UniqueID = {0} AND " + deviceParentRestriction, "uniqueID", "parentID");
 
                         // Define SQL statement to retrieve device's auto-inc ID based on its unique guid-based ID
                         string queryDeviceIDSql = database.ParameterizedQueryString("SELECT ID FROM Device WHERE UniqueID = {0}", "uniqueID");
@@ -3361,12 +3380,19 @@ public class DataSubscriber : InputAdapterBase
                                 if (interconnectionNameFieldExists)
                                     contactList["interconnectionName"] = row.Field<string>("InterconnectionName") ?? string.Empty;
 
+                             #if !NET
                                 int protocolID = m_sttpProtocolID;
+                             #endif
 
                                 // If we are synchronizing independent devices, we need to determine the protocol ID for the device
                                 // based on the protocol name defined in the meta-data
                                 if (SyncIndependentDevices && !string.IsNullOrWhiteSpace(protocolName))
                                 {
+                                #if NET
+                                    Dictionary<string, string> settings = connectionString.ParseKeyValuePairs();
+                                    settings["phasorProtocol"] = protocolName;
+                                    connectionString = settings.JoinKeyValuePairs();
+                                #else
                                     string queryProtocolIDSql = database.ParameterizedQueryString("SELECT ID FROM Protocol WHERE Name = {0}", "protocolName");
                                     object? protocolIDValue = ExecuteScalar(command, queryProtocolIDSql, protocolName);
 
@@ -3375,6 +3401,7 @@ public class DataSubscriber : InputAdapterBase
 
                                     if (protocolID == 0)
                                         protocolID = m_sttpProtocolID;
+                                #endif
                                 }
 
                                 // For mutual subscriptions where this subscription is owner (i.e., internal is true), we only sync devices that we did not provide
@@ -3392,10 +3419,17 @@ public class DataSubscriber : InputAdapterBase
                                     // Determine if device record already exists
                                     if (Convert.ToInt32(ExecuteScalar(command, deviceExistsSql, database.Guid(uniqueID))) == 0)
                                     {
+                                    #if NET
+                                        // Insert new device record
+                                        ExecuteNonQuery(command, insertDeviceSql, SyncIndependentDevices ? DBNull.Value : parentID,
+                                            historianID, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
+                                            originalSource, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString);
+                                    #else
                                         // Insert new device record
                                         ExecuteNonQuery(command, insertDeviceSql, database.Guid(m_nodeID), SyncIndependentDevices ? DBNull.Value : parentID,
                                             historianID, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"), protocolID, row.ConvertField<int>("FramesPerSecond"),
                                             originalSource, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString);
+                                    #endif
 
                                         // Guids are normally auto-generated during insert - after insertion update the Guid so that it matches the source data. Most of the database
                                         // scripts have triggers that support properly assigning the Guid during an insert, but this code ensures the Guid will always get assigned.
@@ -3407,13 +3441,23 @@ public class DataSubscriber : InputAdapterBase
                                         if (Convert.ToInt32(ExecuteScalar(command, deviceIsUpdateableSql, database.Guid(uniqueID), parentIDValue)) > 0)
                                             continue;
 
+                                    #if NET
+                                        // Update existing device record
+                                        if (connectionStringFieldExists)
+                                            ExecuteNonQuery(command, updateDeviceWithConnectionStringSql, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
+                                                originalSource, historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString, database.Guid(uniqueID));
+                                        else
+                                            ExecuteNonQuery(command, updateDeviceSql, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
+                                                originalSource, historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Guid(uniqueID));
+                                    #else
                                         // Update existing device record
                                         if (connectionStringFieldExists)
                                             ExecuteNonQuery(command, updateDeviceWithConnectionStringSql, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
                                                 originalSource, protocolID, row.ConvertField<int>("FramesPerSecond"), historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString, database.Guid(uniqueID));
                                         else
                                             ExecuteNonQuery(command, updateDeviceSql, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
-                                                originalSource, protocolID, row.ConvertField<int>("FramesPerSecond"), historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Guid(uniqueID));
+                                                originalSource, protocolID, row.ConvertField<int>("FramesPerSecond"), historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Guid(uniqueID))
+                                    #endif
                                     }
                                 }
                             }
@@ -4076,11 +4120,11 @@ public class DataSubscriber : InputAdapterBase
         {
             TcpServer tcpServerCommandChannel when tcpServerCommandChannel.TryGetClient(clientID, out TransportProvider<Socket>? tcpProvider) => tcpProvider?.Provider,
             TlsServer tlsServerCommandChannel when tlsServerCommandChannel.TryGetClient(clientID, out TransportProvider<TlsServer.TlsSocket>? tlsProvider) => tlsProvider?.Provider?.Socket,
-        #if NET
+#if NET
             _ => (m_clientCommandChannel as TcpClient)?.Client
-        #else
+#else
             _ => (m_clientCommandChannel as TcpClient)?.Client ?? (m_clientCommandChannel as TcpSimpleClient)?.Client
-        #endif
+#endif
         };
     }
 
@@ -4904,7 +4948,7 @@ public class DataSubscriber : InputAdapterBase
 
     #endregion
 
-    #endregion
+#endregion
 
     #region [ Static ]
 
@@ -4922,14 +4966,14 @@ public class DataSubscriber : InputAdapterBase
             // ReSharper disable once RedundantAssignment
             string localCertificate = null!;
 
-        #if NET
+#if NET
             localCertificate = ConfigSettings.Default[ConfigSettings.SystemSettingsCategory]["LocalCertificate"];
-        #else
+#else
             CategorizedSettingsElement localCertificateElement = ConfigurationFile.Current.Settings["systemSettings"]["LocalCertificate"];
         
             if (localCertificateElement is not null)
                 localCertificate = localCertificateElement.Value;
-        #endif
+#endif
 
             if (localCertificate is null || !File.Exists(FilePath.GetAbsolutePath(localCertificate)))
                 throw new InvalidOperationException("Unable to find local certificate. Local certificate file must exist when using TLS security mode.");
@@ -4955,19 +4999,19 @@ public class DataSubscriber : InputAdapterBase
             if (File.Exists(FilePath.GetAbsolutePath(remoteCertificate)))
                 return true;
 
-        #if NET
+#if NET
             string remoteCertificatePath = ConfigSettings.Default[ConfigSettings.SystemSettingsCategory]["RemoteCertificatesPath"];
 
             if (string.IsNullOrWhiteSpace(remoteCertificatePath))
                 return false;
-        #else
+#else
             CategorizedSettingsElement remoteCertificateElement = ConfigurationFile.Current.Settings["systemSettings"]["RemoteCertificatesPath"];
 
             if (remoteCertificateElement is null)
                 return false;
 
             string remoteCertificatePath = remoteCertificateElement.Value;
-        #endif
+#endif
 
             remoteCertificate = Path.Combine(remoteCertificatePath, remoteCertificate);
 
