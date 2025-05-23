@@ -30,7 +30,6 @@
 
 #pragma warning disable SYSLIB0057
 
-using Gemstone.Security.AccessControl;
 using sttp.tssc;
 
 namespace sttp;
@@ -2056,7 +2055,7 @@ public class DataSubscriber : InputAdapterBase
     /// Subscribes to a data publisher based on currently configured adapter settings.
     /// </summary>
     /// <returns><c>true</c> if subscribe command was sent successfully; otherwise <c>false</c>.</returns>
-    [AdapterCommand("Subscribes to data publisher.", ResourceAccessLevel.Admin, ResourceAccessLevel.Edit)]
+    [AdapterCommand("Subscribes to data publisher.", "Administrator", "Editor")]
     [EditorBrowsable(EditorBrowsableState.Advanced)] // Method exists for remote console execution
     public virtual bool Subscribe()
     {
@@ -2067,7 +2066,7 @@ public class DataSubscriber : InputAdapterBase
     /// Unsubscribes from a data publisher.
     /// </summary>
     /// <returns><c>true</c> if unsubscribe command was sent successfully; otherwise <c>false</c>.</returns>
-    [AdapterCommand("Unsubscribes from data publisher.", ResourceAccessLevel.Admin, ResourceAccessLevel.Edit)]
+    [AdapterCommand("Unsubscribes from data publisher.", "Administrator", "Editor")]
     public virtual bool Unsubscribe()
     {
         return SendServerCommand(ServerCommand.Unsubscribe);
@@ -2076,7 +2075,7 @@ public class DataSubscriber : InputAdapterBase
     /// <summary>
     /// Returns the measurements signal IDs that were authorized after the last successful subscription request.
     /// </summary>
-    [AdapterCommand("Gets authorized signal IDs from last subscription request.", ResourceAccessLevel.Admin, ResourceAccessLevel.Edit, ResourceAccessLevel.View)]
+    [AdapterCommand("Gets authorized signal IDs from last subscription request.", "Administrator", "Editor", "Viewer")]
     public virtual Guid[] GetAuthorizedSignalIDs()
     {
         lock (m_signalIndexCacheLock)
@@ -2086,7 +2085,7 @@ public class DataSubscriber : InputAdapterBase
     /// <summary>
     /// Returns the measurements signal IDs that were unauthorized after the last successful subscription request.
     /// </summary>
-    [AdapterCommand("Gets unauthorized signal IDs from last subscription request.", ResourceAccessLevel.Admin, ResourceAccessLevel.Edit, ResourceAccessLevel.View)]
+    [AdapterCommand("Gets unauthorized signal IDs from last subscription request.", "Administrator", "Editor", "Viewer")]
     public virtual Guid[] GetUnauthorizedSignalIDs()
     {
         lock (m_signalIndexCacheLock)
@@ -2096,7 +2095,7 @@ public class DataSubscriber : InputAdapterBase
     /// <summary>
     /// Resets the counters for the lifetime statistics without interrupting the adapter's operations.
     /// </summary>
-    [AdapterCommand("Resets the counters for the lifetime statistics without interrupting the adapter's operations.", ResourceAccessLevel.Admin, ResourceAccessLevel.Edit)]
+    [AdapterCommand("Resets the counters for the lifetime statistics without interrupting the adapter's operations.", "Administrator", "Editor")]
     public virtual void ResetLifetimeCounters()
     {
         LifetimeMeasurements = 0L;
@@ -2110,7 +2109,7 @@ public class DataSubscriber : InputAdapterBase
     /// <summary>
     /// Initiate a meta-data refresh.
     /// </summary>
-    [AdapterCommand("Initiates a meta-data refresh.", ResourceAccessLevel.Admin, ResourceAccessLevel.Edit)]
+    [AdapterCommand("Initiates a meta-data refresh.", "Administrator", "Editor")]
     public virtual void RefreshMetadata()
     {
         SendServerCommand(ServerCommand.MetaDataRefresh, MetadataFilters);
@@ -2120,7 +2119,7 @@ public class DataSubscriber : InputAdapterBase
     /// Log a data gap for data gap recovery.
     /// </summary>
     /// <param name="timeString">The string representing the data gap.</param>
-    [AdapterCommand("Logs a data gap for data gap recovery.", ResourceAccessLevel.Admin, ResourceAccessLevel.Edit)]
+    [AdapterCommand("Logs a data gap for data gap recovery.", "Administrator", "Editor")]
     public virtual void LogDataGap(string timeString)
     {
         DateTimeOffset end = default;
@@ -2149,7 +2148,7 @@ public class DataSubscriber : InputAdapterBase
     /// Remove a data gap from data gap recovery.
     /// </summary>
     /// <param name="timeString">The string representing the data gap.</param>
-    [AdapterCommand("Removes a data gap from data gap recovery.", ResourceAccessLevel.Admin, ResourceAccessLevel.Edit)]
+    [AdapterCommand("Removes a data gap from data gap recovery.", "Administrator", "Editor")]
     public virtual string RemoveDataGap(string timeString)
     {
         DateTimeOffset end = default;
@@ -2181,7 +2180,7 @@ public class DataSubscriber : InputAdapterBase
     /// Displays the contents of the outage log.
     /// </summary>
     /// <returns>The contents of the outage log.</returns>
-    [AdapterCommand("Displays data gaps queued for data gap recovery.", ResourceAccessLevel.Admin, ResourceAccessLevel.Edit, ResourceAccessLevel.View)]
+    [AdapterCommand("Displays data gaps queued for data gap recovery.", "Administrator", "Editor", "Viewer")]
     public virtual string DumpOutageLog()
     {
         if (m_dataGapRecoveryEnabled && m_dataGapRecoverer is not null)
@@ -2194,7 +2193,7 @@ public class DataSubscriber : InputAdapterBase
     /// Gets the status of the temporal <see cref="DataSubscriber"/> used by the data gap recovery module.
     /// </summary>
     /// <returns>Status of the temporal <see cref="DataSubscriber"/> used by the data gap recovery module.</returns>
-    [AdapterCommand("Gets the status of the temporal subscription used by the data gap recovery module.", ResourceAccessLevel.Admin, ResourceAccessLevel.Edit, ResourceAccessLevel.View)]
+    [AdapterCommand("Gets the status of the temporal subscription used by the data gap recovery module.", "Administrator", "Editor", "Viewer")]
     public virtual string GetDataGapRecoverySubscriptionStatus()
     {
         if (m_dataGapRecoveryEnabled && m_dataGapRecoverer is not null)

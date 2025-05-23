@@ -35,8 +35,6 @@
 // ReSharper disable ArrangeObjectCreationWhenTypeNotEvident
 // ReSharper disable UseUtf8StringLiteral
 
-using Gemstone.Security.AccessControl;
-
 namespace sttp;
 
 #region [ Enumerations ]
@@ -1730,19 +1728,23 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <summary>
     /// Enumerates connected clients.
     /// </summary>
-    [AdapterCommand("Enumerates connected clients.", ResourceAccessLevel.Admin, ResourceAccessLevel.Edit, ResourceAccessLevel.View)]
+    [AdapterCommand("Enumerates connected clients.", "Administrator", "Editor", "Viewer")]
     public virtual string EnumerateClients()
     {
-        return EnumerateClients(false);
+        string result = EnumerateClients(false);
+        OnStatusMessage(MessageLevel.Info, result);
+        return result;
     }
 
     /// <summary>
     /// Enumerates connected clients with active temporal sessions.
     /// </summary>
-    [AdapterCommand("Enumerates connected clients with active temporal sessions.", ResourceAccessLevel.Admin, ResourceAccessLevel.Edit, ResourceAccessLevel.View)]
+    [AdapterCommand("Enumerates connected clients with active temporal sessions.", "Administrator", "Editor", "Viewer")]
     public virtual string EnumerateTemporalClients()
     {
-        return EnumerateClients(true);
+        string result = EnumerateClients(true);
+        OnStatusMessage(MessageLevel.Info, result);
+        return result;
     }
 
     private string EnumerateClients(bool filterToTemporalSessions)
@@ -1776,7 +1778,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// Rotates cipher keys for specified client connection.
     /// </summary>
     /// <param name="clientIndex">Enumerated index for client connection.</param>
-    [AdapterCommand("Rotates cipher keys for client connection using its enumerated index.", ResourceAccessLevel.Admin)]
+    [AdapterCommand("Rotates cipher keys for client connection using its enumerated index.", "Administrator")]
     public virtual void RotateCipherKeys(int clientIndex)
     {
         Guid clientID = Guid.Empty;
@@ -1805,7 +1807,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// Gets subscriber information for specified client connection.
     /// </summary>
     /// <param name="clientIndex">Enumerated index for client connection.</param>
-    [AdapterCommand("Gets subscriber information for client connection using its enumerated index.", ResourceAccessLevel.Admin, ResourceAccessLevel.Edit, ResourceAccessLevel.View)]
+    [AdapterCommand("Gets subscriber information for client connection using its enumerated index.", "Administrator", "Editor", "Viewer")]
     public virtual string GetSubscriberInfo(int clientIndex)
     {
         Guid clientID = Guid.Empty;
@@ -1836,7 +1838,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// Gets temporal status for a specified client connection.
     /// </summary>
     /// <param name="clientIndex">Enumerated index for client connection.</param>
-    [AdapterCommand("Gets temporal status for a subscriber, if any, using its enumerated index.", ResourceAccessLevel.Admin, ResourceAccessLevel.Edit, ResourceAccessLevel.View)]
+    [AdapterCommand("Gets temporal status for a subscriber, if any, using its enumerated index.", "Administrator", "Editor", "Viewer")]
     public virtual string GetTemporalStatus(int clientIndex)
     {
         Guid clientID = Guid.Empty;
@@ -1879,7 +1881,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// Gets the local certificate currently in use by the data publisher.
     /// </summary>
     /// <returns>The local certificate file read directly from the certificate file as an array of bytes.</returns>
-    [AdapterCommand("Gets the local certificate currently in use by the data publisher.", ResourceAccessLevel.Special)]
+    [AdapterCommand("Gets the local certificate currently in use by the data publisher.", "Administrator", "Editor")]
     public virtual byte[] GetLocalCertificate()
     {
         if (m_serverCommandChannel is not TlsServer commandChannel || string.IsNullOrWhiteSpace(commandChannel.CertificateFile))
@@ -1894,7 +1896,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <param name="fileName">The file name to give to the certificate when imported.</param>
     /// <param name="certificateData">The data to be written to the certificate file.</param>
     /// <returns>The local path on the server where the file was written.</returns>
-    [AdapterCommand("Imports a certificate to the trusted certificates path.", ResourceAccessLevel.Special)]
+    [AdapterCommand("Imports a certificate to the trusted certificates path.", "Administrator", "Editor")]
     public virtual string ImportCertificate(string fileName, byte[] certificateData)
     {
         if (m_serverCommandChannel is not TlsServer commandChannel)
@@ -1916,7 +1918,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// Gets subscriber status for specified subscriber ID.
     /// </summary>
     /// <param name="subscriberID">Guid based subscriber ID for client connection.</param>
-    [AdapterCommand("Gets subscriber status for client connection using its subscriber ID.", ResourceAccessLevel.Admin, ResourceAccessLevel.Edit, ResourceAccessLevel.View)]
+    [AdapterCommand("Gets subscriber status for client connection using its subscriber ID.", "Administrator", "Editor", "Viewer")]
     public virtual Tuple<Guid, bool, string> GetSubscriberStatus(Guid subscriberID)
     {
         return new Tuple<Guid, bool, string>(subscriberID,
@@ -1927,7 +1929,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <summary>
     /// Resets the counters for the lifetime statistics without interrupting the adapter's operations.
     /// </summary>
-    [AdapterCommand("Resets the counters for the lifetime statistics without interrupting the adapter's operations.", ResourceAccessLevel.Admin, ResourceAccessLevel.Edit)]
+    [AdapterCommand("Resets the counters for the lifetime statistics without interrupting the adapter's operations.", "Administrator", "Editor")]
     public virtual void ResetLifetimeCounters()
     {
         LifetimeMeasurements = 0L;
@@ -1942,7 +1944,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// Sends a notification to all subscribers.
     /// </summary>
     /// <param name="message">The message to be sent.</param>
-    [AdapterCommand("Sends a notification to all subscribers.", ResourceAccessLevel.Admin, ResourceAccessLevel.Edit)]
+    [AdapterCommand("Sends a notification to all subscribers.", "Administrator", "Editor")]
     public virtual void SendNotification(string message)
     {
         string notification = $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss.fff}] {message}";
@@ -2371,9 +2373,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                     if (!File.Exists(remoteCertificateFile))
                         continue;
 
-                #pragma warning disable SYSLIB0057
+#pragma warning disable SYSLIB0057
                     X509Certificate certificate = new X509Certificate2(remoteCertificateFile);
-                #pragma warning restore SYSLIB0057
+#pragma warning restore SYSLIB0057
                     m_certificateChecker.Trust(certificate, policy);
                     m_subscriberIdentities.Add(certificate, subscriber);
                 }
@@ -3071,16 +3073,16 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <returns>Meta-data to be returned to client.</returns>
     protected virtual DataSet AcquireMetadata(SubscriberConnection connection, Dictionary<string, Tuple<string, string, int>> filterExpressions)
     {
-    #if NET
+#if NET
         using AdoDataConnection adoDatabase = new(ConfigSettings.Default);
         DbConnection dbConnection = adoDatabase.Connection;
-    #else
+#else
         using AdoDataConnection adoDatabase = new("systemSettings");
         IDbConnection dbConnection = adoDatabase.Connection;
     
         // Initialize active node ID
         Guid nodeID = Guid.Parse(dbConnection.ExecuteScalar($"SELECT NodeID FROM IaonActionAdapter WHERE ID = {ID}")?.ToString() ?? Guid.Empty.ToString());
-    #endif
+#endif
         DataSet metadata = new();
 
         // Determine whether we're sending internal and external meta-data
@@ -3116,11 +3118,11 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                 }
             }
 
-        #if NET
+#if NET
             table = dbConnection.RetrieveData(metadataQuery);
-        #else
+#else
             table = dbConnection.RetrieveData(adoDatabase.AdapterType, metadataQuery);
-        #endif
+#endif
 
             // Remove any expression from table name
             regexMatch = Regex.Match(metadataQuery, @"FROM \w+");
@@ -3132,10 +3134,10 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             // Build filter list
             List<string> filters = [];
 
-        #if !NET
+#if !NET
             if (table.Columns.Contains("NodeID"))
                 filters.Add($"NodeID = '{nodeID}'");
-        #endif
+#endif
 
             if (table.Columns.Contains("Internal") && !(sendInternalMetadata && sendExternalMetadata))
                 filters.Add($"Internal {(sendExternalMetadata ? "=" : "<>")} 0");
@@ -3919,7 +3921,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
 
     #endregion
 
-    #endregion
+#endregion
 
     #region [ Static ]
 
