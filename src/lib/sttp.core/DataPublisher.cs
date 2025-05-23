@@ -753,10 +753,10 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// </summary>
     public const string DefaultMetadataTables =
     #if NET
-        "SELECT UniqueID, OriginalSource, IsConcentrator, Acronym, Name, AccessID, ParentAcronym, ProtocolName, FramesPerSecond, CompanyAcronym, VendorAcronym, VendorDeviceName, Longitude, Latitude, InterconnectionName, ContactList, Enabled, UpdatedOn FROM DeviceDetail WHERE IsConcentrator = 0;" +
+        "SELECT UniqueID, OriginalSource, IsConcentrator, Acronym, Name, AccessID, ParentAcronym, CompanyAcronym, VendorAcronym, VendorDeviceName, Longitude, Latitude, InterconnectionName, ContactList, Enabled, UpdatedOn FROM DeviceDetail WHERE IsConcentrator = 0;" +
         "SELECT DeviceAcronym, ID, SignalID, PointTag, AlternateTag, SignalReference, SignalAcronym, PhasorSourceIndex, Description, Internal, Enabled, UpdatedOn FROM MeasurementDetail;" +
-        "SELECT ID, DeviceAcronym, Label, Type, Phase, DestinationPhasorID, SourceIndex, BaseKV, UpdatedOn FROM PhasorDetail;" +
-        "SELECT VersionNumber FROM SchemaVersion";
+        "SELECT ID, DeviceAcronym, Label, Type, Phase, PrimaryVoltageID AS DestinationPhasorID, SourceIndex, BaseKV, UpdatedOn FROM PhasorDetail;" +
+        "SELECT TOP 1 Version AS VersionNumber FROM VersionInfo AS SchemaVersion";
     #else
         "SELECT NodeID, UniqueID, OriginalSource, IsConcentrator, Acronym, Name, AccessID, ParentAcronym, ProtocolName, FramesPerSecond, CompanyAcronym, VendorAcronym, VendorDeviceName, Longitude, Latitude, InterconnectionName, ContactList, Enabled, UpdatedOn FROM DeviceDetail WHERE IsConcentrator = 0;" +
         "SELECT DeviceAcronym, ID, SignalID, PointTag, AlternateTag, SignalReference, SignalAcronym, PhasorSourceIndex, Description, Internal, Enabled, UpdatedOn FROM MeasurementDetail;" +
@@ -3093,18 +3093,37 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             if (string.IsNullOrWhiteSpace(tableExpression))
                 continue;
 
+            string metadataQuery = tableExpression.Trim();
+
             // Query the table or view information from the database
             // ReSharper disable once JoinDeclarationAndInitializer
             DataTable table;
+            Match regexMatch;
+
+            if (adoDatabase.IsSqlite)
+            {
+                // SQLite does not support TOP clause, so we need to replace it with LIMIT
+                regexMatch = Regex.Match(tableExpression, @"\s+TOP\s+(\d+)\s+", RegexOptions.IgnoreCase);
+
+                if (regexMatch.Success)
+                {
+                    // Remove TOP clause with count
+                    string topCount = regexMatch.Groups[1].Value;
+                    metadataQuery = Regex.Replace(tableExpression, @"\s+TOP\s+\d+\s+", " ");
+                    
+                    // Append LIMIT clause with count
+                    metadataQuery = $"{metadataQuery} LIMIT {topCount}";
+                }
+            }
 
         #if NET
-            table = dbConnection.RetrieveData(tableExpression);
+            table = dbConnection.RetrieveData(metadataQuery);
         #else
-            table = dbConnection.RetrieveData(adoDatabase.AdapterType, tableExpression);
+            table = dbConnection.RetrieveData(adoDatabase.AdapterType, metadataQuery);
         #endif
 
             // Remove any expression from table name
-            Match regexMatch = Regex.Match(tableExpression, @"FROM \w+");
+            regexMatch = Regex.Match(metadataQuery, @"FROM \w+");
             table.TableName = regexMatch.Value.Split(' ')[1];
 
             string sortField = "";
