@@ -1896,7 +1896,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <param name="fileName">The file name to give to the certificate when imported.</param>
     /// <param name="certificateData">The data to be written to the certificate file.</param>
     /// <returns>The local path on the server where the file was written.</returns>
-    [AdapterCommand("Imports a certificate to the trusted certificates path.", "Administrator", "Editor")]
+    [AdapterCommand("Imports a certificate to the trusted certificates path.", "Special")]
     public virtual string ImportCertificate(string fileName, byte[] certificateData)
     {
         if (m_serverCommandChannel is not TlsServer commandChannel)
