@@ -40,6 +40,15 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="UI\STTP.js" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="UI\STTP.js" />
+    <EmbeddedResource Include="UI\STTPChunk.js" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\..\..\..\gemstone\common\src\Gemstone\Gemstone.Common.csproj" Condition="'$(Configuration)'=='Development'" />
     <PackageReference Include="Gemstone.Common" Version="1.0.101" Condition="'$(Configuration)'!='Development'" />
 
