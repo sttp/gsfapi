@@ -35,6 +35,8 @@
 // ReSharper disable ArrangeObjectCreationWhenTypeNotEvident
 // ReSharper disable UseUtf8StringLiteral
 
+using Gemstone.ComponentModel.DataAnnotations;
+
 namespace sttp;
 
 #region [ Enumerations ]
@@ -877,6 +879,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Define the security mode used for communications over the command channel.")]
     [DefaultValue(DefaultSecurityMode)]
+    [Label("Security Mode")]
     public SecurityMode SecurityMode { get; set; }
 
     /// <summary>
@@ -897,6 +900,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Define the flag that determines whether data sent over the data channel should be encrypted.")]
     [DefaultValue(DefaultEncryptPayload)]
+    [Label("Encrypt Payload")]
     public bool EncryptPayload
     {
         get => m_encryptPayload;
@@ -917,6 +921,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Define the flag that indicates whether this publisher is publishing data that this node subscribed to from another node in a shared database.")]
     [DefaultValue(DefaultSharedDatabase)]
+    [Label("Shared Database")]
     public bool SharedDatabase { get; set; }
 
     /// <summary>
@@ -925,6 +930,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Define the flag that indicates if this publisher will allow payload compression when requested by subscribers.")]
     [DefaultValue(DefaultAllowPayloadCompression)]
+    [Label("Allow Payload Compression")]
     public bool AllowPayloadCompression { get; set; }
 
     /// <summary>
@@ -933,6 +939,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Define the flag that indicates if this publisher will allow metadata refresh commands when requested by subscribers.")]
     [DefaultValue(DefaultAllowMetadataRefresh)]
+    [Label("Allow Metadata Refresh")]
     public bool AllowMetadataRefresh { get; set; }
 
     /// <summary>
@@ -941,6 +948,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Define the flag that indicates if this publisher will allow filtering of data which is not a number.")]
     [DefaultValue(DefaultAllowNaNValueFilter)]
+    [Label("Allow NaN Value Filter")]
     public bool AllowNaNValueFilter { get; set; }
 
     /// <summary>
@@ -949,6 +957,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Define the flag that indicates if this publisher will force filtering of data which is not a number.")]
     [DefaultValue(DefaultForceNaNValueFilter)]
+    [Label("Force NaN Value Filter")]
     public bool ForceNaNValueFilter { get; set; }
 
     /// <summary>
@@ -957,6 +966,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Define the flag that determines whether to use base time offsets to decrease the size of compact measurements.")]
     [DefaultValue(DefaultUseBaseTimeOffsets)]
+    [Label("Force NaN Value Filter")]
     public bool UseBaseTimeOffsets { get; set; }
 
     /// <summary>
@@ -965,6 +975,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Defines the maximum packet size to use for data publications. This number should be set as small as possible to reduce fragmentation, but large enough to keep large data flows from falling behind.")]
     [DefaultValue(DefaultMaxPacketSize)]
+    [Label("Max Packet Size")]
     public int MaxPacketSize { get; set; } = DefaultMaxPacketSize;
 
     /// <summary>
@@ -973,6 +984,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Define the size of the buffer used for sending and receiving data from clients.")]
     [DefaultValue(DefaultBufferSize)]
+    [Label("Buffer Size")]
     public int BufferSize { get; set; } = DefaultBufferSize;
 
     /// <summary>
@@ -981,6 +993,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Define the period, in milliseconds, over which new cipher keys will be provided to subscribers when EncryptPayload is true.")]
     [DefaultValue(DefaultCipherKeyRotationPeriod)]
+    [Label("Cipher Key Rotation Period")]
     public double CipherKeyRotationPeriod
     {
         get => m_cipherKeyRotationTimer.Interval;
@@ -1003,6 +1016,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [CustomConfigurationEditor("GSF.TimeSeries.UI.WPF.dll", "GSF.TimeSeries.UI.Editors.MeasurementEditor")]
 #endif
     [DefaultValue("")]
+    [Label("Cached Measurement Expression")]
     public string CachedMeasurementExpression { get; set; } = "";
 
     /// <summary>
@@ -1014,6 +1028,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Defines the measurement reporting interval used to determined how many measurements should be processed, per subscriber, before reporting status.")]
     [DefaultValue(AdapterBase.DefaultMeasurementReportingInterval)]
+    [Label("Measurement Reporting Interval")]
     public int MeasurementReportingInterval { get; set; }
 
     /// <summary>
@@ -1022,6 +1037,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Defines the maximum publication interval in milliseconds for data publications. Set to zero for no defined maximum.")]
     [DefaultValue(DefaultMaxPublishInterval)]
+    [Label("Max Publish Interval")]
     public long MaxPublishInterval { get; set; } = DefaultMaxPublishInterval;
 
     /// <summary>
@@ -1030,6 +1046,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Define the flag that determines whether measurement rights validation is enforced. Defaults to true for TLS connections.")]
     [DefaultValue(DefaultValidateMeasurementRights)]
+    [Label("Validate Measurement Rights")]
     public bool ValidateMeasurementRights { get; set; }
 
     /// <summary>
@@ -1038,6 +1055,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Define the flag that determines whether client subscriber IP address is validated. Defaults to true when measurement rights are validated.")]
     [DefaultValue(DefaultValidateClientIPAddress)]
+    [Label("Validate Client IP Address")]
     public bool ValidateClientIPAddress { get; set; }
 
 #if !NET
@@ -1130,6 +1148,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Semi-colon separated list of SQL select statements used to create data for meta-data exchange.")]
     [DefaultValue(DefaultMetadataTables)]
+    [Label("Metadata Tables")]
     public string MetadataTables { get; set; }
 
     /// <summary>
@@ -1153,6 +1172,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Gets or sets flag that determines if a subscription is mutual, i.e., bi-directional pub/sub.")]
     [DefaultValue(DefaultMutualSubscription)]
+    [Label("Mutual Subscription")]
     public bool MutualSubscription { get; set; }
 
     /// <summary>
