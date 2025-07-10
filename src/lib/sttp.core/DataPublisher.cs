@@ -1802,6 +1802,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <param name="clientIndex">Enumerated index for client connection.</param>
     [AdapterCommand("Rotates cipher keys for client connection using its enumerated index.", "Administrator")]
     [Label("Rotate Cipher Keys")]
+    [Parameter(nameof(clientIndex), "Client Index", "Enumerated index for client connection.")]
     public virtual void RotateCipherKeys(int clientIndex)
     {
         Guid clientID = Guid.Empty;
@@ -1864,6 +1865,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <param name="clientIndex">Enumerated index for client connection.</param>
     [AdapterCommand("Gets temporal status for a subscriber, if any, using its enumerated index.", "Administrator", "Editor", "Viewer")]
     [Label("Get Temporal Status")]
+    [Parameter(nameof(clientIndex), "Client Index", "Enumerated index for client connection.")]
     public virtual string GetTemporalStatus(int clientIndex)
     {
         Guid clientID = Guid.Empty;
@@ -1924,6 +1926,8 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <returns>The local path on the server where the file was written.</returns>
     [AdapterCommand("Imports a certificate to the trusted certificates path.", "Special")]
     [Label("Import Certificate")]
+    [Parameter(nameof(fileName), "File Name", "The file name to give to the certificate when imported.")]
+    [Parameter(nameof(certificateData), "Certificate Data", "The data to be written to the certificate file.")]
     public virtual string ImportCertificate(string fileName, byte[] certificateData)
     {
         if (m_serverCommandChannel is not TlsServer commandChannel)
@@ -1947,6 +1951,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <param name="subscriberID">Guid based subscriber ID for client connection.</param>
     [AdapterCommand("Gets subscriber status for client connection using its subscriber ID.", "Administrator", "Editor", "Viewer")]
     [Label("Get Subscriber Status")]
+    [Parameter(nameof(subscriberID), "Subscriber ID", "Guid based subscriber ID for client connection.")]
     public virtual Tuple<Guid, bool, string> GetSubscriberStatus(Guid subscriberID)
     {
         return new Tuple<Guid, bool, string>(subscriberID,
@@ -1975,6 +1980,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <param name="message">The message to be sent.</param>
     [AdapterCommand("Sends a notification to all subscribers.", "Administrator", "Editor")]
     [Label("Send Notification")]
+    [Parameter(nameof(message), "Message", "The message to be sent.")]
     public virtual void SendNotification(string message)
     {
         string notification = $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss.fff}] {message}";

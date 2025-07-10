@@ -2126,6 +2126,7 @@ public class DataSubscriber : InputAdapterBase
     /// <param name="timeString">The string representing the data gap.</param>
     [AdapterCommand("Logs a data gap for data gap recovery.", "Administrator", "Editor")]
     [Label("Log Data Gap")]
+    [Parameter(nameof(timeString), "Time String", "The string representing the data gap.")]
     public virtual void LogDataGap(string timeString)
     {
         DateTimeOffset end = default;
@@ -2156,6 +2157,7 @@ public class DataSubscriber : InputAdapterBase
     /// <param name="timeString">The string representing the data gap.</param>
     [AdapterCommand("Removes a data gap from data gap recovery.", "Administrator", "Editor")]
     [Label("Remove Data Gap")]
+    [Parameter(nameof(timeString), "Time String", "The string representing the data gap.")]
     public virtual string RemoveDataGap(string timeString)
     {
         DateTimeOffset end = default;
