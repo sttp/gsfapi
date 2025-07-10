@@ -30,6 +30,7 @@
 
 #pragma warning disable SYSLIB0057
 
+using Gemstone.ComponentModel.DataAnnotations;
 using sttp.tssc;
 
 namespace sttp;
@@ -2076,6 +2077,7 @@ public class DataSubscriber : InputAdapterBase
     /// Returns the measurements signal IDs that were authorized after the last successful subscription request.
     /// </summary>
     [AdapterCommand("Gets authorized signal IDs from last subscription request.", "Administrator", "Editor", "Viewer")]
+    [Label("Get Authorized Signal IDs")]
     public virtual Guid[] GetAuthorizedSignalIDs()
     {
         lock (m_signalIndexCacheLock)
@@ -2086,6 +2088,7 @@ public class DataSubscriber : InputAdapterBase
     /// Returns the measurements signal IDs that were unauthorized after the last successful subscription request.
     /// </summary>
     [AdapterCommand("Gets unauthorized signal IDs from last subscription request.", "Administrator", "Editor", "Viewer")]
+    [Label("Get Unauthorized SignalIDs")]
     public virtual Guid[] GetUnauthorizedSignalIDs()
     {
         lock (m_signalIndexCacheLock)
@@ -2096,6 +2099,7 @@ public class DataSubscriber : InputAdapterBase
     /// Resets the counters for the lifetime statistics without interrupting the adapter's operations.
     /// </summary>
     [AdapterCommand("Resets the counters for the lifetime statistics without interrupting the adapter's operations.", "Administrator", "Editor")]
+    [Label("Reset Lifetime Counters")]
     public virtual void ResetLifetimeCounters()
     {
         LifetimeMeasurements = 0L;
@@ -2110,6 +2114,7 @@ public class DataSubscriber : InputAdapterBase
     /// Initiate a meta-data refresh.
     /// </summary>
     [AdapterCommand("Initiates a meta-data refresh.", "Administrator", "Editor")]
+    [Label("Refresh Metadata")]
     public virtual void RefreshMetadata()
     {
         SendServerCommand(ServerCommand.MetaDataRefresh, MetadataFilters);
@@ -2120,6 +2125,7 @@ public class DataSubscriber : InputAdapterBase
     /// </summary>
     /// <param name="timeString">The string representing the data gap.</param>
     [AdapterCommand("Logs a data gap for data gap recovery.", "Administrator", "Editor")]
+    [Label("Log Data Gap")]
     public virtual void LogDataGap(string timeString)
     {
         DateTimeOffset end = default;
@@ -2149,6 +2155,7 @@ public class DataSubscriber : InputAdapterBase
     /// </summary>
     /// <param name="timeString">The string representing the data gap.</param>
     [AdapterCommand("Removes a data gap from data gap recovery.", "Administrator", "Editor")]
+    [Label("Remove Data Gap")]
     public virtual string RemoveDataGap(string timeString)
     {
         DateTimeOffset end = default;
@@ -2181,6 +2188,7 @@ public class DataSubscriber : InputAdapterBase
     /// </summary>
     /// <returns>The contents of the outage log.</returns>
     [AdapterCommand("Displays data gaps queued for data gap recovery.", "Administrator", "Editor", "Viewer")]
+    [Label("Dump Outage Log")]
     public virtual string DumpOutageLog()
     {
         if (m_dataGapRecoveryEnabled && m_dataGapRecoverer is not null)
@@ -2194,6 +2202,7 @@ public class DataSubscriber : InputAdapterBase
     /// </summary>
     /// <returns>Status of the temporal <see cref="DataSubscriber"/> used by the data gap recovery module.</returns>
     [AdapterCommand("Gets the status of the temporal subscription used by the data gap recovery module.", "Administrator", "Editor", "Viewer")]
+    [Label("Get Data Gap Recovery Subscription Status")]
     public virtual string GetDataGapRecoverySubscriptionStatus()
     {
         if (m_dataGapRecoveryEnabled && m_dataGapRecoverer is not null)

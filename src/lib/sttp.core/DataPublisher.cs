@@ -1749,6 +1749,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// Enumerates connected clients.
     /// </summary>
     [AdapterCommand("Enumerates connected clients.", "Administrator", "Editor", "Viewer")]
+    [Label("Enumerate Clients")]
     public virtual string EnumerateClients()
     {
         string result = EnumerateClients(false);
@@ -1760,6 +1761,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// Enumerates connected clients with active temporal sessions.
     /// </summary>
     [AdapterCommand("Enumerates connected clients with active temporal sessions.", "Administrator", "Editor", "Viewer")]
+    [Label("Enumerate Temporal Clients")]
     public virtual string EnumerateTemporalClients()
     {
         string result = EnumerateClients(true);
@@ -1799,6 +1801,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// </summary>
     /// <param name="clientIndex">Enumerated index for client connection.</param>
     [AdapterCommand("Rotates cipher keys for client connection using its enumerated index.", "Administrator")]
+    [Label("Rotate Cipher Keys")]
     public virtual void RotateCipherKeys(int clientIndex)
     {
         Guid clientID = Guid.Empty;
@@ -1828,6 +1831,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// </summary>
     /// <param name="clientIndex">Enumerated index for client connection.</param>
     [AdapterCommand("Gets subscriber information for client connection using its enumerated index.", "Administrator", "Editor", "Viewer")]
+    [Label("Get Subscriber Info")]
     public virtual string GetSubscriberInfo(int clientIndex)
     {
         Guid clientID = Guid.Empty;
@@ -1859,6 +1863,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// </summary>
     /// <param name="clientIndex">Enumerated index for client connection.</param>
     [AdapterCommand("Gets temporal status for a subscriber, if any, using its enumerated index.", "Administrator", "Editor", "Viewer")]
+    [Label("Get Temporal Status")]
     public virtual string GetTemporalStatus(int clientIndex)
     {
         Guid clientID = Guid.Empty;
@@ -1902,6 +1907,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// </summary>
     /// <returns>The local certificate file read directly from the certificate file as an array of bytes.</returns>
     [AdapterCommand("Gets the local certificate currently in use by the data publisher.", "Administrator", "Editor")]
+    [Label("Get Local Certificate")]
     public virtual byte[] GetLocalCertificate()
     {
         if (m_serverCommandChannel is not TlsServer commandChannel || string.IsNullOrWhiteSpace(commandChannel.CertificateFile))
@@ -1917,6 +1923,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <param name="certificateData">The data to be written to the certificate file.</param>
     /// <returns>The local path on the server where the file was written.</returns>
     [AdapterCommand("Imports a certificate to the trusted certificates path.", "Special")]
+    [Label("Import Certificate")]
     public virtual string ImportCertificate(string fileName, byte[] certificateData)
     {
         if (m_serverCommandChannel is not TlsServer commandChannel)
@@ -1939,6 +1946,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// </summary>
     /// <param name="subscriberID">Guid based subscriber ID for client connection.</param>
     [AdapterCommand("Gets subscriber status for client connection using its subscriber ID.", "Administrator", "Editor", "Viewer")]
+    [Label("Get Subscriber Status")]
     public virtual Tuple<Guid, bool, string> GetSubscriberStatus(Guid subscriberID)
     {
         return new Tuple<Guid, bool, string>(subscriberID,
@@ -1950,6 +1958,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// Resets the counters for the lifetime statistics without interrupting the adapter's operations.
     /// </summary>
     [AdapterCommand("Resets the counters for the lifetime statistics without interrupting the adapter's operations.", "Administrator", "Editor")]
+    [Label("Reset Lifetime Counters")]
     public virtual void ResetLifetimeCounters()
     {
         LifetimeMeasurements = 0L;
@@ -1965,6 +1974,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// </summary>
     /// <param name="message">The message to be sent.</param>
     [AdapterCommand("Sends a notification to all subscribers.", "Administrator", "Editor")]
+    [Label("Send Notification")]
     public virtual void SendNotification(string message)
     {
         string notification = $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss.fff}] {message}";
