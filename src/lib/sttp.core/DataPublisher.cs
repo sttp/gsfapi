@@ -1746,7 +1746,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <summary>
     /// Enumerates connected clients.
     /// </summary>
-    [AdapterCommand("Enumerates connected clients.", "Administrator", "Editor", "Viewer")]
+    [AdapterCommand("Enumerates connected clients.")]
     [Label("Enumerate Clients")]
     public virtual string EnumerateClients()
     {
@@ -1758,7 +1758,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <summary>
     /// Enumerates connected clients with active temporal sessions.
     /// </summary>
-    [AdapterCommand("Enumerates connected clients with active temporal sessions.", "Administrator", "Editor", "Viewer")]
+    [AdapterCommand("Enumerates connected clients with active temporal sessions.")]
     [Label("Enumerate Temporal Clients")]
     public virtual string EnumerateTemporalClients()
     {
@@ -1798,7 +1798,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// Rotates cipher keys for specified client connection.
     /// </summary>
     /// <param name="clientIndex">Enumerated index for client connection.</param>
-    [AdapterCommand("Rotates cipher keys for client connection using its enumerated index.", "Administrator")]
+    [AdapterCommand("Rotates cipher keys for client connection using its enumerated index.")]
     [Label("Rotate Cipher Keys")]
     [Parameter(nameof(clientIndex), "Client Index", "Enumerated index for client connection.")]
     public virtual void RotateCipherKeys(int clientIndex)
@@ -1829,7 +1829,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// Gets subscriber information for specified client connection.
     /// </summary>
     /// <param name="clientIndex">Enumerated index for client connection.</param>
-    [AdapterCommand("Gets subscriber information for client connection using its enumerated index.", "Administrator", "Editor", "Viewer")]
+    [AdapterCommand("Gets subscriber information for client connection using its enumerated index.")]
     [Label("Get Subscriber Info")]
     public virtual string GetSubscriberInfo(int clientIndex)
     {
@@ -1861,7 +1861,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// Gets temporal status for a specified client connection.
     /// </summary>
     /// <param name="clientIndex">Enumerated index for client connection.</param>
-    [AdapterCommand("Gets temporal status for a subscriber, if any, using its enumerated index.", "Administrator", "Editor", "Viewer")]
+    [AdapterCommand("Gets temporal status for a subscriber, if any, using its enumerated index.")]
     [Label("Get Temporal Status")]
     [Parameter(nameof(clientIndex), "Client Index", "Enumerated index for client connection.")]
     public virtual string GetTemporalStatus(int clientIndex)
@@ -1906,7 +1906,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// Gets the local certificate currently in use by the data publisher.
     /// </summary>
     /// <returns>The local certificate file read directly from the certificate file as an array of bytes.</returns>
-    [AdapterCommand("Gets the local certificate currently in use by the data publisher.", "Administrator", "Editor")]
+    [AdapterCommand("Gets the local certificate currently in use by the data publisher.")]
     [Label("Get Local Certificate")]
     public virtual byte[] GetLocalCertificate()
     {
@@ -1922,7 +1922,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <param name="fileName">The file name to give to the certificate when imported.</param>
     /// <param name="certificateData">The data to be written to the certificate file.</param>
     /// <returns>The local path on the server where the file was written.</returns>
-    [AdapterCommand("Imports a certificate to the trusted certificates path.", "Special")]
+    [AdapterCommand("Imports a certificate to the trusted certificates path.")]
     [Label("Import Certificate")]
     [Parameter(nameof(fileName), "File Name", "The file name to give to the certificate when imported.")]
     [Parameter(nameof(certificateData), "Certificate Data", "The data to be written to the certificate file.")]
@@ -1947,7 +1947,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// Gets subscriber status for specified subscriber ID.
     /// </summary>
     /// <param name="subscriberID">Guid based subscriber ID for client connection.</param>
-    [AdapterCommand("Gets subscriber status for client connection using its subscriber ID.", "Administrator", "Editor", "Viewer")]
+    [AdapterCommand("Gets subscriber status for client connection using its subscriber ID.")]
     [Label("Get Subscriber Status")]
     [Parameter(nameof(subscriberID), "Subscriber ID", "Guid based subscriber ID for client connection.")]
     public virtual Tuple<Guid, bool, string> GetSubscriberStatus(Guid subscriberID)
@@ -1960,7 +1960,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <summary>
     /// Resets the counters for the lifetime statistics without interrupting the adapter's operations.
     /// </summary>
-    [AdapterCommand("Resets the counters for the lifetime statistics without interrupting the adapter's operations.", "Administrator", "Editor")]
+    [AdapterCommand("Resets the counters for the lifetime statistics without interrupting the adapter's operations.")]
     [Label("Reset Lifetime Counters")]
     public virtual void ResetLifetimeCounters()
     {
@@ -1976,7 +1976,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// Sends a notification to all subscribers.
     /// </summary>
     /// <param name="message">The message to be sent.</param>
-    [AdapterCommand("Sends a notification to all subscribers.", "Administrator", "Editor")]
+    [AdapterCommand("Sends a notification to all subscribers.")]
     [Label("Send Notification")]
     [Parameter(nameof(message), "Message", "The message to be sent.")]
     public virtual void SendNotification(string message)
