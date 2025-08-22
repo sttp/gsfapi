@@ -2105,10 +2105,10 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             if (!Settings.TryGetValue(nameof(CachedMeasurementExpression), out string? cachedMeasurementExpression))
                 return;
 
-            if (!TryGetAdapterByName(nameof(LatestMeasurementCache), out IActionAdapter cache))
+            if (!TryGetAdapterByName(nameof(LatestMeasurementCache), out IActionAdapter? cache))
                 return;
 
-            cache.InputMeasurementKeys = AdapterBase.ParseInputMeasurementKeys(DataSource, true, cachedMeasurementExpression);
+            cache!.InputMeasurementKeys = AdapterBase.ParseInputMeasurementKeys(DataSource, true, cachedMeasurementExpression);
             m_routingTables.CalculateRoutingTables(null);
         }
         catch (Exception ex)
@@ -2719,7 +2719,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         // Lookup adapter by its client ID
         if (TryGetAdapter(clientID, GetClientSubscription, out IActionAdapter? adapter))
         {
-            subscription = (SubscriberAdapter)adapter;
+            subscription = (SubscriberAdapter)adapter!;
             return true;
         }
 
@@ -3015,7 +3015,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                     subscription.Start();
 
                     // If client has subscribed to any cached measurements, queue them up for the client
-                    if (TryGetAdapterByName(nameof(LatestMeasurementCache), out IActionAdapter cacheAdapter))
+                    if (TryGetAdapterByName(nameof(LatestMeasurementCache), out IActionAdapter? cacheAdapter))
                     {
                         if (cacheAdapter is LatestMeasurementCache cache && subscription.InputMeasurementKeys is not null)
                         {
