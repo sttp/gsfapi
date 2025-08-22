@@ -35,8 +35,6 @@
 // ReSharper disable ArrangeObjectCreationWhenTypeNotEvident
 // ReSharper disable UseUtf8StringLiteral
 
-using Gemstone.ComponentModel.DataAnnotations;
-
 namespace sttp;
 
 #region [ Enumerations ]

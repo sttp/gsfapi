@@ -20,6 +20,7 @@ global using System.Xml;
 global using GSF;
 global using GSF.Collections;
 global using GSF.Communication;
+global using GSF.ComponentModel.DataAnnotations;
 global using GSF.Configuration;
 global using GSF.Data;
 global using GSF.Diagnostics;

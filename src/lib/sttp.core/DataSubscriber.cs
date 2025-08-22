@@ -30,7 +30,6 @@
 
 #pragma warning disable SYSLIB0057
 
-using Gemstone.ComponentModel.DataAnnotations;
 using sttp.tssc;
 
 namespace sttp;
@@ -3452,7 +3451,7 @@ public class DataSubscriber : InputAdapterBase
                                         if (Convert.ToInt32(ExecuteScalar(command, deviceIsUpdateableSql, database.Guid(uniqueID), parentIDValue)) > 0)
                                             continue;
 
-                                    #if NET
+#if NET
                                         // Update existing device record
                                         if (connectionStringFieldExists)
                                             ExecuteNonQuery(command, updateDeviceWithConnectionStringSql, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
@@ -3460,14 +3459,14 @@ public class DataSubscriber : InputAdapterBase
                                         else
                                             ExecuteNonQuery(command, updateDeviceSql, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
                                                 originalSource, historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Guid(uniqueID));
-                                    #else
+#else
                                         // Update existing device record
                                         if (connectionStringFieldExists)
                                             ExecuteNonQuery(command, updateDeviceWithConnectionStringSql, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
                                                 originalSource, protocolID, row.ConvertField<int>("FramesPerSecond"), historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString, database.Guid(uniqueID));
                                         else
                                             ExecuteNonQuery(command, updateDeviceSql, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
-                                                originalSource, protocolID, row.ConvertField<int>("FramesPerSecond"), historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Guid(uniqueID))
+                                                originalSource, protocolID, row.ConvertField<int>("FramesPerSecond"), historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Guid(uniqueID));
                                     #endif
                                     }
                                 }
