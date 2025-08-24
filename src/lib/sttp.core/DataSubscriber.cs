@@ -3038,27 +3038,7 @@ public class DataSubscriber : InputAdapterBase
 
     private static bool IsUserCommand(ServerCommand command)
     {
-        ServerCommand[] userCommands =
-        [
-            ServerCommand.UserCommand00,
-            ServerCommand.UserCommand01,
-            ServerCommand.UserCommand02,
-            ServerCommand.UserCommand03,
-            ServerCommand.UserCommand04,
-            ServerCommand.UserCommand05,
-            ServerCommand.UserCommand06,
-            ServerCommand.UserCommand07,
-            ServerCommand.UserCommand08,
-            ServerCommand.UserCommand09,
-            ServerCommand.UserCommand10,
-            ServerCommand.UserCommand11,
-            ServerCommand.UserCommand12,
-            ServerCommand.UserCommand13,
-            ServerCommand.UserCommand14,
-            ServerCommand.UserCommand15
-        ];
-
-        return userCommands.Contains(command);
+        return s_userCommands.Contains(command);
     }
 
     // Handles auto-connection subscription initialization
@@ -4365,7 +4345,7 @@ public class DataSubscriber : InputAdapterBase
     /// <summary>
     /// Raises the <see cref="ConnectionEstablished"/> event.
     /// </summary>
-    protected void OnConnectionEstablished()
+    protected virtual void OnConnectionEstablished()
     {
         try
         {
@@ -4382,7 +4362,7 @@ public class DataSubscriber : InputAdapterBase
     /// <summary>
     /// Raises the <see cref="ConnectionTerminated"/> event.
     /// </summary>
-    protected void OnConnectionTerminated()
+    protected virtual void OnConnectionTerminated()
     {
         try
         {
@@ -4398,7 +4378,7 @@ public class DataSubscriber : InputAdapterBase
     /// <summary>
     /// Raises the <see cref="ConnectionAuthenticated"/> event.
     /// </summary>
-    protected void OnConnectionAuthenticated()
+    protected virtual void OnConnectionAuthenticated()
     {
         try
         {
@@ -4416,7 +4396,7 @@ public class DataSubscriber : InputAdapterBase
     /// </summary>
     /// <param name="responseCode">Response received from the server.</param>
     /// <param name="commandCode">Command that the server responded to.</param>
-    protected void OnReceivedServerResponse(ServerResponse responseCode, ServerCommand commandCode)
+    protected virtual void OnReceivedServerResponse(ServerResponse responseCode, ServerCommand commandCode)
     {
         try
         {
@@ -4437,8 +4417,11 @@ public class DataSubscriber : InputAdapterBase
     /// <param name="buffer">Buffer containing the message from the server.</param>
     /// <param name="startIndex">Index into the buffer used to skip the header.</param>
     /// <param name="length">The length of the message in the buffer, including the header.</param>
-    protected void OnReceivedUserCommandResponse(ServerCommand command, ServerResponse response, byte[] buffer, int startIndex, int length)
+    protected virtual void OnReceivedUserCommandResponse(ServerCommand command, ServerResponse response, byte[] buffer, int startIndex, int length)
     {
+        if (ReceivedUserCommandResponse is null)
+            return;
+
         try
         {
             UserCommandArgs args = new(command, response, buffer, startIndex, length);
@@ -4455,7 +4438,7 @@ public class DataSubscriber : InputAdapterBase
     /// Raises the <see cref="MetaDataReceived"/> event.
     /// </summary>
     /// <param name="metadata">Meta-data <see cref="DataSet"/> instance to send to client subscription.</param>
-    protected void OnMetaDataReceived(DataSet metadata)
+    protected virtual void OnMetaDataReceived(DataSet metadata)
     {
         try
         {
@@ -4472,7 +4455,7 @@ public class DataSubscriber : InputAdapterBase
     /// Raises the <see cref="DataStartTime"/> event.
     /// </summary>
     /// <param name="startTime">Start time, in <see cref="Ticks"/>, of first measurement transmitted.</param>
-    protected void OnDataStartTime(Ticks startTime)
+    protected virtual void OnDataStartTime(Ticks startTime)
     {
         try
         {
@@ -4489,7 +4472,7 @@ public class DataSubscriber : InputAdapterBase
     /// Raises the <see cref="ProcessingComplete"/> event.
     /// </summary>
     /// <param name="source">Type name of adapter that sent the processing completed notification.</param>
-    protected void OnProcessingComplete(string source)
+    protected virtual void OnProcessingComplete(string source)
     {
         try
         {
@@ -4509,7 +4492,7 @@ public class DataSubscriber : InputAdapterBase
     /// Raises the <see cref="NotificationReceived"/> event.
     /// </summary>
     /// <param name="message">Message for the notification.</param>
-    protected void OnNotificationReceived(string message)
+    protected virtual void OnNotificationReceived(string message)
     {
         try
         {
@@ -4525,7 +4508,7 @@ public class DataSubscriber : InputAdapterBase
     /// <summary>
     /// Raises the <see cref="ServerConfigurationChanged"/> event.
     /// </summary>
-    protected void OnServerConfigurationChanged()
+    protected virtual void OnServerConfigurationChanged()
     {
         try
         {
@@ -4958,9 +4941,30 @@ public class DataSubscriber : InputAdapterBase
 
     #endregion
 
-#endregion
+    #endregion
 
     #region [ Static ]
+
+    // Static Properties
+    private static readonly ServerCommand[] s_userCommands =
+    [
+        ServerCommand.UserCommand00,
+        ServerCommand.UserCommand01,
+        ServerCommand.UserCommand02,
+        ServerCommand.UserCommand03,
+        ServerCommand.UserCommand04,
+        ServerCommand.UserCommand05,
+        ServerCommand.UserCommand06,
+        ServerCommand.UserCommand07,
+        ServerCommand.UserCommand08,
+        ServerCommand.UserCommand09,
+        ServerCommand.UserCommand10,
+        ServerCommand.UserCommand11,
+        ServerCommand.UserCommand12,
+        ServerCommand.UserCommand13,
+        ServerCommand.UserCommand14,
+        ServerCommand.UserCommand15
+    ];
 
     // Static Methods
 
@@ -4976,14 +4980,14 @@ public class DataSubscriber : InputAdapterBase
             // ReSharper disable once RedundantAssignment
             string localCertificate = null!;
 
-#if NET
+        #if NET
             localCertificate = ConfigSettings.Default[ConfigSettings.SystemSettingsCategory]["LocalCertificate"];
-#else
+        #else
             CategorizedSettingsElement localCertificateElement = ConfigurationFile.Current.Settings["systemSettings"]["LocalCertificate"];
         
             if (localCertificateElement is not null)
                 localCertificate = localCertificateElement.Value;
-#endif
+        #endif
 
             if (localCertificate is null || !File.Exists(FilePath.GetAbsolutePath(localCertificate)))
                 throw new InvalidOperationException("Unable to find local certificate. Local certificate file must exist when using TLS security mode.");
@@ -5009,19 +5013,19 @@ public class DataSubscriber : InputAdapterBase
             if (File.Exists(FilePath.GetAbsolutePath(remoteCertificate)))
                 return true;
 
-#if NET
+        #if NET
             string remoteCertificatePath = ConfigSettings.Default[ConfigSettings.SystemSettingsCategory]["RemoteCertificatesPath"];
 
             if (string.IsNullOrWhiteSpace(remoteCertificatePath))
                 return false;
-#else
+        #else
             CategorizedSettingsElement remoteCertificateElement = ConfigurationFile.Current.Settings["systemSettings"]["RemoteCertificatesPath"];
 
             if (remoteCertificateElement is null)
                 return false;
 
             string remoteCertificatePath = remoteCertificateElement.Value;
-#endif
+        #endif
 
             remoteCertificate = Path.Combine(remoteCertificatePath, remoteCertificate);
 
