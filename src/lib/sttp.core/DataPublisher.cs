@@ -3669,6 +3669,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
 
             byte commandByte = buffer[index];
             index++;
+            length--;
 
             // Attempt to parse solicited server command
             bool validServerCommand = Enum.TryParse(commandByte.ToString(), out ServerCommand command);
