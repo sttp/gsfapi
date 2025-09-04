@@ -2055,7 +2055,7 @@ public class DataSubscriber : InputAdapterBase
     /// Subscribes to a data publisher based on currently configured adapter settings.
     /// </summary>
     /// <returns><c>true</c> if subscribe command was sent successfully; otherwise <c>false</c>.</returns>
-    [AdapterCommand("Subscribes to data publisher.", "Administrator", "Editor")]
+    [AdapterCommand("Subscribes to data publisher.")]
     [EditorBrowsable(EditorBrowsableState.Advanced)] // Method exists for remote console execution
     public virtual bool Subscribe()
     {
@@ -2066,7 +2066,7 @@ public class DataSubscriber : InputAdapterBase
     /// Unsubscribes from a data publisher.
     /// </summary>
     /// <returns><c>true</c> if unsubscribe command was sent successfully; otherwise <c>false</c>.</returns>
-    [AdapterCommand("Unsubscribes from data publisher.", "Administrator", "Editor")]
+    [AdapterCommand("Unsubscribes from data publisher.")]
     public virtual bool Unsubscribe()
     {
         return SendServerCommand(ServerCommand.Unsubscribe);
@@ -2075,7 +2075,7 @@ public class DataSubscriber : InputAdapterBase
     /// <summary>
     /// Returns the measurements signal IDs that were authorized after the last successful subscription request.
     /// </summary>
-    [AdapterCommand("Gets authorized signal IDs from last subscription request.", "Administrator", "Editor", "Viewer")]
+    [AdapterCommand("Gets authorized signal IDs from last subscription request.")]
     [Label("Get Authorized Signal IDs")]
     public virtual Guid[] GetAuthorizedSignalIDs()
     {
@@ -2086,7 +2086,7 @@ public class DataSubscriber : InputAdapterBase
     /// <summary>
     /// Returns the measurements signal IDs that were unauthorized after the last successful subscription request.
     /// </summary>
-    [AdapterCommand("Gets unauthorized signal IDs from last subscription request.", "Administrator", "Editor", "Viewer")]
+    [AdapterCommand("Gets unauthorized signal IDs from last subscription request.")]
     [Label("Get Unauthorized SignalIDs")]
     public virtual Guid[] GetUnauthorizedSignalIDs()
     {
@@ -2097,7 +2097,7 @@ public class DataSubscriber : InputAdapterBase
     /// <summary>
     /// Resets the counters for the lifetime statistics without interrupting the adapter's operations.
     /// </summary>
-    [AdapterCommand("Resets the counters for the lifetime statistics without interrupting the adapter's operations.", "Administrator", "Editor")]
+    [AdapterCommand("Resets the counters for the lifetime statistics without interrupting the adapter's operations.")]
     [Label("Reset Lifetime Counters")]
     public virtual void ResetLifetimeCounters()
     {
@@ -2112,7 +2112,7 @@ public class DataSubscriber : InputAdapterBase
     /// <summary>
     /// Initiate a meta-data refresh.
     /// </summary>
-    [AdapterCommand("Initiates a meta-data refresh.", "Administrator", "Editor")]
+    [AdapterCommand("Initiates a meta-data refresh.")]
     [Label("Refresh Metadata")]
     public virtual void RefreshMetadata()
     {
@@ -2123,7 +2123,7 @@ public class DataSubscriber : InputAdapterBase
     /// Log a data gap for data gap recovery.
     /// </summary>
     /// <param name="timeString">The string representing the data gap.</param>
-    [AdapterCommand("Logs a data gap for data gap recovery.", "Administrator", "Editor")]
+    [AdapterCommand("Logs a data gap for data gap recovery.")]
     [Label("Log Data Gap")]
     [Parameter(nameof(timeString), "Time String", "The string representing the data gap.")]
     public virtual void LogDataGap(string timeString)
@@ -2154,7 +2154,7 @@ public class DataSubscriber : InputAdapterBase
     /// Remove a data gap from data gap recovery.
     /// </summary>
     /// <param name="timeString">The string representing the data gap.</param>
-    [AdapterCommand("Removes a data gap from data gap recovery.", "Administrator", "Editor")]
+    [AdapterCommand("Removes a data gap from data gap recovery.")]
     [Label("Remove Data Gap")]
     [Parameter(nameof(timeString), "Time String", "The string representing the data gap.")]
     public virtual string RemoveDataGap(string timeString)
@@ -2188,7 +2188,7 @@ public class DataSubscriber : InputAdapterBase
     /// Displays the contents of the outage log.
     /// </summary>
     /// <returns>The contents of the outage log.</returns>
-    [AdapterCommand("Displays data gaps queued for data gap recovery.", "Administrator", "Editor", "Viewer")]
+    [AdapterCommand("Displays data gaps queued for data gap recovery.")]
     [Label("Dump Outage Log")]
     public virtual string DumpOutageLog()
     {
@@ -2202,7 +2202,7 @@ public class DataSubscriber : InputAdapterBase
     /// Gets the status of the temporal <see cref="DataSubscriber"/> used by the data gap recovery module.
     /// </summary>
     /// <returns>Status of the temporal <see cref="DataSubscriber"/> used by the data gap recovery module.</returns>
-    [AdapterCommand("Gets the status of the temporal subscription used by the data gap recovery module.", "Administrator", "Editor", "Viewer")]
+    [AdapterCommand("Gets the status of the temporal subscription used by the data gap recovery module.")]
     [Label("Get Data Gap Recovery Subscription Status")]
     public virtual string GetDataGapRecoverySubscriptionStatus()
     {
@@ -3268,6 +3268,7 @@ public class DataSubscriber : InputAdapterBase
                         bool interconnectionNameFieldExists = deviceDetailColumns.Contains("InterconnectionName");
                         bool updatedOnFieldExists = deviceDetailColumns.Contains("UpdatedOn");
                         bool connectionStringFieldExists = deviceDetailColumns.Contains("ConnectionString");
+                        bool framesPerSecondFieldExists = deviceDetailColumns.Contains("FramesPerSecond");
                         object parentIDValue = SyncIndependentDevices ? parentID.ToString() : parentID;
                         int accessID = 0;
 
@@ -3417,8 +3418,9 @@ public class DataSubscriber : InputAdapterBase
                                     #else
                                         // Insert new device record
                                         ExecuteNonQuery(command, insertDeviceSql, database.Guid(m_nodeID), SyncIndependentDevices ? DBNull.Value : parentID,
-                                            historianID, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"), protocolID, row.ConvertField<int>("FramesPerSecond"),
-                                            originalSource, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString);
+                                            historianID, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"), protocolID,
+                                            framesPerSecondFieldExists ? row.ConvertField<int>("FramesPerSecond") : 30, originalSource, accessID,
+                                            longitude, latitude, contactList.JoinKeyValuePairs(), connectionString);
                                     #endif
 
                                         // Guids are normally auto-generated during insert - after insertion update the Guid so that it matches the source data. Most of the database
@@ -3431,7 +3433,7 @@ public class DataSubscriber : InputAdapterBase
                                         if (Convert.ToInt32(ExecuteScalar(command, deviceIsUpdateableSql, database.Guid(uniqueID), parentIDValue)) > 0)
                                             continue;
 
-#if NET
+                                    #if NET
                                         // Update existing device record
                                         if (connectionStringFieldExists)
                                             ExecuteNonQuery(command, updateDeviceWithConnectionStringSql, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
@@ -3439,14 +3441,14 @@ public class DataSubscriber : InputAdapterBase
                                         else
                                             ExecuteNonQuery(command, updateDeviceSql, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
                                                 originalSource, historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Guid(uniqueID));
-#else
+                                    #else
                                         // Update existing device record
                                         if (connectionStringFieldExists)
                                             ExecuteNonQuery(command, updateDeviceWithConnectionStringSql, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
-                                                originalSource, protocolID, row.ConvertField<int>("FramesPerSecond"), historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString, database.Guid(uniqueID));
+                                                originalSource, protocolID, framesPerSecondFieldExists ? row.ConvertField<int>("FramesPerSecond") : 30, historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString, database.Guid(uniqueID));
                                         else
                                             ExecuteNonQuery(command, updateDeviceSql, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
-                                                originalSource, protocolID, row.ConvertField<int>("FramesPerSecond"), historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Guid(uniqueID));
+                                                originalSource, protocolID, framesPerSecondFieldExists ? row.ConvertField<int>("FramesPerSecond") : 30, historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Guid(uniqueID));
                                     #endif
                                     }
                                 }
