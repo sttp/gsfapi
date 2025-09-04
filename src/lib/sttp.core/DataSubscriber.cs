@@ -3268,6 +3268,7 @@ public class DataSubscriber : InputAdapterBase
                         bool interconnectionNameFieldExists = deviceDetailColumns.Contains("InterconnectionName");
                         bool updatedOnFieldExists = deviceDetailColumns.Contains("UpdatedOn");
                         bool connectionStringFieldExists = deviceDetailColumns.Contains("ConnectionString");
+                        bool framesPerSecondFieldExists = deviceDetailColumns.Contains("FramesPerSecond");
                         object parentIDValue = SyncIndependentDevices ? parentID.ToString() : parentID;
                         int accessID = 0;
 
@@ -3417,8 +3418,9 @@ public class DataSubscriber : InputAdapterBase
                                     #else
                                         // Insert new device record
                                         ExecuteNonQuery(command, insertDeviceSql, database.Guid(m_nodeID), SyncIndependentDevices ? DBNull.Value : parentID,
-                                            historianID, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"), protocolID, row.ConvertField<int>("FramesPerSecond"),
-                                            originalSource, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString);
+                                            historianID, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"), protocolID,
+                                            framesPerSecondFieldExists ? row.ConvertField<int>("FramesPerSecond") : 30, originalSource, accessID,
+                                            longitude, latitude, contactList.JoinKeyValuePairs(), connectionString);
                                     #endif
 
                                         // Guids are normally auto-generated during insert - after insertion update the Guid so that it matches the source data. Most of the database
@@ -3431,7 +3433,7 @@ public class DataSubscriber : InputAdapterBase
                                         if (Convert.ToInt32(ExecuteScalar(command, deviceIsUpdateableSql, database.Guid(uniqueID), parentIDValue)) > 0)
                                             continue;
 
-#if NET
+                                    #if NET
                                         // Update existing device record
                                         if (connectionStringFieldExists)
                                             ExecuteNonQuery(command, updateDeviceWithConnectionStringSql, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
@@ -3439,14 +3441,14 @@ public class DataSubscriber : InputAdapterBase
                                         else
                                             ExecuteNonQuery(command, updateDeviceSql, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
                                                 originalSource, historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Guid(uniqueID));
-#else
+                                    #else
                                         // Update existing device record
                                         if (connectionStringFieldExists)
                                             ExecuteNonQuery(command, updateDeviceWithConnectionStringSql, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
-                                                originalSource, protocolID, row.ConvertField<int>("FramesPerSecond"), historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString, database.Guid(uniqueID));
+                                                originalSource, protocolID, framesPerSecondFieldExists ? row.ConvertField<int>("FramesPerSecond") : 30, historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString, database.Guid(uniqueID));
                                         else
                                             ExecuteNonQuery(command, updateDeviceSql, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
-                                                originalSource, protocolID, row.ConvertField<int>("FramesPerSecond"), historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Guid(uniqueID));
+                                                originalSource, protocolID, framesPerSecondFieldExists ? row.ConvertField<int>("FramesPerSecond") : 30, historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Guid(uniqueID));
                                     #endif
                                     }
                                 }
