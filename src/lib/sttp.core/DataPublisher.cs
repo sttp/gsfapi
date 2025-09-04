@@ -2407,9 +2407,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                     if (!File.Exists(remoteCertificateFile))
                         continue;
 
-#pragma warning disable SYSLIB0057
+                #pragma warning disable SYSLIB0057
                     X509Certificate certificate = new X509Certificate2(remoteCertificateFile);
-#pragma warning restore SYSLIB0057
+                #pragma warning restore SYSLIB0057
                     m_certificateChecker.Trust(certificate, policy);
                     m_subscriberIdentities.Add(certificate, subscriber);
                 }
@@ -3152,11 +3152,11 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                 }
             }
 
-#if NET
+        #if NET
             table = dbConnection.RetrieveData(metadataQuery);
-#else
+        #else
             table = dbConnection.RetrieveData(adoDatabase.AdapterType, metadataQuery);
-#endif
+        #endif
 
             // Remove any expression from table name
             regexMatch = Regex.Match(metadataQuery, @"FROM \w+");
@@ -3168,10 +3168,10 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             // Build filter list
             List<string> filters = [];
 
-#if !NET
+        #if !NET
             if (table.Columns.Contains("NodeID"))
                 filters.Add($"NodeID = '{nodeID}'");
-#endif
+        #endif
 
             if (table.Columns.Contains("Internal") && !(sendInternalMetadata && sendExternalMetadata))
                 filters.Add($"Internal {(sendExternalMetadata ? "=" : "<>")} 0");
@@ -3669,7 +3669,6 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
 
             byte commandByte = buffer[index];
             index++;
-            length--;
 
             // Attempt to parse solicited server command
             bool validServerCommand = Enum.TryParse(commandByte.ToString(), out ServerCommand command);
@@ -3751,7 +3750,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                     case ServerCommand.UserCommand14:
                     case ServerCommand.UserCommand15:
                         // Handle confirmation of receipt of a user-defined command
-                        HandleUserCommand(connection, command, buffer, index, length);
+                        HandleUserCommand(connection, command, buffer, index, --length);
                         break;
                 }
             }
