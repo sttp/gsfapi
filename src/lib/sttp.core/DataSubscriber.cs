@@ -40,7 +40,9 @@ namespace sttp;
 [Description("STTP Subscriber: client that subscribes to an STTP-style publishing server for a streaming data.")]
 [EditorBrowsable(EditorBrowsableState.Advanced)] // Normally defined as an input device protocol
 #if NET
-[AdapterProtocol("STTP", "Streaming Telemetry Transport Protocol", ProtocolType.Measurement, "Gateway")]
+[AdapterProtocol("STTP", "Streaming Telemetry Transport Protocol", ProtocolType.Measurement, UIVisibility.Input, false)]
+[UIAdapterProtocol("STTP", "sttp.gemstone", "sttp.UI.STTP.js")]
+[UIAdapterProtocol("STTP", "sttp.gemstone", "sttp.UI.STTPChunk.js")]
 #endif
 public class DataSubscriber : InputAdapterBase
 {
