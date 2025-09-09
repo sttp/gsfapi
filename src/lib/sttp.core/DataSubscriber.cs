@@ -3702,6 +3702,14 @@ public class DataSubscriber : InputAdapterBase
                     // Check to see if data for the "PhasorDetail" table was included in the meta-data
                     if (metadata.Tables.Contains("PhasorDetail"))
                     {
+                    #if NET
+                        const string PrimaryVoltageID = "PrimaryVoltageID";
+                        const string DestinationPhasorID = "DestinationPhasorID";
+                    #else
+                        const string PrimaryVoltageID = "DestinationPhasorID";
+                        const string DestinationPhasorID = "PrimaryVoltageID";
+                    #endif
+
                         DataTable phasorDetail = metadata.Tables["PhasorDetail"]!;
                         Dictionary<int, List<int>> definedSourceIndices = new();
                         Dictionary<int, int> metadataToDatabaseIDMap = new();
@@ -3727,7 +3735,7 @@ public class DataSubscriber : InputAdapterBase
                         string queryPhasorIDSql = database.ParameterizedQueryString("SELECT ID FROM Phasor WHERE DeviceID = {0} AND SourceIndex = {1}", "deviceID", "sourceIndex");
 
                         // Define SQL statement to update destinationPhasorID field of existing phasor record
-                        string updateDestinationPhasorIDSql = database.ParameterizedQueryString("UPDATE Phasor SET DestinationPhasorID = {0} WHERE ID = {1}", "destinationPhasorID", "id");
+                        string updatePrimaryVoltageIDSql = database.ParameterizedQueryString($"UPDATE Phasor SET {PrimaryVoltageID} = {{0}} WHERE ID = {{1}}", "destinationPhasorID", "id");
 
                         // Define SQL statement to update phasor BaseKV
                         string updatePhasorBaseKVSql = database.ParameterizedQueryString("UPDATE Phasor SET BaseKV = {0} WHERE DeviceID = {1} AND SourceIndex = {2}", "baseKV", "deviceID", "sourceIndex");
@@ -3735,7 +3743,7 @@ public class DataSubscriber : InputAdapterBase
                         // Check existence of optional meta-data fields
                         DataColumnCollection phasorDetailColumns = phasorDetail.Columns;
                         bool phasorIDFieldExists = phasorDetailColumns.Contains("ID");
-                        bool destinationPhasorIDFieldExists = phasorDetailColumns.Contains("DestinationPhasorID");
+                        bool primaryVoltageIDFieldExists = phasorDetailColumns.Contains(PrimaryVoltageID) || phasorDetailColumns.Contains(DestinationPhasorID);
                         bool baseKVFieldExists = phasorDetailColumns.Contains("BaseKV");
 
                         foreach (DataRow row in phasorDetail.Rows)
@@ -3785,13 +3793,15 @@ public class DataSubscriber : InputAdapterBase
                                 if (updateRecord && baseKVFieldExists)
                                     ExecuteNonQuery(command, updatePhasorBaseKVSql, row.ConvertField<int>("BaseKV"), deviceID, sourceIndex);
 
-                                if (phasorIDFieldExists && destinationPhasorIDFieldExists)
+                                if (phasorIDFieldExists && primaryVoltageIDFieldExists)
                                 {
                                     int sourcePhasorID = row.ConvertField<int>("ID");
 
                                     // Using ConvertNullableField extension since publisher could use SQLite database in which case
                                     // all integers would arrive in data set as longs and need to be converted back to integers
-                                    int? destinationPhasorID = row.ConvertNullableField<int>("DestinationPhasorID");
+                                    int? destinationPhasorID = row.ConvertNullableField<int>(phasorDetailColumns.Contains(PrimaryVoltageID) ? 
+                                        PrimaryVoltageID : 
+                                        DestinationPhasorID);
 
                                     if (destinationPhasorID.HasValue)
                                         sourceToDestinationIDMap[sourcePhasorID] = destinationPhasorID.Value;
@@ -3812,7 +3822,7 @@ public class DataSubscriber : InputAdapterBase
                         foreach (KeyValuePair<int, int> item in sourceToDestinationIDMap)
                         {
                             if (metadataToDatabaseIDMap.TryGetValue(item.Key, out int sourcePhasorID) && metadataToDatabaseIDMap.TryGetValue(item.Value, out int destinationPhasorID))
-                                ExecuteNonQuery(command, updateDestinationPhasorIDSql, destinationPhasorID, sourcePhasorID);
+                                ExecuteNonQuery(command, updatePrimaryVoltageIDSql, destinationPhasorID, sourcePhasorID);
                         }
 
                         // For mutual subscriptions where this subscription is owner (i.e., internal is true), do not delete any phasor data - it will be managed by owner only
@@ -4114,11 +4124,11 @@ public class DataSubscriber : InputAdapterBase
         {
             TcpServer tcpServerCommandChannel when tcpServerCommandChannel.TryGetClient(clientID, out TransportProvider<Socket>? tcpProvider) => tcpProvider?.Provider,
             TlsServer tlsServerCommandChannel when tlsServerCommandChannel.TryGetClient(clientID, out TransportProvider<TlsServer.TlsSocket>? tlsProvider) => tlsProvider?.Provider?.Socket,
-        #if NET
+#if NET
             _ => (m_clientCommandChannel as TcpClient)?.Client
-        #else
+#else
             _ => (m_clientCommandChannel as TcpClient)?.Client ?? (m_clientCommandChannel as TcpSimpleClient)?.Client
-        #endif
+#endif
         };
     }
 
@@ -4945,7 +4955,7 @@ public class DataSubscriber : InputAdapterBase
 
     #endregion
 
-    #endregion
+#endregion
 
     #region [ Static ]
 
@@ -4984,14 +4994,14 @@ public class DataSubscriber : InputAdapterBase
             // ReSharper disable once RedundantAssignment
             string localCertificate = null!;
 
-        #if NET
+#if NET
             localCertificate = ConfigSettings.Default[ConfigSettings.SystemSettingsCategory]["LocalCertificate"];
-        #else
+#else
             CategorizedSettingsElement localCertificateElement = ConfigurationFile.Current.Settings["systemSettings"]["LocalCertificate"];
         
             if (localCertificateElement is not null)
                 localCertificate = localCertificateElement.Value;
-        #endif
+#endif
 
             if (localCertificate is null || !File.Exists(FilePath.GetAbsolutePath(localCertificate)))
                 throw new InvalidOperationException("Unable to find local certificate. Local certificate file must exist when using TLS security mode.");
@@ -5017,19 +5027,19 @@ public class DataSubscriber : InputAdapterBase
             if (File.Exists(FilePath.GetAbsolutePath(remoteCertificate)))
                 return true;
 
-        #if NET
+#if NET
             string remoteCertificatePath = ConfigSettings.Default[ConfigSettings.SystemSettingsCategory]["RemoteCertificatesPath"];
 
             if (string.IsNullOrWhiteSpace(remoteCertificatePath))
                 return false;
-        #else
+#else
             CategorizedSettingsElement remoteCertificateElement = ConfigurationFile.Current.Settings["systemSettings"]["RemoteCertificatesPath"];
 
             if (remoteCertificateElement is null)
                 return false;
 
             string remoteCertificatePath = remoteCertificateElement.Value;
-        #endif
+#endif
 
             remoteCertificate = Path.Combine(remoteCertificatePath, remoteCertificate);
 
