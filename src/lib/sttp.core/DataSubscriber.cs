@@ -27,6 +27,7 @@
 //******************************************************************************************************
 // ReSharper disable ArrangeObjectCreationWhenTypeNotEvident
 // ReSharper disable BadControlBracesIndent
+// ReSharper disable UnusedVariable
 
 #pragma warning disable SYSLIB0057
 
@@ -430,7 +431,7 @@ public class DataSubscriber : InputAdapterBase
         try
         {
         #if NET
-            using AdoDataConnection database = new(ConfigSettings.Default);
+            using AdoDataConnection database = new(ConfigSettings.Instance);
         #else
             using AdoDataConnection database = new("systemSettings");
         #endif
