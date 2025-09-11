@@ -3233,18 +3233,18 @@ public class DataSubscriber : InputAdapterBase
                         string deviceExistsSql = database.ParameterizedQueryString("SELECT COUNT(*) FROM Device WHERE UniqueID = {0}", "uniqueID");
 
                     #if NET
-                        //                                                                             0         1            2        3     4               5         6          7         8            9                 10              11
+                        //                                                                             0         1            2        3     4               5         6          7         8            9                 --              10        --
                         // Define SQL statement to insert new device record
-                        string insertDeviceSql = database.ParameterizedQueryString("INSERT INTO Device(ParentID, HistorianID, Acronym, Name, OriginalSource, AccessID, Longitude, Latitude, ContactList, ConnectionString, IsConcentrator, Enabled) " +
-                                                                                   "VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, 0, " + (SyncIndependentDevices ? AutoEnableIndependentlySyncedDevices ? "1" : "0" : "1") + ")",
-                                                                                   "parentID", "historianID", "acronym", "name", "originalSource", "accessID", "longitude", "latitude", "contactList", "connectionString");
+                        string insertDeviceSql = database.ParameterizedQueryString("INSERT INTO Device(ParentID, HistorianID, Acronym, Name, OriginalSource, AccessID, Longitude, Latitude, ContactList, ConnectionString, IsConcentrator, Internal, Enabled) " +
+                                                                                   "VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, 0, {10}, " + (SyncIndependentDevices ? AutoEnableIndependentlySyncedDevices ? "1" : "0" : "1") + ")",
+                                                                                   "parentID", "historianID", "acronym", "name", "originalSource", "accessID", "longitude", "latitude", "contactList", "connectionString", "internal");
 
                         // Define SQL statement to update existing device record
-                        string updateDeviceSql = database.ParameterizedQueryString("UPDATE Device SET Acronym = {0}, Name = {1}, OriginalSource = {2}, HistorianID = {3}, AccessID = {4}, Longitude = {5}, Latitude = {6}, ContactList = {7} WHERE UniqueID = {8}",
-                            "acronym", "name", "originalSource", "historianID", "accessID", "longitude", "latitude", "contactList", "uniqueID");
+                        string updateDeviceSql = database.ParameterizedQueryString("UPDATE Device SET Acronym = {0}, Name = {1}, OriginalSource = {2}, HistorianID = {3}, AccessID = {4}, Longitude = {5}, Latitude = {6}, ContactList = {7}, Internal = {8} WHERE UniqueID = {9}",
+                            "acronym", "name", "originalSource", "historianID", "accessID", "longitude", "latitude", "contactList", "internal", "uniqueID");
 
-                        string updateDeviceWithConnectionStringSql = database.ParameterizedQueryString("UPDATE Device SET Acronym = {0}, Name = {1}, OriginalSource = {2}, HistorianID = {3}, AccessID = {4}, Longitude = {5}, Latitude = {6}, ContactList = {7}, ConnectionString = {8} WHERE UniqueID = {9}",
-                            "acronym", "name", "originalSource", "historianID", "accessID", "longitude", "latitude", "contactList", "connectionString", "uniqueID");
+                        string updateDeviceWithConnectionStringSql = database.ParameterizedQueryString("UPDATE Device SET Acronym = {0}, Name = {1}, OriginalSource = {2}, HistorianID = {3}, AccessID = {4}, Longitude = {5}, Latitude = {6}, ContactList = {7}, ConnectionString = {8}, Internal = {9} WHERE UniqueID = {10}",
+                            "acronym", "name", "originalSource", "historianID", "accessID", "longitude", "latitude", "contactList", "connectionString", "internal", "uniqueID");
                     #else
                         // Define SQL statement to insert new device record
                         string insertDeviceSql = database.ParameterizedQueryString("INSERT INTO Device(NodeID, ParentID, HistorianID, Acronym, Name, ProtocolID, FramesPerSecond, OriginalSource, AccessID, Longitude, Latitude, ContactList, ConnectionString, IsConcentrator, Enabled) " +
@@ -3442,8 +3442,8 @@ public class DataSubscriber : InputAdapterBase
                                     #if NET
                                         // Insert new device record
                                         ExecuteNonQuery(command, insertDeviceSql, SyncIndependentDevices ? DBNull.Value : parentID,
-                                            historianID, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
-                                            originalSource, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString);
+                                            historianID, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"), originalSource,
+                                            accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString, Internal);
                                     #else
                                         // Insert new device record
                                         ExecuteNonQuery(command, insertDeviceSql, database.Guid(m_nodeID), SyncIndependentDevices ? DBNull.Value : parentID,
@@ -3466,10 +3466,10 @@ public class DataSubscriber : InputAdapterBase
                                         // Update existing device record
                                         if (connectionStringFieldExists)
                                             ExecuteNonQuery(command, updateDeviceWithConnectionStringSql, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
-                                                originalSource, historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString, database.Guid(uniqueID));
+                                                originalSource, historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString, Internal, database.Guid(uniqueID));
                                         else
                                             ExecuteNonQuery(command, updateDeviceSql, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
-                                                originalSource, historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Guid(uniqueID));
+                                                originalSource, historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), Internal, database.Guid(uniqueID));
                                     #else
                                         // Update existing device record
                                         if (connectionStringFieldExists)
