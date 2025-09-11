@@ -1314,6 +1314,23 @@ public class DataSubscriber : InputAdapterBase
         // Check if output measurements should be filtered to only those belonging to the subscriber
         FilterOutputMeasurements = !settings.TryGetValue(nameof(FilterOutputMeasurements), out setting) || setting.ParseBoolean();
 
+        // If no output measurements have been defined when filter output measurements is true, initialize outputs to an empty array,
+        // this will ensure that by default subscribed measurements are only those associated with the subscriber
+        if (FilterOutputMeasurements && (OutputMeasurements is null || OutputMeasurements.Length == 0))
+        {
+            List<IMeasurement> outputMeasurements = [];
+
+            foreach (Guid signalID in GetDeviceMeasurements())
+            {
+                MeasurementKey key = MeasurementKey.LookUpBySignalID(signalID);
+
+                if (key != MeasurementKey.Undefined)
+                    outputMeasurements.Add(new Measurement { Metadata = key.Metadata });
+            }
+
+            OutputMeasurements = outputMeasurements.ToArray();
+        }
+
         // Check if the subscriber supports real-time and historical processing
         SupportsRealTimeProcessing = !settings.TryGetValue(nameof(SupportsRealTimeProcessing), out setting) || setting.ParseBoolean();
         m_supportsTemporalProcessing = settings.TryGetValue(nameof(SupportsTemporalProcessing), out setting) && setting.ParseBoolean();
@@ -1794,19 +1811,13 @@ public class DataSubscriber : InputAdapterBase
 
         try
         {
-            if (OutputMeasurements is null || DataSource is null || !DataSource.Tables.Contains("ActiveMeasurements"))
+            HashSet<Guid> measurementIDSet = GetDeviceMeasurements();
+
+            if (measurementIDSet.Count == 0 || OutputMeasurements is null)
+            {
+                OutputMeasurements = [];
                 return;
-
-            Guid signalID = Guid.Empty;
-
-            // Have to use a Convert expression for DeviceID column in Select function
-            // here since SQLite doesn't report data types for COALESCE based columns
-            IEnumerable<Guid> measurementIDs = DataSource.Tables["ActiveMeasurements"]!
-                .Select($"Convert(DeviceID, 'System.String') = '{ID}'")
-                .Where(row => Guid.TryParse(row["SignalID"].ToNonNullString(), out signalID))
-                .Select(_ => signalID);
-
-            HashSet<Guid> measurementIDSet = [.. measurementIDs];
+            }
 
             OutputMeasurements = OutputMeasurements.Where(measurement => measurementIDSet.Contains(measurement.ID)).ToArray();
         }
@@ -1814,6 +1825,21 @@ public class DataSubscriber : InputAdapterBase
         {
             OnProcessException(MessageLevel.Warning, new InvalidOperationException($"Error when filtering output measurements by device ID: {ex.Message}", ex));
         }
+    }
+
+    private HashSet<Guid> GetDeviceMeasurements()
+    {
+        if (DataSource is null || !DataSource.Tables.Contains("ActiveMeasurements"))
+            return [];
+
+        Guid signalID = Guid.Empty;
+
+        IEnumerable<Guid> measurementIDs = DataSource.Tables["ActiveMeasurements"]!
+            .Select($"Convert(DeviceID, 'System.String') = '{ID}'")
+            .Where(row => Guid.TryParse(row["SignalID"].ToNonNullString(), out signalID))
+            .Select(_ => signalID);
+
+        return [..measurementIDs];
     }
 
     /// <summary>
