@@ -3443,7 +3443,7 @@ public class DataSubscriber : InputAdapterBase
                                         // Insert new device record
                                         ExecuteNonQuery(command, insertDeviceSql, SyncIndependentDevices ? DBNull.Value : parentID,
                                             historianID, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"), originalSource,
-                                            accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString, Internal);
+                                            accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString, database.Bool(Internal));
                                     #else
                                         // Insert new device record
                                         ExecuteNonQuery(command, insertDeviceSql, database.Guid(m_nodeID), SyncIndependentDevices ? DBNull.Value : parentID,
@@ -3466,10 +3466,10 @@ public class DataSubscriber : InputAdapterBase
                                         // Update existing device record
                                         if (connectionStringFieldExists)
                                             ExecuteNonQuery(command, updateDeviceWithConnectionStringSql, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
-                                                originalSource, historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString, Internal, database.Guid(uniqueID));
+                                                originalSource, historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString, database.Bool(Internal), database.Guid(uniqueID));
                                         else
                                             ExecuteNonQuery(command, updateDeviceSql, sourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
-                                                originalSource, historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), Internal, database.Guid(uniqueID));
+                                                originalSource, historianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Bool(Internal), database.Guid(uniqueID));
                                     #else
                                         // Update existing device record
                                         if (connectionStringFieldExists)
@@ -3749,11 +3749,19 @@ public class DataSubscriber : InputAdapterBase
                         // Define SQL statement to query if phasor record is already defined (no Guid is defined for these simple label records)
                         string phasorExistsSql = database.ParameterizedQueryString("SELECT COUNT(*) FROM Phasor WHERE DeviceID = {0} AND SourceIndex = {1}", "deviceID", "sourceIndex");
 
+                    #if NET
+                        // Define SQL statement to insert new phasor record
+                        string insertPhasorSql = database.ParameterizedQueryString("INSERT INTO Phasor(DeviceID, Label, Type, Phase, SourceIndex, Internal) VALUES ({0}, {1}, {2}, {3}, {4}, {5})", "deviceID", "label", "type", "phase", "sourceIndex", "internal");
+
+                        // Define SQL statement to update existing phasor record
+                        string updatePhasorSql = database.ParameterizedQueryString("UPDATE Phasor SET Label = {0}, Type = {1}, Phase = {2}, Internal = {3} WHERE DeviceID = {4} AND SourceIndex = {5}", "label", "type", "phase", "internal", "deviceID", "sourceIndex");
+                    #else
                         // Define SQL statement to insert new phasor record
                         string insertPhasorSql = database.ParameterizedQueryString("INSERT INTO Phasor(DeviceID, Label, Type, Phase, SourceIndex) VALUES ({0}, {1}, {2}, {3}, {4})", "deviceID", "label", "type", "phase", "sourceIndex");
 
                         // Define SQL statement to update existing phasor record
                         string updatePhasorSql = database.ParameterizedQueryString("UPDATE Phasor SET Label = {0}, Type = {1}, Phase = {2} WHERE DeviceID = {3} AND SourceIndex = {4}", "label", "type", "phase", "deviceID", "sourceIndex");
+                    #endif
 
                         // Define SQL statement to delete a phasor record
                         string deletePhasorSql = database.ParameterizedQueryString("DELETE FROM Phasor WHERE DeviceID = {0}", "deviceID");
@@ -3806,14 +3814,24 @@ public class DataSubscriber : InputAdapterBase
                                 // Determine if phasor record already exists
                                 if (Convert.ToInt32(ExecuteScalar(command, phasorExistsSql, deviceID, sourceIndex)) == 0)
                                 {
+                                #if NET
+                                    // Insert new phasor record
+                                    ExecuteNonQuery(command, insertPhasorSql, deviceID, row.Field<string>("Label") ?? "undefined", (row.Field<string>("Type") ?? "V").TruncateLeft(1), (row.Field<string>("Phase") ?? "+").TruncateLeft(1), sourceIndex, database.Bool(Internal));
+                                #else
                                     // Insert new phasor record
                                     ExecuteNonQuery(command, insertPhasorSql, deviceID, row.Field<string>("Label") ?? "undefined", (row.Field<string>("Type") ?? "V").TruncateLeft(1), (row.Field<string>("Phase") ?? "+").TruncateLeft(1), sourceIndex);
+                                #endif
                                     updateRecord = true;
                                 }
                                 else if (recordNeedsUpdating)
                                 {
+                                #if NET
+                                    // Update existing phasor record
+                                    ExecuteNonQuery(command, updatePhasorSql, row.Field<string>("Label") ?? "undefined", (row.Field<string>("Type") ?? "V").TruncateLeft(1), (row.Field<string>("Phase") ?? "+").TruncateLeft(1), database.Bool(Internal), deviceID, sourceIndex);
+                                #else
                                     // Update existing phasor record
                                     ExecuteNonQuery(command, updatePhasorSql, row.Field<string>("Label") ?? "undefined", (row.Field<string>("Type") ?? "V").TruncateLeft(1), (row.Field<string>("Phase") ?? "+").TruncateLeft(1), deviceID, sourceIndex);
+                                #endif
                                     updateRecord = true;
                                 }
 
