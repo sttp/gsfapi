@@ -753,7 +753,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     #if NET
         "SELECT UniqueID, OriginalSource, IsConcentrator, Acronym, Name, AccessID, ParentAcronym, CompanyAcronym, VendorAcronym, VendorDeviceName, Longitude, Latitude, InterconnectionName, ContactList, Enabled, UpdatedOn FROM DeviceDetail WHERE IsConcentrator = 0;" +
         "SELECT DeviceAcronym, ID, SignalID, PointTag, AlternateTag, SignalReference, SignalAcronym, PhasorSourceIndex, Description, Internal, Enabled, UpdatedOn FROM MeasurementDetail;" +
-        "SELECT ID, DeviceAcronym, Label, Type, Phase, PrimaryVoltageID AS DestinationPhasorID, SourceIndex, BaseKV, UpdatedOn FROM PhasorDetail;" +
+        "SELECT ID, DeviceAcronym, Label, Type, Phase, PrimaryVoltageID, SecondaryVoltageID, SourceIndex, BaseKV, UpdatedOn FROM PhasorDetail;" +
         "SELECT TOP 1 Version AS VersionNumber FROM VersionInfo AS SchemaVersion";
     #else
         "SELECT NodeID, UniqueID, OriginalSource, IsConcentrator, Acronym, Name, AccessID, ParentAcronym, ProtocolName, FramesPerSecond, CompanyAcronym, VendorAcronym, VendorDeviceName, Longitude, Latitude, InterconnectionName, ContactList, Enabled, UpdatedOn FROM DeviceDetail WHERE IsConcentrator = 0;" +
