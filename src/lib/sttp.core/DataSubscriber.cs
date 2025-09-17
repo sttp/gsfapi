@@ -3302,7 +3302,7 @@ public class DataSubscriber : InputAdapterBase
                         int accessID = 0;
 
                         List<Guid> uniqueIDs = deviceRows
-                            .Select(deviceRow => Guid.Parse(deviceRow.Field<object>("UniqueID")?.ToString() ?? Guid.Empty.ToString()))
+                            .Select(deviceRow => deviceRow.ConvertGuidField("UniqueID"))
                             .ToList();
 
                         // Remove any device records associated with this subscriber that no longer exist in the meta-data
@@ -3312,7 +3312,7 @@ public class DataSubscriber : InputAdapterBase
                             IEnumerable<Guid> retiredUniqueIDs =
                                 RetrieveData(database, command, queryUniqueDeviceIDsSql, parentIDValue)
                                     .Select()
-                                    .Select(deviceRow => database.Guid(deviceRow, "UniqueID"))
+                                    .Select(deviceRow => deviceRow.ConvertGuidField("UniqueID"))
                                     .Except(uniqueIDs);
 
                             foreach (Guid retiredUniqueID in retiredUniqueIDs)
@@ -3323,7 +3323,7 @@ public class DataSubscriber : InputAdapterBase
 
                         foreach (DataRow row in deviceRows)
                         {
-                            Guid uniqueID = Guid.Parse(row.Field<object>("UniqueID")?.ToString() ?? Guid.Empty.ToString());
+                            Guid uniqueID = row.ConvertGuidField("UniqueID");
                             bool recordNeedsUpdating;
 
                             // Determine if record has changed since last synchronization
@@ -3641,7 +3641,7 @@ public class DataSubscriber : InputAdapterBase
                                 // Make sure we have an associated device and signal type already defined for the measurement
                                 if (!string.IsNullOrWhiteSpace(deviceAcronym) && deviceIDs.ContainsKey(deviceAcronym) && !string.IsNullOrWhiteSpace(signalTypeAcronym) && signalTypeIDs.ContainsKey(signalTypeAcronym))
                                 {
-                                    Guid signalID = Guid.Parse(row.Field<object>("SignalID")?.ToString() ?? Guid.Empty.ToString());
+                                    Guid signalID = row.ConvertGuidField("SignalID");
 
                                     // Track unique measurement signal Guids in this meta-data session, we'll need to remove any old associated measurements that no longer exist
                                     signalIDs.Add(signalID);
@@ -3706,7 +3706,7 @@ public class DataSubscriber : InputAdapterBase
                             // Walk through each database record and see if the measurement exists in the provided meta-data
                             foreach (DataRow measurementRow in measurementSignalIDs.Rows)
                             {
-                                Guid signalID = database.Guid(measurementRow, "SignalID");
+                                Guid signalID = measurementRow.ConvertGuidField("SignalID");
 
                                 // Remove any measurements in the database that are associated with received devices and do not exist in the meta-data
                                 if (signalIDs.BinarySearch(signalID) >= 0)
@@ -3770,7 +3770,7 @@ public class DataSubscriber : InputAdapterBase
                         string queryPhasorIDSql = database.ParameterizedQueryString("SELECT ID FROM Phasor WHERE DeviceID = {0} AND SourceIndex = {1}", "deviceID", "sourceIndex");
 
                         // Define SQL statement to update destinationPhasorID field of existing phasor record
-                        string updatePrimaryVoltageIDSql = database.ParameterizedQueryString($"UPDATE Phasor SET {PrimaryVoltageID} = {{0}} WHERE ID = {{1}}", "destinationPhasorID", "id");
+                        string updatePrimaryVoltageIDSql = database.ParameterizedQueryString($"UPDATE Phasor SET {PrimaryVoltageID} = {{0}} WHERE ID = {{1}}", "primaryVoltageID", "id");
 
                         // Define SQL statement to update phasor BaseKV
                         string updatePhasorBaseKVSql = database.ParameterizedQueryString("UPDATE Phasor SET BaseKV = {0} WHERE DeviceID = {1} AND SourceIndex = {2}", "baseKV", "deviceID", "sourceIndex");
