@@ -50,28 +50,28 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\..\gemstone\common\src\Gemstone\Gemstone.Common.csproj" Condition="'$(Configuration)'=='Development'" />
-    <PackageReference Include="Gemstone.Common" Version="1.0.141" Condition="'$(Configuration)'!='Development'" />
+    <PackageReference Include="Gemstone.Common" Version="1.0.142" Condition="'$(Configuration)'!='Development'" />
 
     <ProjectReference Include="..\..\..\..\..\gemstone\communication\src\Gemstone.Communication\Gemstone.Communication.csproj" Condition="'$(Configuration)'=='Development'" />
-    <PackageReference Include="Gemstone.Communication" Version="1.0.141" Condition="'$(Configuration)'!='Development'" />
+    <PackageReference Include="Gemstone.Communication" Version="1.0.142" Condition="'$(Configuration)'!='Development'" />
 
     <ProjectReference Include="..\..\..\..\..\gemstone\configuration\src\Gemstone.Configuration\Gemstone.Configuration.csproj" Condition="'$(Configuration)'=='Development'" />
-    <PackageReference Include="Gemstone.Configuration" Version="1.0.141" Condition="'$(Configuration)'!='Development'" />
+    <PackageReference Include="Gemstone.Configuration" Version="1.0.142" Condition="'$(Configuration)'!='Development'" />
 
     <ProjectReference Include="..\..\..\..\..\gemstone\data\src\Gemstone.Data\Gemstone.Data.csproj" Condition="'$(Configuration)'=='Development'" />
-    <PackageReference Include="Gemstone.Data" Version="1.0.141" Condition="'$(Configuration)'!='Development'" />
+    <PackageReference Include="Gemstone.Data" Version="1.0.142" Condition="'$(Configuration)'!='Development'" />
 
     <ProjectReference Include="..\..\..\..\..\gemstone\diagnostics\src\Gemstone.Diagnostics\Gemstone.Diagnostics.csproj" Condition="'$(Configuration)'=='Development'" />
-    <PackageReference Include="Gemstone.Diagnostics" Version="1.0.141" Condition="'$(Configuration)'!='Development'" />
+    <PackageReference Include="Gemstone.Diagnostics" Version="1.0.142" Condition="'$(Configuration)'!='Development'" />
 
     <ProjectReference Include="..\..\..\..\..\gemstone\security\src\Gemstone.Security\Gemstone.Security.csproj" Condition="'$(Configuration)'=='Development'" />
-    <PackageReference Include="Gemstone.Security" Version="1.0.141" Condition="'$(Configuration)'!='Development'" />
+    <PackageReference Include="Gemstone.Security" Version="1.0.142" Condition="'$(Configuration)'!='Development'" />
 
     <ProjectReference Include="..\..\..\..\..\gemstone\threading\src\Gemstone.Threading\Gemstone.Threading.csproj" Condition="'$(Configuration)'=='Development'" />
-    <PackageReference Include="Gemstone.Threading" Version="1.0.141" Condition="'$(Configuration)'!='Development'" />
+    <PackageReference Include="Gemstone.Threading" Version="1.0.142" Condition="'$(Configuration)'!='Development'" />
 
     <ProjectReference Include="..\..\..\..\..\gemstone\timeseries\src\Gemstone.Timeseries\Gemstone.Timeseries.csproj" />
-    <PackageReference Include="Gemstone.Timeseries" Version="1.0.141" Condition="'$(Configuration)'!='Development'" />
+    <PackageReference Include="Gemstone.Timeseries" Version="1.0.142" Condition="'$(Configuration)'!='Development'" />
   </ItemGroup>
 
   <Import Project="..\sttp.core\sttp.core.projitems" Label="Shared" />
