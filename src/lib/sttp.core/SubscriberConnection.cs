@@ -631,11 +631,13 @@ public class SubscriberConnection : IProvideStatus, IDisposable
     /// <returns>The socket instance used by the client to send and receive data over the command channel.</returns>
     public Socket? GetCommandChannelSocket()
     {
-        return ServerCommandChannel switch
+        return (ServerCommandChannel, ClientCommandChannel) switch
         {
-            TcpServer tcpServerCommandChannel when tcpServerCommandChannel.TryGetClient(ClientID, out TransportProvider<Socket>? tcpProvider) => tcpProvider!.Provider,
-            TlsServer tlsServerCommandChannel when tlsServerCommandChannel.TryGetClient(ClientID, out TransportProvider<TlsServer.TlsSocket>? tlsProvider) => tlsProvider!.Provider?.Socket,
-            _ => (ClientCommandChannel as TcpClient)?.Client
+            (TcpServer server, _) when server.TryGetClient(ClientID, out TransportProvider<Socket>? tcpProvider) => tcpProvider!.Provider,
+            (TlsServer server, _) when server.TryGetClient(ClientID, out TransportProvider<TlsServer.TlsSocket>? tcpProvider) => tcpProvider!.Provider?.Socket,
+            (_, TcpClient client) => client.Client,
+            (_, TlsClient client) => client.Client,
+            _ => null
         };
     }
 
