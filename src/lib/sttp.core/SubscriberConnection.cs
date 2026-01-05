@@ -625,9 +625,10 @@ public class SubscriberConnection : IProvideStatus, IDisposable
     {
         return (ServerCommandChannel, ClientCommandChannel) switch
         {
-            (TcpServer server, _) when server.TryGetClient(ClientID, out TransportProvider<Socket>? tcpProvider) => tcpProvider!.Provider,
-            (TlsServer server, _) when server.TryGetClient(ClientID, out TransportProvider<TlsServer.TlsSocket>? tcpProvider) => tcpProvider!.Provider?.Socket,
+            (TcpServer server, _) when server.TryGetClient(ClientID, out TransportProvider<Socket> tcpProvider) => tcpProvider.Provider,
+            (TlsServer server, _) when server.TryGetClient(ClientID, out TransportProvider<TlsServer.TlsSocket> tcpProvider) => tcpProvider.Provider?.Socket,
             (_, TcpClient client) => client.Client,
+            (_, TcpSimpleClient client) => client.Client,
             (_, TlsClient client) => client.Client,
             _ => null
         };
