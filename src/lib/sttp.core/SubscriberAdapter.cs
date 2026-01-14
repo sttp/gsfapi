@@ -36,6 +36,18 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
 {
     #region [ Members ]
 
+    // Nested Types
+    private class Concentrator : ConcentratorBase
+    {
+        // Delegate to process time-sorted measurements
+        public required Action<ICollection<IMeasurement>> ProcessMeasurements { get; init; }
+
+        protected override void PublishFrame(IFrame frame, int index)
+        {
+            ProcessMeasurements(frame.Measurements.Values);
+        }
+    }
+
     // Events
 
     /// <summary>
@@ -56,6 +68,7 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
     // Fields
     private readonly DataPublisher m_parent;
     private readonly SubscriberConnection m_connection;
+    private Concentrator? m_concentrator;
     private volatile bool m_usePayloadCompression;
     private volatile bool m_useCompactMeasurementFormat;
     private readonly CompressionModes m_compressionModes;
@@ -245,6 +258,11 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
     }
 
     /// <summary>
+    /// Gets or sets flag that determines if data should be pre-processed before publication as time-sorted.
+    /// </summary>
+    public bool TimeSortedPublication { get; set; }
+
+    /// <summary>
     /// Gets the flag indicating if this adapter supports temporal processing.
     /// </summary>
     /// <remarks>
@@ -270,6 +288,9 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
 
             if (m_iaonSession is not null)
                 status.Append(m_iaonSession.Status);
+
+            if (m_concentrator is not null)
+                status.Append(m_concentrator.Status);
 
             return status.ToString();
         }
@@ -352,6 +373,31 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
             TrackLatestMeasurements = setting.ParseBoolean();
 
         base.Initialize();
+
+        if (settings.TryGetValue(nameof(TimeSortedPublication), out setting))
+            TimeSortedPublication = setting.ParseBoolean();
+
+        if (TimeSortedPublication)
+        {
+            if (!settings.TryGetValue("SamplingRate", out setting) || !int.TryParse(setting, out int samplingRate))
+                throw new InvalidOperationException("SamplingRate must be defined when TimeSortedPublication is enabled.");
+
+            if (!settings.TryGetValue(nameof(LagTime), out setting) || !double.TryParse(setting, out double lagTime))
+                lagTime = DefaultLagTime;
+
+            if (!settings.TryGetValue(nameof(LeadTime), out setting) || !double.TryParse(setting, out double leadTime))
+                leadTime = DefaultLeadTime;
+
+            m_concentrator = new Concentrator
+            {
+                FramesPerSecond = samplingRate,
+                LagTime = lagTime,
+                LeadTime = leadTime,
+                ProcessMeasurements = ProcessMeasurements
+            };
+
+            m_concentrator.Start();
+        }
 
         // Set the InputMeasurementKeys property after calling base.Initialize()
         // so that the base class does not overwrite our setting
@@ -477,7 +523,7 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
         {
             // Keep track of latest measurements
             base.QueueMeasurementsForProcessing(measurements);
-                
+
             double publishInterval = m_publishInterval > 0 ? m_publishInterval : LagTime;
 
             if (DateTime.UtcNow.Ticks <= m_lastPublishTime + Ticks.FromSeconds(publishInterval))
@@ -507,7 +553,10 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
         }
         else
         {
-            ProcessMeasurements(measurements);
+            if (TimeSortedPublication)
+                m_concentrator!.SortMeasurements(measurements);
+            else
+                ProcessMeasurements(measurements);
         }
     }
 
