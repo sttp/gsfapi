@@ -783,6 +783,26 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     public const long DefaultMaxPublishInterval = 0L;
 
     /// <summary>
+    /// Default value for <see cref="TimeSortedPublication"/>.
+    /// </summary>
+    public const bool DefaultTimeSortedPublication = false;
+
+    /// <summary>
+    /// Default value for <see cref="TimeSortedSamplingRate"/>.
+    /// </summary>
+    public const int DefaultTimeSortedSamplingRate = 30;
+
+    /// <summary>
+    /// Default value for <see cref="TimeSortedLagTime"/>.
+    /// </summary>
+    public const double DefaultTimeSortedLagTime = 5.0D;
+
+    /// <summary>
+    /// Default value for <see cref="TimeSortedLeadTime"/>.
+    /// </summary>
+    public const double DefaultTimeSortedLeadTime = 5.0D;
+
+    /// <summary>
     /// Size of client response header in bytes.
     /// </summary>
     /// <remarks>
@@ -1037,6 +1057,55 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [DefaultValue(DefaultMaxPublishInterval)]
     [Label("Max Publish Interval")]
     public long MaxPublishInterval { get; set; } = DefaultMaxPublishInterval;
+
+    /// <summary>
+    /// Gets or sets flag that determines if data should be pre-processed before publication as time-sorted.
+    /// </summary>
+    [ConnectionStringParameter]
+    [Description("Defines flag that determines if data should be pre-processed before publication as time-sorted.")]
+    [DefaultValue(DefaultTimeSortedPublication)]
+    [Label("Time-sort Measurement Publication")]
+    public bool TimeSortedPublication { get; set; }
+
+    /// <summary>
+    /// Gets or sets the target sampling rate for pre-publication time-sorting.
+    /// </summary>
+    /// <remarks>
+    /// Valid sampling rates for a <see cref="ConcentratorBase"/> are greater than 0 samples per second.
+    /// </remarks>
+    [ConnectionStringParameter]
+    [DefaultValue(DefaultTimeSortedSamplingRate)]
+    [Description("Defines the target sampling rate for pre-publication time-sorting.")]
+    [Label("Time-sorted Sampling Rate")]
+    public int TimeSortedSamplingRate { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the allowed past-time deviation tolerance for pre-publication time-sorting, in seconds (can be sub-second).
+    /// </summary>
+    /// <remarks>
+    /// <para>Defines the time sensitivity to past measurement timestamps.</para>
+    /// <para>The number of seconds allowed before assuming a measurement timestamp is too old.</para>
+    /// <para>This becomes the amount of delay introduced by the concentrator to allow time for data to flow into the system.</para>
+    /// </remarks>
+    [ConnectionStringParameter]
+    [DefaultValue(DefaultTimeSortedLagTime)]
+    [Description("Defines the allowed past time deviation tolerance for pre-publication time-sorting, in seconds (can be sub-second).")]
+    [Label("Time-sorted Lag Time")]
+    public double TimeSortedLagTime { get; set; }
+
+    /// <summary>
+    /// Gets or sets the allowed future time deviation tolerance for pre-publication time-sorting, in seconds (can be sub-second).
+    /// </summary>
+    /// <remarks>
+    /// <para>Defines the time sensitivity to future measurement timestamps.</para>
+    /// <para>The number of seconds allowed before assuming a measurement timestamp is too advanced.</para>
+    /// <para>This becomes the tolerated +/- accuracy of the local clock to real-time.</para>
+    /// </remarks>
+    [ConnectionStringParameter]
+    [DefaultValue(DefaultTimeSortedLeadTime)]
+    [Description("Defines the allowed future time deviation tolerance for pre-publication time-sorting, in seconds (can be sub-second).")]
+    [Label("Time-sorted Lead Time")]
+    public double TimeSortedLeadTime { get; set; }
 
     /// <summary>
     /// Gets or sets flag that determines whether measurement rights validation is enforced. Defaults to true for TLS connections.
@@ -1421,6 +1490,33 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
 
         if (MaxPublishInterval < 0L)
             MaxPublishInterval = 0L;
+        
+        if (settings.TryGetValue(nameof(TimeSortedPublication), out setting))
+            TimeSortedPublication = setting.ParseBoolean();
+
+        if (settings.TryGetValue(nameof(TimeSortedSamplingRate), out setting) && int.TryParse(setting, out int samplingRate))
+            TimeSortedSamplingRate = samplingRate;
+        else
+            TimeSortedSamplingRate = DefaultTimeSortedSamplingRate;
+
+        if (TimeSortedPublication && TimeSortedSamplingRate < 1)
+            throw new ArgumentOutOfRangeException(nameof(TimeSortedSamplingRate), "Time-sorted sampling rate must be greater than 0");
+
+        if (settings.TryGetValue(nameof(TimeSortedLagTime), out setting) && double.TryParse(setting, out double lagTime))
+            TimeSortedLagTime = lagTime;
+        else
+            TimeSortedLagTime = DefaultTimeSortedLagTime;
+        
+        if (TimeSortedPublication && TimeSortedLagTime <= 0.0D)
+            throw new ArgumentOutOfRangeException(nameof(TimeSortedLagTime), "Time-sorted lag-time must be greater than zero, but it can be less than one");
+
+        if (settings.TryGetValue(nameof(TimeSortedLeadTime), out setting) && double.TryParse(setting, out double leadTime))
+            TimeSortedLeadTime = leadTime;
+        else
+            TimeSortedLeadTime = DefaultTimeSortedLeadTime;
+
+        if (TimeSortedPublication && TimeSortedLeadTime <= 0.0D)
+            throw new ArgumentOutOfRangeException(nameof(TimeSortedLeadTime), "Time-sorted lead-time must be greater than zero, but it can be less than one");
 
         // Get user specified period for cipher key rotation
         if (settings.TryGetValue(nameof(CipherKeyRotationPeriod), out setting) && double.TryParse(setting, out double period))
@@ -2907,6 +3003,15 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
 
                     if (settings.TryGetValue(nameof(SubscriptionInfo.FilterExpression), out setting))
                         settings[nameof(InputMeasurementKeys)] = setting;
+                    
+                    settings[nameof(TimeSortedPublication)] = TimeSortedPublication.ToString();
+
+                    if (TimeSortedPublication)
+                    {
+                        settings[nameof(TimeSortedSamplingRate)] = TimeSortedSamplingRate.ToString();
+                        settings[nameof(TimeSortedLagTime)] = TimeSortedLagTime.ToString(CultureInfo.InvariantCulture);
+                        settings[nameof(TimeSortedLeadTime)] = TimeSortedLeadTime.ToString(CultureInfo.InvariantCulture);
+                    }
 
                     connectionString = settings.JoinKeyValuePairs();
 

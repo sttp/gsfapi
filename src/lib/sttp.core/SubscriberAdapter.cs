@@ -379,14 +379,14 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
 
         if (TimeSortedPublication)
         {
-            if (!settings.TryGetValue("SamplingRate", out setting) || !int.TryParse(setting, out int samplingRate))
-                throw new InvalidOperationException("SamplingRate must be defined when TimeSortedPublication is enabled.");
+            if (!settings.TryGetValue(nameof(DataPublisher.TimeSortedSamplingRate), out setting) || !int.TryParse(setting, out int samplingRate))
+                throw new InvalidOperationException($"{nameof(DataPublisher.TimeSortedSamplingRate)} must be defined when {nameof(TimeSortedPublication)} is enabled.");
 
-            if (!settings.TryGetValue(nameof(LagTime), out setting) || !double.TryParse(setting, out double lagTime))
-                lagTime = DefaultLagTime;
+            if (!settings.TryGetValue(nameof(DataPublisher.TimeSortedLagTime), out setting) || !double.TryParse(setting, out double lagTime))
+                lagTime = DataPublisher.DefaultTimeSortedLagTime;
 
-            if (!settings.TryGetValue(nameof(LeadTime), out setting) || !double.TryParse(setting, out double leadTime))
-                leadTime = DefaultLeadTime;
+            if (!settings.TryGetValue(nameof(DataPublisher.TimeSortedLeadTime), out setting) || !double.TryParse(setting, out double leadTime))
+                leadTime = DataPublisher.DefaultTimeSortedLeadTime;
 
             m_concentrator = new Concentrator
             {
