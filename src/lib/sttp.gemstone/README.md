@@ -5,7 +5,7 @@
 
 <img align="right" src="https://raw.githubusercontent.com/sttp/pyapi/main/docs/img/sttp.png">
 
-The Gemstone Library organizes all Gemstone functionality related to the Streaming Telemetry Transport Protocol (STTP).
+The Gemstone STTP Library organizes all Gemstone functionality related to the IEEE 2664 Streaming Telemetry Transport Protocol.
 
 [![GitHub license](https://img.shields.io/github/license/gemstone/security?color=4CC61E)](https://github.com/sttp/gsfapi/blob/master/LICENSE)
 [![NuGet](https://img.shields.io/nuget/vpre/Gemstone.STTP)](https://www.nuget.org/packages/Gemstone.STTP#readme-body-tab)
