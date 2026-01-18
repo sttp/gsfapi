@@ -1,47 +1,66 @@
 <Project>
+
   <Import Sdk="Microsoft.NET.Sdk" Project="Sdk.props" />
+
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>sttp</RootNamespace>
-    <PackageId>sttp.gemstone</PackageId>
+    <PackageId>Gemstone.STTP</PackageId>
     <Authors>Grid Protection Alliance</Authors>
     <Company>Grid Protection Alliance</Company>
-    <Product>sttp</Product>
-    <Description>sttp .NET Library</Description>
-    <Copyright>Copyright ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â© 2025</Copyright>
+    <Product>Gemstone</Product>
+    <PackageDescription>GPA Gemstone STTP Library</PackageDescription>
+    <PackageIcon>gemstone-square-128.png</PackageIcon>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>$(PackageDescription)</Description>
+    <Copyright>Copyright © 2025</Copyright>
     <PackageProjectUrl>https://github.com/sttp</PackageProjectUrl>
     <RepositoryUrl>https://github.com/sttp/gsfapi</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <LangVersion>latest</LangVersion>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <Nullable>enable</Nullable>
     <PlatformTarget>AnyCPU</PlatformTarget>
-    <Version>1.0.544</Version>
-    <InformationalVersion Condition="'$(Configuration)'=='Release'">1.0.544 -- Release Build</InformationalVersion>
-    <InformationalVersion Condition="'$(Configuration)'!='Release'">1.0.544 -- Debug Build</InformationalVersion>
     <Configurations>Debug;Release;Development</Configurations>
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <Platforms>AnyCPU</Platforms>
   </PropertyGroup>
+
+  <PropertyGroup>
+    <VersionFile>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../../build/scripts/sttp.version'))</VersionFile>
+    <Version>$([System.IO.File]::ReadAllText('$(VersionFile)').Trim())</Version>
+    <AssemblyVersion>$(Version)</AssemblyVersion>
+    <FileVersion>$(Version)</FileVersion>
+    <InformationalVersion Condition="'$(Configuration)'=='Release'">$(Version) -- Release Build</InformationalVersion>
+    <InformationalVersion Condition="'$(Configuration)'!='Release'">$(Version) -- Debug Build</InformationalVersion>
+  </PropertyGroup>
+
   <PropertyGroup>
     <OutputPath>..\..\..\build\output\$(Configuration)\lib</OutputPath>
     <DocumentationFile>..\..\..\build\output\$(Configuration)\lib\$(TargetFramework)\$(AssemblyName).xml</DocumentationFile>
   </PropertyGroup>
+
   <PropertyGroup Condition="'$(Configuration)'=='Development'">
     <DebugType>Full</DebugType>
     <Optimize>False</Optimize>
     <DefineConstants>$(DefineConstants);DEBUG</DefineConstants>
   </PropertyGroup>
+
   <ItemGroup>
-    <None Remove="UI\STTP.js" />
+    <None Include="README.md" Pack="true" PackagePath="" />
+    <None Include="img\gemstone-square-128.png" Pack="true" PackagePath="" />
+    <None Include="img\gemstone-wide-600.png" Pack="true" PackagePath="" />
   </ItemGroup>
+
   <ItemGroup>
     <EmbeddedResource Include="UI\STTP.js" />
     <EmbeddedResource Include="UI\STTPChunk.js" />
   </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\..\gemstone\common\src\Gemstone\Gemstone.Common.csproj" Condition="'$(Configuration)'=='Development'" />
     <PackageReference Include="Gemstone.Common" Version="1.0.161" Condition="'$(Configuration)'!='Development'" />
@@ -60,9 +79,13 @@
     <ProjectReference Include="..\..\..\..\..\gemstone\timeseries\src\Gemstone.Timeseries\Gemstone.Timeseries.csproj" />
     <PackageReference Include="Gemstone.Timeseries" Version="1.0.161" Condition="'$(Configuration)'!='Development'" />
   </ItemGroup>
+
   <Import Project="..\sttp.core\sttp.core.projitems" Label="Shared" />
+
   <Import Sdk="Microsoft.NET.Sdk" Project="Sdk.targets" />
+
   <PropertyGroup Condition="'$(SIGNTOOL)' != ''">
     <PostBuildEvent>$(SIGNTOOL) $(TargetPath)</PostBuildEvent>
   </PropertyGroup>
+
 </Project>
