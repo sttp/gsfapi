@@ -38,3 +38,4 @@ global using GSF.Threading;
 global using GSF.Units;
 global using TcpClient = GSF.Communication.TcpClient;
 global using UdpClient = GSF.Communication.UdpClient;
+global using Lock = object;

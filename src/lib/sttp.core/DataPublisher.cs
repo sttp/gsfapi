@@ -820,11 +820,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     private Dictionary<X509Certificate, DataRow>? m_subscriberIdentities;
     private readonly ConcurrentDictionary<Guid, IServer> m_clientPublicationChannels;
     private readonly Dictionary<Guid, Dictionary<int, string>> m_clientNotifications;
-#if NET
     private readonly Lock m_clientNotificationsLock;
-#else
-    private readonly object m_clientNotificationsLock;
-#endif
     private readonly SharedTimer m_cipherKeyRotationTimer;
     private readonly RoutingTables m_routingTables;
     private long m_commandChannelConnectionAttempts;
@@ -1568,7 +1564,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         bool clientBasedConnection = false;
 
         // Attempt to retrieve any defined command channel settings
-        Dictionary<string, string> commandChannelSettings = settings.TryGetValue("commandChannel", out string? commandChannelConnectionString) ? commandChannelConnectionString.ParseKeyValuePairs() : settings;
+        Dictionary<string, string> commandChannelSettings = settings.TryGetValue("commandChannel", out string? commandChannelConnectionString) ? 
+            commandChannelConnectionString.ParseKeyValuePairs() :
+            settings;
 
         if (commandChannelSettings.TryGetValue("server", out string? server))
             clientBasedConnection = !string.IsNullOrWhiteSpace(server);
@@ -1868,7 +1866,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         StringBuilder clientEnumeration = new();
         Guid[] clientIDs = (Guid[]?)m_serverCommandChannel?.ClientIDs.Clone() ?? [m_proxyClientID.GetValueOrDefault()];
 
-        clientEnumeration.AppendLine(filterToTemporalSessions ? $"{Environment.NewLine}Indices for connected clients with active temporal sessions:{Environment.NewLine}" : $"{Environment.NewLine}Indices for {clientIDs.Length:N0} connected clients:{Environment.NewLine}");
+        clientEnumeration.AppendLine(filterToTemporalSessions ? 
+            $"{Environment.NewLine}Indices for connected clients with active temporal sessions:{Environment.NewLine}" : 
+            $"{Environment.NewLine}Indices for {clientIDs.Length:N0} connected clients:{Environment.NewLine}");
 
         for (int i = 0; i < clientIDs.Length; i++)
         {
@@ -1983,7 +1983,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
 
                 if (connection.Subscription is not null)
                 {
-                    temporalStatus = connection.Subscription.TemporalConstraintIsDefined() ? connection.Subscription.TemporalSessionStatus : "Subscription does not have an active temporal session.";
+                    temporalStatus = connection.Subscription.TemporalConstraintIsDefined() ?
+                        connection.Subscription.TemporalSessionStatus :
+                        "Subscription does not have an active temporal session.";
                 }
 
                 if (string.IsNullOrWhiteSpace(temporalStatus))
@@ -2105,7 +2107,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
 
         if (inputMeasurementKeys is not null)
         {
-            Func<Guid, bool> hasRightsFunc = ValidateMeasurementRights ? new SubscriberRightsLookup(DataSource, signalIndexCache?.SubscriberID ?? Guid.Empty).HasRightsFunc : _ => true;
+            Func<Guid, bool> hasRightsFunc = ValidateMeasurementRights ?
+                new SubscriberRightsLookup(DataSource, signalIndexCache?.SubscriberID ?? Guid.Empty).HasRightsFunc :
+                _ => true;
 
             // We will now go through the client's requested keys and see which ones are authorized for subscription,
             // this information will be available through the returned signal index cache which will also define
@@ -2344,7 +2348,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <returns>Text encoding associated with a particular client.</returns>
     protected internal Encoding GetClientEncoding(Guid clientID)
     {
-        return !ClientConnections.TryGetValue(clientID, out SubscriberConnection? connection) ? Encoding.UTF8 : connection.Encoding;
+        return !ClientConnections.TryGetValue(clientID, out SubscriberConnection? connection) ?
+            Encoding.UTF8 :
+            connection.Encoding;
     }
 
     /// <summary>
@@ -2386,7 +2392,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <returns><c>true</c> if send was successful; otherwise <c>false</c>.</returns>
     protected internal virtual bool SendClientResponse(Guid clientID, ServerResponse response, ServerCommand command, string? status)
     {
-        return status is null ? SendClientResponse(clientID, response, command) : SendClientResponse(clientID, response, command, GetClientEncoding(clientID).GetBytes(status));
+        return status is null ?
+            SendClientResponse(clientID, response, command) :
+            SendClientResponse(clientID, response, command, GetClientEncoding(clientID).GetBytes(status));
     }
 
     /// <summary>
@@ -2400,7 +2408,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <returns><c>true</c> if send was successful; otherwise <c>false</c>.</returns>
     protected internal virtual bool SendClientResponse(Guid clientID, ServerResponse response, ServerCommand command, string formattedStatus, params object[] args)
     {
-        return string.IsNullOrWhiteSpace(formattedStatus) ? SendClientResponse(clientID, response, command) : SendClientResponse(clientID, response, command, GetClientEncoding(clientID).GetBytes(string.Format(formattedStatus, args)));
+        return string.IsNullOrWhiteSpace(formattedStatus) ?
+            SendClientResponse(clientID, response, command) :
+            SendClientResponse(clientID, response, command, GetClientEncoding(clientID).GetBytes(string.Format(formattedStatus, args)));
     }
 
     /// <summary>
@@ -2503,9 +2513,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                     if (!File.Exists(remoteCertificateFile))
                         continue;
 
-                #pragma warning disable SYSLIB0057
+                    #pragma warning disable SYSLIB0057
                     X509Certificate certificate = new X509Certificate2(remoteCertificateFile);
-                #pragma warning restore SYSLIB0057
+                    #pragma warning restore SYSLIB0057
                     m_certificateChecker.Trust(certificate, policy);
                     m_subscriberIdentities.Add(certificate, subscriber);
                 }
@@ -2543,7 +2553,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             MeasurementKey[] requestedInputs = AdapterBase.ParseInputMeasurementKeys(DataSource, false, subscription.RequestedInputFilter ?? "FILTER ActiveMeasurements WHERE True");
             HashSet<MeasurementKey> authorizedSignals = [];
 
-            Func<Guid, bool> hasRightsFunc = ValidateMeasurementRights ? new SubscriberRightsLookup(DataSource, subscription.SubscriberID).HasRightsFunc : _ => true;
+            Func<Guid, bool> hasRightsFunc = ValidateMeasurementRights ?
+                new SubscriberRightsLookup(DataSource, subscription.SubscriberID).HasRightsFunc :
+                _ => true;
 
             foreach (MeasurementKey input in requestedInputs)
             {
@@ -2652,7 +2664,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             if (m_clientCommandChannel is null)
             {
                 // Data packets and buffer blocks can be published on a UDP data channel, so check for this...
-                IServer publishChannel = useDataChannel ? m_clientPublicationChannels.GetOrAdd(clientID, _ => connection.ServerPublishChannel!) : m_serverCommandChannel!;
+                IServer publishChannel = useDataChannel ?
+                    m_clientPublicationChannels.GetOrAdd(clientID, _ => connection.ServerPublishChannel!) :
+                    m_serverCommandChannel!;
 
                 // Send response packet
                 if (publishChannel.CurrentState == ServerState.Running)
@@ -2767,7 +2781,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             {
                 connection.Dispose();
 
-                OnStatusMessage(MessageLevel.Info, clientID == m_proxyClientID ? $"Data publisher client-based connection disconnected from subscriber via {m_clientCommandChannel?.ServerUri ?? "undefined server URI"}." : "Client disconnected from command channel.");
+                OnStatusMessage(MessageLevel.Info, clientID == m_proxyClientID ?
+                    $"Data publisher client-based connection disconnected from subscriber via {m_clientCommandChannel?.ServerUri ?? "undefined server URI"}." :
+                    "Client disconnected from command channel.");
             }
 
             m_clientPublicationChannels.TryRemove(clientID, out _);
@@ -2848,15 +2864,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// </summary>
     protected virtual void OnProcessingComplete()
     {
-        try
-        {
-            ProcessingComplete?.Invoke(this, EventArgs.Empty);
-        }
-        catch (Exception ex)
-        {
-            // We protect our code from consumer thrown exceptions
-            OnProcessException(MessageLevel.Info, new InvalidOperationException($"Exception in consumer handler for ProcessingComplete event: {ex.Message}", ex), "ConsumerEventException");
-        }
+        ProcessingComplete?.SafeInvoke(this, EventArgs.Empty);
     }
 
     /// <summary>
@@ -2867,15 +2875,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <param name="subscriberInfo">Subscriber information (normally <see cref="SubscriberConnection.SubscriberInfo"/>).</param>
     protected virtual void OnClientConnected(Guid subscriberID, string connectionID, string subscriberInfo)
     {
-        try
-        {
-            ClientConnected?.Invoke(this, new EventArgs<Guid, string, string>(subscriberID, connectionID, subscriberInfo));
-        }
-        catch (Exception ex)
-        {
-            // We protect our code from consumer thrown exceptions
-            OnProcessException(MessageLevel.Info, new InvalidOperationException($"Exception in consumer handler for ClientConnected event: {ex.Message}", ex), "ConsumerEventException");
-        }
+        ClientConnected?.SafeInvoke(this, new EventArgs<Guid, string, string>(subscriberID, connectionID, subscriberInfo));
     }
 
     /// <summary>
@@ -3153,7 +3153,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                     }
                     else
                     {
-                        message = subscription.InputMeasurementKeys is null ? $"Client subscribed as {(useCompactMeasurementFormat ? "" : "non-")}compact, but no signals were specified. Make sure \"inputMeasurementKeys\" setting is properly defined." : $"Client subscribed as {(useCompactMeasurementFormat ? "" : "non-")}compact with {subscription.InputMeasurementKeys.Length} signals.";
+                        message = subscription.InputMeasurementKeys is null ?
+                            $"Client subscribed as {(useCompactMeasurementFormat ? "" : "non-")}compact, but no signals were specified. Make sure \"inputMeasurementKeys\" setting is properly defined." :
+                            $"Client subscribed as {(useCompactMeasurementFormat ? "" : "non-")}compact with {subscription.InputMeasurementKeys.Length} signals.";
                     }
 
                     connection.IsSubscribed = true;
@@ -3162,7 +3164,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                 }
                 else
                 {
-                    message = byteLength > 0 ? "Not enough buffer was provided to parse client data subscription." : "Cannot initialize client data subscription without a connection string.";
+                    message = byteLength > 0 ?
+                        "Not enough buffer was provided to parse client data subscription." :
+                        "Cannot initialize client data subscription without a connection string.";
 
                     SendClientResponse(clientID, ServerResponse.Failed, ServerCommand.Subscribe, message);
                     OnProcessException(MessageLevel.Warning, new InvalidOperationException(message));
@@ -3212,16 +3216,16 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <returns>Meta-data to be returned to client.</returns>
     protected virtual DataSet AcquireMetadata(SubscriberConnection connection, Dictionary<string, Tuple<string, string, int>> filterExpressions)
     {
-#if NET
+    #if NET
         using AdoDataConnection adoDatabase = new(ConfigSettings.Default);
         DbConnection dbConnection = adoDatabase.Connection;
-#else
+    #else
         using AdoDataConnection adoDatabase = new("systemSettings");
         IDbConnection dbConnection = adoDatabase.Connection;
-    
+
         // Initialize active node ID
         Guid nodeID = Guid.Parse(dbConnection.ExecuteScalar($"SELECT NodeID FROM IaonActionAdapter WHERE ID = {ID}")?.ToString() ?? Guid.Empty.ToString());
-#endif
+    #endif
         DataSet metadata = new();
 
         // Determine whether we're sending internal and external meta-data
@@ -3747,7 +3751,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     private void Subscription_ProcessingComplete(object? sender, EventArgs<IClientSubscription, EventArgs> e)
     {
         // Expose notification via data publisher event subscribers
-        ProcessingComplete?.Invoke(sender, e.Argument2);
+        ProcessingComplete?.SafeInvoke(sender, e.Argument2);
 
         IClientSubscription subscription = e.Argument1;
         string senderType = sender is null ? "N/A" : sender.GetType().Name;

@@ -130,8 +130,8 @@ public class DataGapRecoverer : ISupportLifecycle, IProvideStatus
     private DataSubscriber? m_temporalSubscription;
     private DataSet? m_dataSource;
     private string m_loggingPath = string.Empty;
-    private string m_sourceConnectionName = default!;
-    private string m_connectionString = default!;
+    private string m_sourceConnectionName = null!;
+    private string m_connectionString = null!;
     private Time m_recoveryStartDelay;
     private Time m_minimumRecoverySpan;
     private Time m_maximumRecoverySpan;
@@ -582,7 +582,7 @@ public class DataGapRecoverer : ISupportLifecycle, IProvideStatus
         finally
         {
             IsDisposed = true;  // Prevent duplicate dispose.
-            Disposed?.Invoke(this, EventArgs.Empty);
+            Disposed?.SafeInvoke(this, EventArgs.Empty);
         }
     }
 
@@ -833,15 +833,7 @@ public class DataGapRecoverer : ISupportLifecycle, IProvideStatus
     /// </summary>
     protected virtual void OnRecoveredMeasurements(ICollection<IMeasurement> measurements)
     {
-        try
-        {
-            RecoveredMeasurements?.SafeInvoke(this, new EventArgs<ICollection<IMeasurement>>(measurements));
-        }
-        catch (Exception ex)
-        {
-            // We protect our code from consumer thrown exceptions
-            OnProcessException(MessageLevel.Info, new InvalidOperationException($"Exception in consumer handler for RecoveredMeasurements event: {ex.Message}", ex), "ConsumerEventException");
-        }
+        RecoveredMeasurements?.SafeInvoke(this, new EventArgs<ICollection<IMeasurement>>(measurements));
     }
 
     /// <summary>
@@ -858,18 +850,10 @@ public class DataGapRecoverer : ISupportLifecycle, IProvideStatus
     /// </remarks>
     protected virtual void OnStatusMessage(MessageLevel level, string status, string? eventName = null, MessageFlags flags = MessageFlags.None)
     {
-        try
-        {
-            Log.Publish(level, flags, eventName ?? "DataGapRecovery", status);
+        Log.Publish(level, flags, eventName ?? "DataGapRecovery", status);
 
-            using (Logger.SuppressLogMessages())
-                StatusMessage?.SafeInvoke(this, new EventArgs<string>(AdapterBase.GetStatusWithMessageLevelPrefix(status, level)));
-        }
-        catch (Exception ex)
-        {
-            // We protect our code from consumer thrown exceptions
-            OnProcessException(MessageLevel.Info, new InvalidOperationException($"Exception in consumer handler for StatusMessage event: {ex.Message}", ex), "ConsumerEventException");
-        }
+        using (Logger.SuppressLogMessages())
+            StatusMessage?.SafeInvoke(this, new EventArgs<string>(AdapterBase.GetStatusWithMessageLevelPrefix(status, level)));
     }
 
     /// <summary>
@@ -886,18 +870,10 @@ public class DataGapRecoverer : ISupportLifecycle, IProvideStatus
     /// </remarks>
     protected virtual void OnProcessException(MessageLevel level, Exception exception, string? eventName = null, MessageFlags flags = MessageFlags.None)
     {
-        try
-        {
-            Log.Publish(level, flags, eventName ?? "DataGapRecovery", exception.Message, null, exception);
+        Log.Publish(level, flags, eventName ?? "DataGapRecovery", exception.Message, null, exception);
 
-            using (Logger.SuppressLogMessages())
-                ProcessException?.SafeInvoke(this, new EventArgs<Exception>(exception));
-        }
-        catch (Exception ex)
-        {
-            // We protect our code from consumer thrown exceptions
-            Log.Publish(MessageLevel.Info, "ConsumerEventException", $"Exception in consumer handler for ProcessException event: {ex.Message}", null, ex);
-        }
+        using (Logger.SuppressLogMessages())
+            ProcessException?.SafeInvoke(this, new EventArgs<Exception>(exception));
     }
 
     private string GetLoggingPath(string filePath)

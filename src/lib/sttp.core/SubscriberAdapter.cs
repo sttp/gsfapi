@@ -74,12 +74,8 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
     private readonly CompressionModes m_compressionModes;
     private bool m_resetTsscEncoder;
     private TsscEncoder? m_tsscEncoder;
-#if NET
     private readonly Lock m_tsscSyncLock;
-#else
-    private readonly object m_tsscSyncLock;
-#endif
-    private byte[] m_tsscWorkingBuffer = default!;
+    private byte[] m_tsscWorkingBuffer = null!;
     private ushort m_tsscSequenceNumber;
     private long m_lastPublishTime;
     private double m_publishInterval;
@@ -93,14 +89,10 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
     private IaonSession? m_iaonSession;
 
     private readonly List<byte[]?> m_bufferBlockCache;
-#if NET
     private readonly Lock m_bufferBlockCacheLock;
-#else
-    private readonly object m_bufferBlockCacheLock;
-#endif
     private uint m_bufferBlockSequenceNumber;
     private uint m_expectedBufferBlockConfirmationNumber;
-    private SharedTimer m_bufferBlockRetransmissionTimer = default!;
+    private SharedTimer m_bufferBlockRetransmissionTimer = null!;
     private double m_bufferBlockRetransmissionTimeout;
 
     private bool m_disposed;
@@ -971,7 +963,7 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
 
     private void OnBufferBlockRetransmission()
     {
-        BufferBlockRetransmission?.Invoke(this, EventArgs.Empty);
+        BufferBlockRetransmission?.SafeInvoke(this, EventArgs.Empty);
     }
 
     private void BaseTimeRotationTimer_Elapsed(object? sender, EventArgs<DateTime> e)
@@ -992,7 +984,7 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
     // Explicitly implement processing completed event bubbler to satisfy IClientSubscription interface
     void IClientSubscription.OnProcessingCompleted(object? sender, EventArgs e)
     {
-        ProcessingComplete?.Invoke(sender, new EventArgs<IClientSubscription, EventArgs>(this, e));
+        ProcessingComplete?.SafeInvoke(sender, new EventArgs<IClientSubscription, EventArgs>(this, e));
     }
 
     #endregion

@@ -132,11 +132,7 @@ public class SubscriberConnection : IProvideStatus, IDisposable
     /// <summary>
     /// Gets the lock object for updating Signal Index Cache properties.
     /// </summary>
-#if NET
     internal Lock CacheUpdateLock { get; }
-#else
-    internal object CacheUpdateLock { get; }
-#endif
 
     /// <summary>
     /// Gets the current Signal Index Cache index, i.e., zero or one.
@@ -346,11 +342,7 @@ public class SubscriberConnection : IProvideStatus, IDisposable
     /// <summary>
     /// Gets the lock object for updating Signal Index Cache properties.
     /// </summary>
-#if NET
     internal Lock PendingCacheUpdateLock { get; }
-#else
-    internal object PendingCacheUpdateLock { get; }
-#endif
 
     /// <summary>
     /// Gets or sets the list of valid IP addresses that this client can connect from.

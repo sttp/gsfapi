@@ -258,10 +258,10 @@ public class DataSubscriber : InputAdapterBase
     /// </summary>
     public const long DefaultParsingExceptionWindow = 50000000L; // 5 seconds
 
-    private const int EvenKey = 0; // Even key/IV index
-    private const int OddKey = 1; // Odd key/IV index
-    private const int KeyIndex = 0; // Index of cipher key component in keyIV array
-    private const int IVIndex = 1; // Index of initialization vector component in keyIV array
+    private const int EvenKey = 0;      // Even key/IV index
+    private const int OddKey = 1;       // Odd key/IV index
+    private const int KeyIndex = 0;     // Index of cipher key component in keyIV array
+    private const int IVIndex = 1;      // Index of initialization vector component in keyIV array
 
     private const long MissingCacheWarningInterval = 20000000;
 
@@ -338,11 +338,7 @@ public class DataSubscriber : InputAdapterBase
     private long m_dataChannelConnectionAttempts;
     private volatile SignalIndexCache? m_remoteSignalIndexCache;
     private volatile SignalIndexCache?[]? m_signalIndexCache;
-#if NET
     private readonly Lock m_signalIndexCacheLock;
-#else
-    private readonly object m_signalIndexCacheLock;
-#endif
     private volatile int m_cacheIndex;
     private volatile long[]? m_baseTimeOffsets;
     private volatile int m_timeIndex;
@@ -1279,8 +1275,8 @@ public class DataSubscriber : InputAdapterBase
         }
         finally
         {
-            m_disposed = true; // Prevent duplicate dispose.
-            base.Dispose(disposing); // Call base class Dispose().
+            m_disposed = true;          // Prevent duplicate dispose.
+            base.Dispose(disposing);    // Call base class Dispose().
         }
     }
 
@@ -1385,9 +1381,9 @@ public class DataSubscriber : InputAdapterBase
             AutoEnableIndependentlySyncedDevices = setting.ParseBoolean();
 
         // Check if user wants to request that publisher use millisecond resolution to conserve bandwidth
-    #pragma warning disable CS0618 // Type or member is obsolete
+        #pragma warning disable CS0618 // Type or member is obsolete
         UseMillisecondResolution = !settings.TryGetValue(nameof(UseMillisecondResolution), out setting) || setting.ParseBoolean();
-    #pragma warning restore CS0618
+        #pragma warning restore CS0618
 
         // Check if user has defined any meta-data filter expressions
         if (settings.TryGetValue(nameof(MetadataFilters), out setting))
@@ -1754,9 +1750,9 @@ public class DataSubscriber : InputAdapterBase
             if (Settings.TryGetValue("outputMeasurements", out string? setting))
                 OutputMeasurements = ParseOutputMeasurements(DataSource, true, setting);
 
-        #pragma warning disable CA2245
+            #pragma warning disable CA2245
             OutputSourceIDs = OutputSourceIDs;
-        #pragma warning restore CA2245
+            #pragma warning restore CA2245
         }
 
         // If active measurements are defined, attempt to defined desired subscription points from there
@@ -1894,9 +1890,9 @@ public class DataSubscriber : InputAdapterBase
             m_dataStreamMonitor.Interval = (int)(2.0D * info.LagTime * 1000.0D);
 
         // Set millisecond resolution member variable for compact measurement parsing
-    #pragma warning disable 618
+        #pragma warning disable 618
         UseMillisecondResolution = info.UseMillisecondResolution;
-    #pragma warning restore 618
+        #pragma warning restore 618
 
         return Subscribe(info.UseCompactMeasurementFormat, connectionString.ToString());
     }
@@ -1974,9 +1970,11 @@ public class DataSubscriber : InputAdapterBase
             Dictionary<string, string> settings = dataChannel.ParseKeyValuePairs();
 
             if (settings.TryGetValue("port", out string? setting) || settings.TryGetValue("localPort", out setting))
-        #pragma warning disable CA1806
+            {
+                #pragma warning disable CA1806
                 int.TryParse(setting, out port);
-        #pragma warning restore CA1806
+                #pragma warning restore CA1806
+            }
         }
 
         return Subscribe(new SubscriptionInfo
@@ -3431,10 +3429,10 @@ public class DataSubscriber : InputAdapterBase
                                     // ownership is inferred by setting 'OriginalSource' to null. When gateway doesn't own device records (i.e., the "internal" flag is false), this means the device's measurements can only be consumed
                                     // locally - from a device record perspective this means the 'OriginalSource' field is set to the acronym of the PDC or PMU that generated the source measurements. This field allows a mirrored source
                                     // restriction to be implemented later to ensure all devices in an output protocol came from the same original source connection, if desired.
-                                    object originalSource = SyncIndependentDevices ? parentID.ToString() :
-                                        Internal ? DBNull.Value :
-                                        string.IsNullOrEmpty(row.Field<string>("ParentAcronym")) ? sourcePrefix + row.Field<string>("Acronym") :
-                                        sourcePrefix + row.Field<string>("ParentAcronym");
+                                    object originalSource = SyncIndependentDevices ? parentID.ToString() : Internal ? DBNull.Value : 
+                                        string.IsNullOrEmpty(row.Field<string>("ParentAcronym")) ? 
+                                            sourcePrefix + row.Field<string>("Acronym") : 
+                                            sourcePrefix + row.Field<string>("ParentAcronym");
 
                                     // Determine if device record already exists
                                     if (Convert.ToInt32(ExecuteScalar(command, deviceExistsSql, database.Guid(uniqueID))) == 0)
@@ -4169,11 +4167,11 @@ public class DataSubscriber : InputAdapterBase
         {
             TcpServer tcpServerCommandChannel when tcpServerCommandChannel.TryGetClient(clientID, out TransportProvider<Socket>? tcpProvider) => tcpProvider?.Provider,
             TlsServer tlsServerCommandChannel when tlsServerCommandChannel.TryGetClient(clientID, out TransportProvider<TlsServer.TlsSocket>? tlsProvider) => tlsProvider?.Provider?.Socket,
-#if NET
+        #if NET
             _ => (m_clientCommandChannel as TcpClient)?.Client
-#else
+        #else
             _ => (m_clientCommandChannel as TcpClient)?.Client ?? (m_clientCommandChannel as TcpSimpleClient)?.Client
-#endif
+        #endif
         };
     }
 
@@ -4406,16 +4404,8 @@ public class DataSubscriber : InputAdapterBase
     /// </summary>
     protected virtual void OnConnectionEstablished()
     {
-        try
-        {
-            ConnectionEstablished?.Invoke(this, EventArgs.Empty);
-            m_lastMissingCacheWarning = 0L;
-        }
-        catch (Exception ex)
-        {
-            // We protect our code from consumer thrown exceptions
-            OnProcessException(MessageLevel.Info, new InvalidOperationException($"Exception in consumer handler for ConnectionEstablished event: {ex.Message}", ex), "ConsumerEventException");
-        }
+        ConnectionEstablished?.SafeInvoke(this, EventArgs.Empty);
+        m_lastMissingCacheWarning = 0L;
     }
 
     /// <summary>
@@ -4423,15 +4413,7 @@ public class DataSubscriber : InputAdapterBase
     /// </summary>
     protected virtual void OnConnectionTerminated()
     {
-        try
-        {
-            ConnectionTerminated?.Invoke(this, EventArgs.Empty);
-        }
-        catch (Exception ex)
-        {
-            // We protect our code from consumer thrown exceptions
-            OnProcessException(MessageLevel.Info, new InvalidOperationException($"Exception in consumer handler for ConnectionTerminated event: {ex.Message}", ex), "ConsumerEventException");
-        }
+        ConnectionTerminated?.SafeInvoke(this, EventArgs.Empty);
     }
 
     /// <summary>
@@ -4439,15 +4421,7 @@ public class DataSubscriber : InputAdapterBase
     /// </summary>
     protected virtual void OnConnectionAuthenticated()
     {
-        try
-        {
-            ConnectionAuthenticated?.Invoke(this, EventArgs.Empty);
-        }
-        catch (Exception ex)
-        {
-            // We protect our code from consumer thrown exceptions
-            OnProcessException(MessageLevel.Info, new InvalidOperationException($"Exception in consumer handler for ConnectionAuthenticated event: {ex.Message}", ex), "ConsumerEventException");
-        }
+        ConnectionAuthenticated?.SafeInvoke(this, EventArgs.Empty);
     }
 
     /// <summary>
@@ -4457,15 +4431,7 @@ public class DataSubscriber : InputAdapterBase
     /// <param name="commandCode">Command that the server responded to.</param>
     protected virtual void OnReceivedServerResponse(ServerResponse responseCode, ServerCommand commandCode)
     {
-        try
-        {
-            ReceivedServerResponse?.Invoke(this, new EventArgs<ServerResponse, ServerCommand>(responseCode, commandCode));
-        }
-        catch (Exception ex)
-        {
-            // We protect our code from consumer thrown exceptions
-            OnProcessException(MessageLevel.Info, new InvalidOperationException($"Exception in consumer handler for ReceivedServerResponse event: {ex.Message}", ex), "ConsumerEventException");
-        }
+        ReceivedServerResponse?.SafeInvoke(this, new EventArgs<ServerResponse, ServerCommand>(responseCode, commandCode));
     }
 
     /// <summary>
@@ -4478,19 +4444,7 @@ public class DataSubscriber : InputAdapterBase
     /// <param name="length">The length of the message in the buffer, including the header.</param>
     protected virtual void OnReceivedUserCommandResponse(ServerCommand command, ServerResponse response, byte[] buffer, int startIndex, int length)
     {
-        if (ReceivedUserCommandResponse is null)
-            return;
-
-        try
-        {
-            UserCommandArgs args = new(command, response, buffer, startIndex, length);
-            ReceivedUserCommandResponse?.Invoke(this, args);
-        }
-        catch (Exception ex)
-        {
-            // We protect our code from consumer thrown exceptions
-            OnProcessException(MessageLevel.Info, new InvalidOperationException($"Exception in consumer handler for UserCommandResponse event: {ex.Message}", ex), "ConsumerEventException");
-        }
+        ReceivedUserCommandResponse?.SafeInvoke(this, new UserCommandArgs(command, response, buffer, startIndex, length));
     }
 
     /// <summary>
@@ -4499,15 +4453,7 @@ public class DataSubscriber : InputAdapterBase
     /// <param name="metadata">Meta-data <see cref="DataSet"/> instance to send to client subscription.</param>
     protected virtual void OnMetaDataReceived(DataSet metadata)
     {
-        try
-        {
-            MetaDataReceived?.Invoke(this, new EventArgs<DataSet>(metadata));
-        }
-        catch (Exception ex)
-        {
-            // We protect our code from consumer thrown exceptions
-            OnProcessException(MessageLevel.Info, new InvalidOperationException($"Exception in consumer handler for MetaDataReceived event: {ex.Message}", ex), "ConsumerEventException");
-        }
+        MetaDataReceived?.SafeInvoke(this, new EventArgs<DataSet>(metadata));
     }
 
     /// <summary>
@@ -4516,15 +4462,7 @@ public class DataSubscriber : InputAdapterBase
     /// <param name="startTime">Start time, in <see cref="Ticks"/>, of first measurement transmitted.</param>
     protected virtual void OnDataStartTime(Ticks startTime)
     {
-        try
-        {
-            DataStartTime?.Invoke(this, new EventArgs<Ticks>(startTime));
-        }
-        catch (Exception ex)
-        {
-            // We protect our code from consumer thrown exceptions
-            OnProcessException(MessageLevel.Info, new InvalidOperationException($"Exception in consumer handler for DataStartTime event: {ex.Message}", ex), "ConsumerEventException");
-        }
+        DataStartTime?.SafeInvoke(this, new EventArgs<Ticks>(startTime));
     }
 
     /// <summary>
@@ -4533,18 +4471,10 @@ public class DataSubscriber : InputAdapterBase
     /// <param name="source">Type name of adapter that sent the processing completed notification.</param>
     protected virtual void OnProcessingComplete(string source)
     {
-        try
-        {
-            ProcessingComplete?.Invoke(this, new EventArgs<string>(source));
+        ProcessingComplete?.SafeInvoke(this, new EventArgs<string>(source));
 
-            // Also raise base class event in case this event has been subscribed
-            OnProcessingComplete();
-        }
-        catch (Exception ex)
-        {
-            // We protect our code from consumer thrown exceptions
-            OnProcessException(MessageLevel.Info, new InvalidOperationException($"Exception in consumer handler for ProcessingComplete event: {ex.Message}", ex), "ConsumerEventException");
-        }
+        // Also raise base class event in case this event has been subscribed
+        OnProcessingComplete();
     }
 
     /// <summary>
@@ -4553,15 +4483,7 @@ public class DataSubscriber : InputAdapterBase
     /// <param name="message">Message for the notification.</param>
     protected virtual void OnNotificationReceived(string message)
     {
-        try
-        {
-            NotificationReceived?.Invoke(this, new EventArgs<string>(message));
-        }
-        catch (Exception ex)
-        {
-            // We protect our code from consumer thrown exceptions
-            OnProcessException(MessageLevel.Info, new InvalidOperationException($"Exception in consumer handler for NotificationReceived event: {ex.Message}", ex), "ConsumerEventException");
-        }
+        NotificationReceived?.SafeInvoke(this, new EventArgs<string>(message));
     }
 
     /// <summary>
@@ -4569,15 +4491,7 @@ public class DataSubscriber : InputAdapterBase
     /// </summary>
     protected virtual void OnServerConfigurationChanged()
     {
-        try
-        {
-            ServerConfigurationChanged?.Invoke(this, EventArgs.Empty);
-        }
-        catch (Exception ex)
-        {
-            // We protect our code from consumer thrown exceptions
-            OnProcessException(MessageLevel.Info, new InvalidOperationException($"Exception in consumer handler for ServerConfigurationChanged event: {ex.Message}", ex), "ConsumerEventException");
-        }
+        ServerConfigurationChanged?.SafeInvoke(this, EventArgs.Empty);
     }
 
     /// <summary>
@@ -4629,7 +4543,7 @@ public class DataSubscriber : InputAdapterBase
     /// </summary>
     private void OnExceededParsingExceptionThreshold()
     {
-        ExceededParsingExceptionThreshold?.Invoke(this, EventArgs.Empty);
+        ExceededParsingExceptionThreshold?.SafeInvoke(this, EventArgs.Empty);
     }
 
     // Updates the measurements per second counters after receiving another set of measurements.
@@ -4711,7 +4625,9 @@ public class DataSubscriber : InputAdapterBase
     /// <returns>File path within any defined logging path.</returns>
     protected string GetLoggingPath(string filePath)
     {
-        return string.IsNullOrWhiteSpace(m_loggingPath) ? FilePath.GetAbsolutePath(filePath) : Path.Combine(m_loggingPath, filePath);
+        return string.IsNullOrWhiteSpace(m_loggingPath) ?
+            FilePath.GetAbsolutePath(filePath) :
+            Path.Combine(m_loggingPath, filePath);
     }
 
     private void DataStreamMonitor_Elapsed(object? sender, EventArgs<DateTime> e)
@@ -4779,7 +4695,9 @@ public class DataSubscriber : InputAdapterBase
         // Notify consumer that connection was successfully established
         OnConnectionEstablished();
 
-        OnStatusMessage(MessageLevel.Info, m_serverCommandChannel is null ? "Data subscriber command channel connection to publisher was established." : "Data subscriber server-based command channel established a new client connection from the publisher.");
+        OnStatusMessage(MessageLevel.Info, m_serverCommandChannel is null ?
+            "Data subscriber command channel connection to publisher was established." :
+            "Data subscriber server-based command channel established a new client connection from the publisher.");
 
         if (AutoConnect && Enabled)
             StartSubscription();
@@ -4792,7 +4710,9 @@ public class DataSubscriber : InputAdapterBase
     {
         OnConnectionTerminated();
 
-        OnStatusMessage(MessageLevel.Info, m_serverCommandChannel is null ? "Data subscriber command channel connection to publisher was terminated." : "Data subscriber server-based command channel client connection from the publisher was terminated.");
+        OnStatusMessage(MessageLevel.Info, m_serverCommandChannel is null ? 
+            "Data subscriber command channel connection to publisher was terminated." :
+            "Data subscriber server-based command channel client connection from the publisher was terminated.");
 
         DisconnectClient();
     }
@@ -5039,14 +4959,14 @@ public class DataSubscriber : InputAdapterBase
             // ReSharper disable once RedundantAssignment
             string localCertificate = null!;
 
-#if NET
+        #if NET
             localCertificate = ConfigSettings.Default[ConfigSettings.SystemSettingsCategory]["LocalCertificate"];
-#else
+        #else
             CategorizedSettingsElement localCertificateElement = ConfigurationFile.Current.Settings["systemSettings"]["LocalCertificate"];
         
             if (localCertificateElement is not null)
                 localCertificate = localCertificateElement.Value;
-#endif
+        #endif
 
             if (localCertificate is null || !File.Exists(FilePath.GetAbsolutePath(localCertificate)))
                 throw new InvalidOperationException("Unable to find local certificate. Local certificate file must exist when using TLS security mode.");
@@ -5072,19 +4992,19 @@ public class DataSubscriber : InputAdapterBase
             if (File.Exists(FilePath.GetAbsolutePath(remoteCertificate)))
                 return true;
 
-#if NET
+        #if NET
             string remoteCertificatePath = ConfigSettings.Default[ConfigSettings.SystemSettingsCategory]["RemoteCertificatesPath"];
 
             if (string.IsNullOrWhiteSpace(remoteCertificatePath))
                 return false;
-#else
+        #else
             CategorizedSettingsElement remoteCertificateElement = ConfigurationFile.Current.Settings["systemSettings"]["RemoteCertificatesPath"];
 
             if (remoteCertificateElement is null)
                 return false;
 
             string remoteCertificatePath = remoteCertificateElement.Value;
-#endif
+        #endif
 
             remoteCertificate = Path.Combine(remoteCertificatePath, remoteCertificate);
 

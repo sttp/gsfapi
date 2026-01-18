@@ -57,14 +57,14 @@ public class SignalIndexCache : ISupportBinaryImage
     // Since measurement keys are statically cached as a global system optimization and the keys
     // can be different between two parties exchanging data, the raw measurement key elements are
     // cached and exchanged instead of actual measurement key values
-    private ConcurrentDictionary<int, MeasurementKey> m_reference = default!;
+    private ConcurrentDictionary<int, MeasurementKey> m_reference = null!;
     private Guid[] m_unauthorizedSignalIDs = [];
 
     /// <summary>
     /// Lookups MeasurementKey.RuntimeID and returns int SignalIndex. -1 means it does not exist.
     /// </summary>
     [NonSerialized] // SignalID reverse lookup runtime cache (used to speed deserialization)
-    private IndexedArray<int> m_signalIDCache = default!;
+    private IndexedArray<int> m_signalIDCache = null!;
 
     [NonSerialized]
     private Encoding? m_encoding;
