@@ -23,20 +23,6 @@ SetLocal
 
 IF NOT "%1" == "" SET "logFlag=/fl /flp:logfile=%~1;verbosity=diagnostic;encoding=UTF-8;append=false"
 
-REM Pick first installed 9.0 SDK and pin it for this repo
-for /f "delims=" %%V in ('dotnet --list-sdks ^| findstr /r "^9\.[0-9][0-9]*\."') do (
-  set "SDK9=%%V"
-  goto :got9
-)
-
-:got9
-for /f "tokens=1" %%V in ("%SDK9%") do set "SDK9VER=%%V"
-
-echo Pinning SDK %SDK9VER% via global.json in repo root...
-> "C:\Users\buildbot\Projects\sttp-gsfapi\global.json" (
-  echo { "sdk": { "version": "%SDK9VER%", "rollForward": "latestFeature" } }
-)
-
 ECHO BuildBeta: dotnet msbuild sttp.buildproj /p:ForceBuild=true %logflag%
 dotnet msbuild sttp.buildproj /p:ForceBuild=true %logFlag%
 
