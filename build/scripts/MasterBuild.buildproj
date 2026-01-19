@@ -373,24 +373,28 @@
   <Target Name="BeforeVersionSource"/>
 
   <Target Name="CoreVersionSource" Condition="'@(FilesToVersion)' != '' And '$(SkipVersioning)' != 'true'">
-    <!-- Update version number of the source code. -->
     <Message Text="Versioning source code..."/>
-    <Version VersionFile="$(VersionFile)" MajorType="$(VersionMajorChange)" MinorType="$(VersionMinorChange)" BuildType="$(VersionBuildChange)" RevisionType="$(VersionRevisionChange)">
-      <Output TaskParameter="Major" PropertyName="Major"/>
-      <Output TaskParameter="Minor" PropertyName="Minor"/>
-      <Output TaskParameter="Build" PropertyName="Build"/>
-      <Output TaskParameter="Revision" PropertyName="Revision"/>
-    </Version>
-    <FileUpdate Files="%(FilesToVersion.FullPath)" Regex="%(FilesToVersion.VersionRegex)" ReplacementText="${BeforeVersion}$(Major).$(Minor)%(FilesToVersion.VersionTag)${AfterVersion}" Condition="'%(FilesToVersion.VersionPrecision)' &lt;= '2'"/>
-    <FileUpdate Files="%(FilesToVersion.FullPath)" Regex="%(FilesToVersion.VersionRegex)" ReplacementText="${BeforeVersion}$(Major).$(Minor).$(Build)%(FilesToVersion.VersionTag)${AfterVersion}" Condition="'%(FilesToVersion.VersionPrecision)' == '3'"/>
-    <FileUpdate Files="%(FilesToVersion.FullPath)" Regex="%(FilesToVersion.VersionRegex)" ReplacementText="${BeforeVersion}$(Major).$(Minor).$(Build).$(Revision)%(FilesToVersion.VersionTag)${AfterVersion}" Condition="'%(FilesToVersion.VersionPrecision)' == '4'"/>
+
+    <Exec Command='PowerShell -NoProfile -ExecutionPolicy Bypass -File "$(MSBuildThisFileDirectory)update-version.ps1" -VersionFile "$(VersionFile)" -SourceRoot "$(LocalFolder)\src" -MajorType "$(VersionMajorChange)" -MinorType "$(VersionMinorChange)" -BuildType "$(VersionBuildChange)" -RevisionType "$(VersionRevisionChange)"' />
+
+    <!-- Re-read VersionFile into properties so BuildTag is correct -->
+    <ReadLinesFromFile File="$(VersionFile)">
+      <Output TaskParameter="Lines" ItemName="VersionLine"/>
+    </ReadLinesFromFile>
+
     <PropertyGroup>
+      <Major>$([System.String]::Copy('%(VersionLine.Identity)').Split('.')[0])</Major>
+      <Minor>$([System.String]::Copy('%(VersionLine.Identity)').Split('.')[1])</Minor>
+      <Build>$([System.String]::Copy('%(VersionLine.Identity)').Split('.')[2])</Build>
+      <Revision>$([System.String]::Copy('%(VersionLine.Identity)').Split('.')[3])</Revision>
       <BuildTag Condition="'$(BuildTag)' == ''">v$(Major).$(Minor).$(Build).$(Revision)-$(GitBranch)</BuildTag>
     </PropertyGroup>
+
     <Exec Command="%22$(GitClient)%22 add --all" WorkingDirectory="$(LocalFolder)" ContinueOnError="true"/>
     <Exec Command="%22$(GitClient)%22 commit -m %22$(ProjectName): Version change for build $(BuildTag).%22" WorkingDirectory="$(LocalFolder)" ContinueOnError="true"/>
     <Exec Command="%22$(GitClient)%22 tag -f %22$(BuildTag)%22" WorkingDirectory="$(LocalFolder)" ContinueOnError="true"/>
   </Target>
+
 
   <Target Name="AfterVersionSource"/>
   <Target Name="BeforeBuildProjects"/>
