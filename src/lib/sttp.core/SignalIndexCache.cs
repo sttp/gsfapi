@@ -23,16 +23,6 @@
 //
 //******************************************************************************************************
 
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Data;
-using System.Linq;
-using System.Text;
-using GSF;
-using GSF.Collections;
-using GSF.Parsing;
-using GSF.TimeSeries;
 using sttp.tssc;
 
 namespace sttp;
@@ -67,20 +57,20 @@ public class SignalIndexCache : ISupportBinaryImage
     // Since measurement keys are statically cached as a global system optimization and the keys
     // can be different between two parties exchanging data, the raw measurement key elements are
     // cached and exchanged instead of actual measurement key values
-    private ConcurrentDictionary<int, MeasurementKey> m_reference;
-    private Guid[] m_unauthorizedSignalIDs;
+    private ConcurrentDictionary<int, MeasurementKey> m_reference = null!;
+    private Guid[] m_unauthorizedSignalIDs = [];
 
     /// <summary>
     /// Lookups MeasurementKey.RuntimeID and returns int SignalIndex. -1 means it does not exist.
     /// </summary>
     [NonSerialized] // SignalID reverse lookup runtime cache (used to speed deserialization)
-    private IndexedArray<int> m_signalIDCache;
+    private IndexedArray<int> m_signalIDCache = null!;
 
     [NonSerialized]
-    private Encoding m_encoding;
+    private Encoding? m_encoding;
 
     [NonSerialized]
-    internal TsscDecoder TsscDecoder;
+    internal TsscDecoder? TsscDecoder;
 
     #endregion
 
@@ -100,7 +90,7 @@ public class SignalIndexCache : ISupportBinaryImage
     /// </summary>
     /// <param name="dataSource"><see cref="DataSet"/> based data source used to interpret local measurement keys.</param>
     /// <param name="remoteCache">Deserialized remote signal index cache.</param>
-    public SignalIndexCache(DataSet dataSource, SignalIndexCache remoteCache)
+    public SignalIndexCache(DataSet? dataSource, SignalIndexCache remoteCache)
     {
         m_subscriberID = remoteCache.SubscriberID;
 
@@ -113,7 +103,7 @@ public class SignalIndexCache : ISupportBinaryImage
         }
         else
         {
-            DataTable activeMeasurements = dataSource.Tables["ActiveMeasurements"];
+            DataTable activeMeasurements = dataSource.Tables["ActiveMeasurements"]!;
             ConcurrentDictionary<int, MeasurementKey> reference = new();
 
             foreach (KeyValuePair<int, MeasurementKey> signalIndex in remoteCache.Reference)
@@ -193,7 +183,7 @@ public class SignalIndexCache : ISupportBinaryImage
     /// <summary>
     /// Gets or sets character encoding used to convert strings to binary.
     /// </summary>
-    public Encoding Encoding
+    public Encoding? Encoding
     {
         get => m_encoding;
         set => m_encoding = value;
@@ -225,7 +215,7 @@ public class SignalIndexCache : ISupportBinaryImage
             binaryLength += 4;
 
             // Each unauthorized ID
-            binaryLength += 16 * (m_unauthorizedSignalIDs ?? []).Length;
+            binaryLength += 16 * m_unauthorizedSignalIDs.Length;
 
             return binaryLength;
         }
@@ -257,7 +247,7 @@ public class SignalIndexCache : ISupportBinaryImage
         if (m_encoding is null)
             throw new InvalidOperationException("Attempt to generate binary image of signal index cache without setting a character encoding.");
 
-        Guid[] unauthorizedSignalIDs = m_unauthorizedSignalIDs ?? [];
+        Guid[] unauthorizedSignalIDs = m_unauthorizedSignalIDs;
         int binaryLength = BinaryLength;
         int offset = startIndex;
 
@@ -346,7 +336,7 @@ public class SignalIndexCache : ISupportBinaryImage
         if (length < binaryLength)
             return 0;
 
-        // We know we have enough data so we can empty the reference cache
+        // We know we have enough data, so we can empty the reference cache
         m_reference.Clear();
 
         // Subscriber ID

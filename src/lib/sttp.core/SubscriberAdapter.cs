@@ -22,24 +22,11 @@
 //       Modified Header.
 //
 //******************************************************************************************************
-
-using GSF;
-using GSF.Diagnostics;
-using GSF.IO;
-using GSF.Parsing;
-using GSF.Threading;
-using GSF.TimeSeries;
-using GSF.TimeSeries.Adapters;
-using GSF.TimeSeries.Transport;
-using sttp.tssc;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text;
-using System.Threading;
-
+// ReSharper disable ArrangeObjectCreationWhenTypeNotEvident
 // ReSharper disable PossibleMultipleEnumeration
+
+using sttp.tssc;
+
 namespace sttp;
 
 /// <summary>
@@ -49,13 +36,25 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
 {
     #region [ Members ]
 
+    // Nested Types
+    private class Concentrator : ConcentratorBase
+    {
+        // Delegate to process time-sorted measurements
+        public required Action<ICollection<IMeasurement>> ProcessMeasurements { get; init; }
+
+        protected override void PublishFrame(IFrame frame, int index)
+        {
+            ProcessMeasurements(frame.Measurements.Values);
+        }
+    }
+
     // Events
 
     /// <summary>
     /// Indicates that a buffer block needed to be retransmitted because
     /// it was previously sent, but no confirmation was received.
     /// </summary>
-    public event EventHandler BufferBlockRetransmission;
+    public event EventHandler? BufferBlockRetransmission;
 
     /// <summary>
     /// Indicates to the host that processing for an input adapter (via temporal session) has completed.
@@ -64,40 +63,41 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
     /// This event is expected to only be raised when an input adapter has been designed to process
     /// a finite amount of data, e.g., reading a historical range of data during temporal processing.
     /// </remarks>
-    public event EventHandler<EventArgs<IClientSubscription, EventArgs>> ProcessingComplete;
+    public event EventHandler<EventArgs<IClientSubscription, EventArgs>>? ProcessingComplete;
 
     // Fields
-    private DataPublisher m_parent;
+    private readonly DataPublisher m_parent;
     private readonly SubscriberConnection m_connection;
+    private Concentrator? m_concentrator;
     private volatile bool m_usePayloadCompression;
     private volatile bool m_useCompactMeasurementFormat;
     private readonly CompressionModes m_compressionModes;
     private bool m_resetTsscEncoder;
-    private TsscEncoder m_tsscEncoder;
-    private readonly object m_tsscSyncLock;
-    private byte[] m_tsscWorkingBuffer;
+    private TsscEncoder? m_tsscEncoder;
+    private readonly Lock m_tsscSyncLock;
+    private byte[] m_tsscWorkingBuffer = null!;
     private ushort m_tsscSequenceNumber;
     private long m_lastPublishTime;
     private double m_publishInterval;
     private bool m_includeTime;
     private bool m_useMillisecondResolution;
     private bool m_isNaNFiltered;
-    private volatile long[] m_baseTimeOffsets;
+    private volatile long[]? m_baseTimeOffsets;
     private volatile int m_timeIndex;
-    private SharedTimer m_baseTimeRotationTimer;
+    private SharedTimer? m_baseTimeRotationTimer;
     private volatile bool m_startTimeSent;
-    private IaonSession m_iaonSession;
+    private IaonSession? m_iaonSession;
 
-    private readonly List<byte[]> m_bufferBlockCache;
-    private readonly object m_bufferBlockCacheLock;
+    private readonly List<byte[]?> m_bufferBlockCache;
+    private readonly Lock m_bufferBlockCacheLock;
     private uint m_bufferBlockSequenceNumber;
     private uint m_expectedBufferBlockConfirmationNumber;
-    private SharedTimer m_bufferBlockRetransmissionTimer;
+    private SharedTimer m_bufferBlockRetransmissionTimer = null!;
     private double m_bufferBlockRetransmissionTimeout;
 
     private bool m_disposed;
 
-    #endregion
+#endregion
 
     #region [ Constructors ]
 
@@ -115,13 +115,10 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
         SubscriberID = subscriberID;
         m_compressionModes = compressionModes;
         m_bufferBlockCache = [];
-        m_bufferBlockCacheLock = new object();
-        m_tsscSyncLock = new object();
-        m_parent.ClientConnections.TryGetValue(ClientID, out m_connection);
-
-        if (m_connection is null)
-            throw new NullReferenceException("Subscriber adapter failed to find associated connection");
-            
+        m_bufferBlockCacheLock = new();
+        m_tsscSyncLock = new();
+        m_parent.ClientConnections.TryGetValue(ClientID, out SubscriberConnection? connection);
+        m_connection = connection ?? throw new NullReferenceException("Subscriber adapter failed to find associated connection");
         m_connection.SignalIndexCache = new SignalIndexCache { SubscriberID = subscriberID };
     }
 
@@ -155,7 +152,7 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
     /// <summary>
     /// Gets the input filter requested by the subscriber when establishing this <see cref="SubscriberAdapter"/>.
     /// </summary>
-    public string RequestedInputFilter { get; private set; }
+    public string? RequestedInputFilter { get; private set; }
 
     /// <summary>
     /// Gets or sets flag that determines if payload compression should be enabled in data packets of this <see cref="SubscriberAdapter"/>.
@@ -229,7 +226,7 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
     /// We override method so assignment can be synchronized such that dynamic updates won't interfere
     /// with filtering in <see cref="QueueMeasurementsForProcessing"/>.
     /// </remarks>
-    public override MeasurementKey[] InputMeasurementKeys
+    public override MeasurementKey[]? InputMeasurementKeys
     {
         get => base.InputMeasurementKeys;
         set
@@ -238,7 +235,7 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
             {
                 // Update signal index cache unless "detaching" from real-time
                 if (value is not null && !(value.Length == 1 && value[0] == MeasurementKey.Undefined) && 
-                    value.Length > 0 && !new HashSet<MeasurementKey>(base.InputMeasurementKeys).SetEquals(value))
+                    value.Length > 0 && !new HashSet<MeasurementKey>(base.InputMeasurementKeys ?? []).SetEquals(value))
                 {
                     // Safe: no lock required for signal index cache here
                     Guid[] authorizedSignalIDs = m_parent.UpdateSignalIndexCache(ClientID, m_connection.SignalIndexCache, value);
@@ -251,6 +248,11 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
             }
         }
     }
+
+    /// <summary>
+    /// Gets or sets flag that determines if data should be pre-processed before publication as time-sorted.
+    /// </summary>
+    public bool TimeSortedPublication { get; set; }
 
     /// <summary>
     /// Gets the flag indicating if this adapter supports temporal processing.
@@ -279,6 +281,9 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
             if (m_iaonSession is not null)
                 status.Append(m_iaonSession.Status);
 
+            if (m_concentrator is not null)
+                status.Append(m_concentrator.Status);
+
             return status.ToString();
         }
     }
@@ -286,11 +291,15 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
     /// <summary>
     /// Gets the status of the active temporal session, if any.
     /// </summary>
-    public string TemporalSessionStatus => m_iaonSession?.Status;
+    public string? TemporalSessionStatus => m_iaonSession?.Status;
 
     int IClientSubscription.CompressionStrength { get; set; } = 31;
 
+#if NET
+    object? IClientSubscription.SignalIndexCache => null;
+#else
     GSF.TimeSeries.Transport.SignalIndexCache IClientSubscription.SignalIndexCache => null;
+#endif
 
     #endregion
 
@@ -309,8 +318,6 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
         {
             if (!disposing)
                 return;
-
-            m_parent = null;
 
             // Dispose base time rotation timer
             if (m_baseTimeRotationTimer is not null)
@@ -337,7 +344,7 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
         Dictionary<string, string> settings = Settings;
         MeasurementKey[] inputMeasurementKeys;
 
-        if (settings.TryGetValue(nameof(SubscriptionInfo.FilterExpression), out string setting))
+        if (settings.TryGetValue(nameof(SubscriptionInfo.FilterExpression), out string? setting))
         {
             // IMPORTANT: The allowSelect argument of ParseInputMeasurementKeys must be null
             //            in order to prevent SQL injection via the subscription filter expression
@@ -358,6 +365,31 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
             TrackLatestMeasurements = setting.ParseBoolean();
 
         base.Initialize();
+
+        if (settings.TryGetValue(nameof(TimeSortedPublication), out setting))
+            TimeSortedPublication = setting.ParseBoolean();
+
+        if (TimeSortedPublication)
+        {
+            if (!settings.TryGetValue(nameof(DataPublisher.TimeSortedSamplingRate), out setting) || !int.TryParse(setting, out int samplingRate))
+                throw new InvalidOperationException($"{nameof(DataPublisher.TimeSortedSamplingRate)} must be defined when {nameof(TimeSortedPublication)} is enabled.");
+
+            if (!settings.TryGetValue(nameof(DataPublisher.TimeSortedLagTime), out setting) || !double.TryParse(setting, out double lagTime))
+                lagTime = DataPublisher.DefaultTimeSortedLagTime;
+
+            if (!settings.TryGetValue(nameof(DataPublisher.TimeSortedLeadTime), out setting) || !double.TryParse(setting, out double leadTime))
+                leadTime = DataPublisher.DefaultTimeSortedLeadTime;
+
+            m_concentrator = new Concentrator
+            {
+                FramesPerSecond = samplingRate,
+                LagTime = lagTime,
+                LeadTime = leadTime,
+                ProcessMeasurements = ProcessMeasurements
+            };
+
+            m_concentrator.Start();
+        }
 
         // Set the InputMeasurementKeys property after calling base.Initialize()
         // so that the base class does not overwrite our setting
@@ -454,8 +486,8 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
     /// so that dynamic updates to keys will be synchronized with filtering to prevent interference.
     /// </remarks>
     // IMPORTANT: TSSC is sensitive to order - always make sure this function gets called sequentially, concurrent
-    // calls to this function can cause TSSC parsing to get out of sequence and fail
-    public override void QueueMeasurementsForProcessing(IEnumerable<IMeasurement> measurements)
+    // calls to this function can cause TSSC parsing to get out of sequence and /fail
+    public override void QueueMeasurementsForProcessing(IEnumerable<IMeasurement>? measurements)
     {
         if (measurements is null)
             return;
@@ -464,7 +496,7 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
         {
             m_startTimeSent = true;
 
-            IMeasurement measurement = measurements.FirstOrDefault(m => m is not null);
+            IMeasurement? measurement = measurements.FirstOrDefault();
             Ticks timestamp = 0;
 
             if (measurement is not null)
@@ -483,7 +515,7 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
         {
             // Keep track of latest measurements
             base.QueueMeasurementsForProcessing(measurements);
-                
+
             double publishInterval = m_publishInterval > 0 ? m_publishInterval : LagTime;
 
             if (DateTime.UtcNow.Ticks <= m_lastPublishTime + Ticks.FromSeconds(publishInterval))
@@ -513,7 +545,10 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
         }
         else
         {
-            ProcessMeasurements(measurements);
+            if (TimeSortedPublication)
+                m_concentrator!.SortMeasurements(measurements);
+            else
+                ProcessMeasurements(measurements);
         }
     }
 
@@ -525,8 +560,6 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
     /// <returns>A list of buffer block sequence numbers for blocks that need to be retransmitted.</returns>
     public void ConfirmBufferBlock(uint sequenceNumber)
     {
-        DataPublisher parent = m_parent;
-
         // We are still receiving confirmations,
         // so stop the retransmission timer
         m_bufferBlockRetransmissionTimer.Stop();
@@ -560,7 +593,7 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
                         if (m_bufferBlockCache[i] is null)
                             continue;
 
-                        parent?.SendClientResponse(ClientID, ServerResponse.BufferBlock, ServerCommand.Subscribe, m_bufferBlockCache[i]);
+                        m_parent?.SendClientResponse(ClientID, ServerResponse.BufferBlock, ServerCommand.Subscribe, m_bufferBlockCache[i]);
                         OnBufferBlockRetransmission();
                     }
                 }
@@ -580,10 +613,10 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
             // Swap over to next signal index cache
             if (m_connection.NextSignalIndexCache is not null)
             {
-                OnStatusMessage(MessageLevel.Info, $"Received confirmation of signal index cache update for subscriber {clientID}. Transitioning from cache index {m_connection.CurrentCacheIndex} with {m_connection.SignalIndexCache?.Reference?.Count ?? 0:N0} records to cache index {m_connection.NextCacheIndex} with {m_connection.NextSignalIndexCache.Reference?.Count ?? 0:N0} records...", nameof(ConfirmSignalIndexCache));
+                OnStatusMessage(MessageLevel.Info, $"Received confirmation of signal index cache update for subscriber {clientID}. Transitioning from cache index {m_connection.CurrentCacheIndex} with {m_connection.SignalIndexCache?.Reference.Count ?? 0:N0} records to cache index {m_connection.NextCacheIndex} with {m_connection.NextSignalIndexCache?.Reference.Count ?? 0:N0} records...", nameof(ConfirmSignalIndexCache));
 
                 m_connection.SignalIndexCache = m_connection.NextSignalIndexCache;
-                m_connection.SignalIndexCache.SubscriberID = SubscriberID;
+                m_connection.SignalIndexCache!.SubscriberID = SubscriberID;
                 m_connection.CurrentCacheIndex = m_connection.NextCacheIndex;
                 m_connection.NextSignalIndexCache = null;
 
@@ -644,7 +677,7 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
 
             //usePayloadCompression = m_usePayloadCompression;
             bool useCompactMeasurementFormat = m_useCompactMeasurementFormat;
-            SignalIndexCache signalIndexCache;
+            SignalIndexCache? signalIndexCache;
             int currentCacheIndex;
 
             lock (m_connection.CacheUpdateLock)
@@ -658,7 +691,7 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
 
             foreach (IMeasurement measurement in measurements)
             {
-                if (measurement is BufferBlockMeasurement bufferBlockMeasurement)
+                if (measurement is BufferBlockMeasurement { Buffer: not null } bufferBlockMeasurement)
                 {
                     // Still sending buffer block measurements to client; we are expecting
                     // confirmations which will indicate whether retransmission is necessary,
@@ -699,7 +732,7 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
                     // Serialize the current measurement.
                     IBinaryMeasurement binaryMeasurement = useCompactMeasurementFormat ?
                         new CompactMeasurement(measurement, signalIndexCache, m_includeTime, m_baseTimeOffsets, m_timeIndex, m_useMillisecondResolution) :
-                        new SerializableMeasurement(measurement, m_parent.GetClientEncoding(ClientID));
+                        throw new InvalidOperationException("Full measurement serialization not supported.");
 
                     // Determine the size of the measurement in bytes.
                     int binaryLength = binaryMeasurement.BinaryLength;
@@ -762,7 +795,7 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
             measurement.CopyBinaryImageToStream(workingBuffer);
 
         // Publish data packet to client
-        m_parent?.SendClientResponse(ClientID, ServerResponse.DataPacket, ServerCommand.Subscribe, workingBuffer.ToArray());
+        m_parent.SendClientResponse(ClientID, ServerResponse.DataPacket, ServerCommand.Subscribe, workingBuffer.ToArray());
 
         // Track last publication time
         m_lastPublishTime = DateTime.UtcNow.Ticks;
@@ -770,7 +803,7 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
 
     private void ProcessTSSCMeasurements(IEnumerable<IMeasurement> measurements)
     {
-        SignalIndexCache signalIndexCache;
+        SignalIndexCache? signalIndexCache;
         int currentCacheIndex;
 
         lock (m_connection.CacheUpdateLock)
@@ -808,20 +841,20 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
                 {
                     int index = signalIndexCache.GetSignalIndex(measurement.Key);
 
-                    if (index < int.MaxValue) // Ignore unmapped signal
+                    if (index == int.MaxValue) 
+                        continue; // Ignore unmapped signal
+                    
+                    if (!m_tsscEncoder.TryAddMeasurement(index, measurement.Timestamp.Value, (uint)measurement.StateFlags, (float)measurement.AdjustedValue))
                     {
-                        if (!m_tsscEncoder.TryAddMeasurement(index, measurement.Timestamp.Value, (uint)measurement.StateFlags, (float)measurement.AdjustedValue))
-                        {
-                            SendTSSCPayload(count, currentCacheIndex);
-                            count = 0;
-                            m_tsscEncoder.SetBuffer(m_tsscWorkingBuffer, 0, m_tsscWorkingBuffer.Length);
+                        SendTSSCPayload(count, currentCacheIndex);
+                        count = 0;
+                        m_tsscEncoder.SetBuffer(m_tsscWorkingBuffer, 0, m_tsscWorkingBuffer.Length);
 
-                            // This will always succeed
-                            m_tsscEncoder.TryAddMeasurement(index, measurement.Timestamp.Value, (uint)measurement.StateFlags, (float)measurement.AdjustedValue);
-                        }
-
-                        count++;
+                        // This will always succeed
+                        m_tsscEncoder.TryAddMeasurement(index, measurement.Timestamp.Value, (uint)measurement.StateFlags, (float)measurement.AdjustedValue);
                     }
+
+                    count++;
                 }
 
                 if (count > 0)
@@ -830,7 +863,7 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
                 IncrementProcessedMeasurements(measurements.Count());
 
                 // Update latency statistics
-                m_parent?.UpdateLatencyStatistics(measurements.Select(m => (long)(m_lastPublishTime - m.Timestamp)));
+                m_parent.UpdateLatencyStatistics(measurements.Select(m => (long)(m_lastPublishTime - m.Timestamp)));
             }
             catch (Exception ex)
             {
@@ -842,6 +875,9 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
 
     private void SendTSSCPayload(int count, int currentCacheIndex)
     {
+        if (m_tsscEncoder is null)
+            return;
+
         int length = m_tsscEncoder.FinishBlock();
         byte[] packet = new byte[length + 8];
         DataPacketFlags flags = DataPacketFlags.Compressed;
@@ -865,18 +901,18 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
 
         Array.Copy(m_tsscWorkingBuffer, 0, packet, 8, length);
 
-        m_parent?.SendClientResponse(ClientID, ServerResponse.DataPacket, ServerCommand.Subscribe, packet);
+        m_parent.SendClientResponse(ClientID, ServerResponse.DataPacket, ServerCommand.Subscribe, packet);
 
         // Track last publication time
         m_lastPublishTime = DateTime.UtcNow.Ticks;
     }
 
     // Retransmits all buffer blocks for which confirmation has not yet been received
-    private void BufferBlockRetransmissionTimer_Elapsed(object sender, EventArgs<DateTime> e)
+    private void BufferBlockRetransmissionTimer_Elapsed(object? sender, EventArgs<DateTime> e)
     {
         lock (m_bufferBlockCacheLock)
         {
-            foreach (byte[] bufferBlock in m_bufferBlockCache)
+            foreach (byte[]? bufferBlock in m_bufferBlockCache)
             {
                 if (bufferBlock is null)
                     continue;
@@ -893,7 +929,7 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
     // Rotates base time offsets
     private void RotateBaseTimes()
     {
-        if (m_parent == null || m_baseTimeRotationTimer == null)
+        if (m_baseTimeRotationTimer == null)
             return;
 
         if (m_baseTimeOffsets is null)
@@ -927,28 +963,28 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
 
     private void OnBufferBlockRetransmission()
     {
-        BufferBlockRetransmission?.Invoke(this, EventArgs.Empty);
+        BufferBlockRetransmission?.SafeInvoke(this, EventArgs.Empty);
     }
 
-    private void BaseTimeRotationTimer_Elapsed(object sender, EventArgs<DateTime> e)
+    private void BaseTimeRotationTimer_Elapsed(object? sender, EventArgs<DateTime> e)
     {
         RotateBaseTimes();
     }
 
-    void IClientSubscription.OnStatusMessage(MessageLevel level, string status, string eventName, MessageFlags flags)
+    void IClientSubscription.OnStatusMessage(MessageLevel level, string status, string? eventName, MessageFlags flags)
     {
         OnStatusMessage(level, status, eventName, flags);
     }
 
-    void IClientSubscription.OnProcessException(MessageLevel level, Exception ex, string eventName, MessageFlags flags)
+    void IClientSubscription.OnProcessException(MessageLevel level, Exception ex, string? eventName, MessageFlags flags)
     {
         OnProcessException(level, ex, eventName, flags);
     }
 
     // Explicitly implement processing completed event bubbler to satisfy IClientSubscription interface
-    void IClientSubscription.OnProcessingCompleted(object sender, EventArgs e)
+    void IClientSubscription.OnProcessingCompleted(object? sender, EventArgs e)
     {
-        ProcessingComplete?.Invoke(sender, new EventArgs<IClientSubscription, EventArgs>(this, e));
+        ProcessingComplete?.SafeInvoke(sender, new EventArgs<IClientSubscription, EventArgs>(this, e));
     }
 
     #endregion

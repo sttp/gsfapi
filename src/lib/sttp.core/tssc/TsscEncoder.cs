@@ -22,10 +22,7 @@
 //******************************************************************************************************
 // ReSharper disable IntVariableOverflowInUncheckedContext
 // ReSharper disable UnusedMember.Local
-
-using System;
-using GSF;
-using GSF.Collections;
+#pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring as nullable.
 
 namespace sttp.tssc;
 
@@ -56,7 +53,7 @@ public class TsscEncoder
     private long m_prevTimeDelta4;
 
     private TsscPointMetadata m_lastPoint;
-    private IndexedArray<TsscPointMetadata> m_points;
+    private IndexedArray<TsscPointMetadata?> m_points;
 
     /// <summary>
     /// Creates an encoder for the TSSC protocol.
@@ -77,8 +74,8 @@ public class TsscEncoder
     /// </remarks>
     public void Reset()
     {
-        m_points = new IndexedArray<TsscPointMetadata>();
-        m_lastPoint = new TsscPointMetadata(WriteBits, null, null);
+        m_points = new IndexedArray<TsscPointMetadata?>();
+        m_lastPoint = new TsscPointMetadata(WriteBits, null!, null!);
         m_data = [];
         m_position = 0;
         m_lastPosition = 0;
@@ -133,11 +130,11 @@ public class TsscEncoder
         if (m_lastPosition - m_position < 100)
             return false;
 
-        TsscPointMetadata point = m_points[id];
+        TsscPointMetadata? point = m_points[id];
 
         if (point is null)
         {
-            point = new TsscPointMetadata(WriteBits, null, null) { PrevNextPointId1 = id + 1 };
+            point = new TsscPointMetadata(WriteBits, null!, null!) { PrevNextPointId1 = id + 1 };
             m_points[id] = point;
         }
 

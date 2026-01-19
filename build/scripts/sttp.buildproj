@@ -114,6 +114,18 @@
     </ItemGroup>
   </Target>
 
+  <Target Name="AfterUpdateRepository">
+    <PropertyGroup>
+      <ChangesDetected Condition="'$(ForceBuild)' == 'true'">true</ChangesDetected>
+      <ChangesDetected Condition="'$(ForceBuild)' != 'true'">false</ChangesDetected>
+    </PropertyGroup>
+
+    <WriteLinesToFile
+      File="ChangesDetected.cmd"
+      Lines='@SET "CHANGES_DETECTED=$(ChangesDetected)"'
+      Overwrite="true" />
+  </Target>
+
   <Target Name="BeforeBuildProjects">
     <ItemGroup>
       <!--List of projects to build.-->

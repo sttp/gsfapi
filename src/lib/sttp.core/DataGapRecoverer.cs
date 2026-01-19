@@ -21,21 +21,11 @@
 //
 //******************************************************************************************************
 
-using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Globalization;
-using System.IO;
-using System.Linq;
-using System.Text;
-using System.Threading;
-using GSF;
-using GSF.Diagnostics;
-using GSF.IO;
-using GSF.Threading;
-using GSF.TimeSeries;
-using GSF.TimeSeries.Adapters;
-using GSF.Units;
+#if NET
+using CommonFunc = Gemstone.Common;
+#else
+using CommonFunc = GSF.Common;
+#endif
 
 namespace sttp;
 
@@ -110,7 +100,7 @@ public class DataGapRecoverer : ISupportLifecycle, IProvideStatus
     /// <remarks>
     /// <see cref="EventArgs{T}.Argument"/> is a collection of measurements for consumer to process.
     /// </remarks>
-    public event EventHandler<EventArgs<ICollection<IMeasurement>>> RecoveredMeasurements;
+    public event EventHandler<EventArgs<ICollection<IMeasurement>>>? RecoveredMeasurements;
 
     /// <summary>
     /// Provides status messages to consumer.
@@ -118,7 +108,7 @@ public class DataGapRecoverer : ISupportLifecycle, IProvideStatus
     /// <remarks>
     /// <see cref="EventArgs{T}.Argument"/> is new status message.
     /// </remarks>
-    public event EventHandler<EventArgs<string>> StatusMessage;
+    public event EventHandler<EventArgs<string>>? StatusMessage;
 
     /// <summary>
     /// Event is raised when there is an exception encountered during <see cref="DataGapRecoverer"/> processing.
@@ -126,26 +116,26 @@ public class DataGapRecoverer : ISupportLifecycle, IProvideStatus
     /// <remarks>
     /// <see cref="EventArgs{T}.Argument"/> is the exception that was thrown.
     /// </remarks>
-    public event EventHandler<EventArgs<Exception>> ProcessException;
+    public event EventHandler<EventArgs<Exception>>? ProcessException;
 
     /// <summary>
     /// Raised after the <see cref="DataGapRecoverer"/> has been properly disposed.
     /// </summary>
-    public event EventHandler Disposed;
+    public event EventHandler? Disposed;
 
     // Fields
     private readonly SubscriptionInfo m_subscriptionInfo;
     private readonly ManualResetEventSlim m_dataGapRecoveryCompleted;
-    private DataSubscriber m_temporalSubscription;
-    private SharedTimer m_dataStreamMonitor;
-    private DataSet m_dataSource;
-    private string m_loggingPath;
-    private string m_sourceConnectionName;
-    private string m_connectionString;
+    private readonly SharedTimer m_dataStreamMonitor;
+    private DataSubscriber? m_temporalSubscription;
+    private DataSet? m_dataSource;
+    private string m_loggingPath = string.Empty;
+    private string m_sourceConnectionName = null!;
+    private string m_connectionString = null!;
     private Time m_recoveryStartDelay;
     private Time m_minimumRecoverySpan;
     private Time m_maximumRecoverySpan;
-    private Outage m_currentDataGap;
+    private Outage? m_currentDataGap;
     private Ticks m_mostRecentRecoveredTime;
     private long m_measurementsRecoveredForDataGap;
     private long m_measurementsRecoveredOverLastInterval;
@@ -230,7 +220,7 @@ public class DataGapRecoverer : ISupportLifecycle, IProvideStatus
     /// <summary>
     /// Gets or sets <see cref="DataSet"/> based data source available to this <see cref="DataGapRecoverer"/>.
     /// </summary>
-    public DataSet DataSource
+    public DataSet? DataSource
     {
         get => m_dataSource;
         set
@@ -437,7 +427,7 @@ public class DataGapRecoverer : ISupportLifecycle, IProvideStatus
     /// Gets or sets any additional constraint parameters that will be supplied to adapters in temporal
     /// subscription used when recovering data for an <see cref="Outage"/>.
     /// </summary>
-    public string ConstraintParameters
+    public string? ConstraintParameters
     {
         get => m_subscriptionInfo.ConstraintParameters;
         set => m_subscriptionInfo.ConstraintParameters = value;
@@ -469,12 +459,12 @@ public class DataGapRecoverer : ISupportLifecycle, IProvideStatus
     /// <summary>
     /// Gets reference to the data gap <see cref="OutageLog"/> for this <see cref="DataGapRecoverer"/>.
     /// </summary>
-    protected OutageLog DataGapLog { get; private set; }
+    protected OutageLog? DataGapLog { get; private set; }
 
     /// <summary>
     /// Gets reference to the data gap <see cref="OutageLogProcessor"/> for this <see cref="DataGapRecoverer"/>.
     /// </summary>
-    protected OutageLogProcessor DataGapLogProcessor { get; private set; }
+    protected OutageLogProcessor? DataGapLogProcessor { get; private set; }
 
     // Gets the name of the data gap recoverer.
     string IProvideStatus.Name => m_temporalSubscription is null ? GetType().Name : m_temporalSubscription.Name;
@@ -505,7 +495,7 @@ public class DataGapRecoverer : ISupportLifecycle, IProvideStatus
             status.AppendLine($"              Logging path: {FilePath.TrimFileName(m_loggingPath.ToNonNullNorWhiteSpace(FilePath.GetAbsolutePath("")), 51)}");
             status.AppendLine($"Last recovered measurement: {((DateTime)m_mostRecentRecoveredTime).ToString(OutageLog.DateTimeFormat)}");
 
-            Outage currentDataGap = m_currentDataGap;
+            Outage? currentDataGap = m_currentDataGap;
 
             if (currentDataGap is not null)
                 status.AppendLine($"      Currently recovering: {currentDataGap.Start.ToString(OutageLog.DateTimeFormat)} to {currentDataGap.End.ToString(OutageLog.DateTimeFormat)}");
@@ -557,20 +547,13 @@ public class DataGapRecoverer : ISupportLifecycle, IProvideStatus
             if (!disposing)
                 return;
 
-            if (m_dataGapRecoveryCompleted is not null)
-            {
-                // Signal any waiting threads
-                m_abnormalTermination = true;
-                m_dataGapRecoveryCompleted.Set();
-                m_dataGapRecoveryCompleted.Dispose();
-            }
+            // Signal any waiting threads
+            m_abnormalTermination = true;
+            m_dataGapRecoveryCompleted.Set();
+            m_dataGapRecoveryCompleted.Dispose();
 
-            if (m_dataStreamMonitor is not null)
-            {
-                m_dataStreamMonitor.Elapsed -= DataStreamMonitor_Elapsed;
-                m_dataStreamMonitor.Dispose();
-                m_dataStreamMonitor = null;
-            }
+            m_dataStreamMonitor.Elapsed -= DataStreamMonitor_Elapsed;
+            m_dataStreamMonitor.Dispose();
 
             if (DataGapLogProcessor is not null)
             {
@@ -599,7 +582,7 @@ public class DataGapRecoverer : ISupportLifecycle, IProvideStatus
         finally
         {
             IsDisposed = true;  // Prevent duplicate dispose.
-            Disposed?.Invoke(this, EventArgs.Empty);
+            Disposed?.SafeInvoke(this, EventArgs.Empty);
         }
     }
 
@@ -613,7 +596,7 @@ public class DataGapRecoverer : ISupportLifecycle, IProvideStatus
 
         Dictionary<string, string> settings = m_connectionString.ToNonNullString().ParseKeyValuePairs();
 
-        if (settings.TryGetValue("sourceConnectionName", out string setting) && !string.IsNullOrWhiteSpace(setting))
+        if (settings.TryGetValue("sourceConnectionName", out string? setting) && !string.IsNullOrWhiteSpace(setting))
             m_sourceConnectionName = setting;
 
         if (settings.TryGetValue("recoveryStartDelay", out setting) && double.TryParse(setting, out double timeInterval))
@@ -683,7 +666,7 @@ public class DataGapRecoverer : ISupportLifecycle, IProvideStatus
         DataGapLog.Initialize();
 
         // Setup data gap processor to process items one at a time, a 5-second minimum period is established between each gap processing
-        DataGapLogProcessor = new OutageLogProcessor(DataGapLog, ProcessDataGap, CanProcessDataGap, ex => OnProcessException(MessageLevel.Warning, ex), GSF.Common.Max(5000, (int)(m_recoveryStartDelay * 1000.0D)));
+        DataGapLogProcessor = new OutageLogProcessor(DataGapLog, ProcessDataGap, CanProcessDataGap, ex => OnProcessException(MessageLevel.Warning, ex), CommonFunc.Max(5000, (int)(m_recoveryStartDelay * 1000.0D)));
     }
 
     /// <summary>
@@ -760,6 +743,9 @@ public class DataGapRecoverer : ISupportLifecycle, IProvideStatus
     /// <returns>The contents of the outage log.</returns>
     public string DumpOutageLog()
     {
+        if (DataGapLog is null)
+            throw new InvalidOperationException("Data gap log is not defined -- cannot dump outage log.");
+
         List<Outage> outages = DataGapLog.Outages;
         StringBuilder dump = new();
 
@@ -781,6 +767,12 @@ public class DataGapRecoverer : ISupportLifecycle, IProvideStatus
     // to requeue the data gap outage so it will be processed again (could be that remote system is offline).
     private void ProcessDataGap(Outage dataGap)
     {
+        if (m_temporalSubscription is null)
+            throw new InvalidOperationException("Temporal subscription is not established -- cannot process data gap.");
+
+        if (DataGapLog is null)
+            throw new InvalidOperationException("Data gap log is not defined -- cannot process data gap.");
+
         // Establish start and stop time for temporal session
         m_subscriptionInfo.StartTime = dataGap.Start.ToString(OutageLog.DateTimeFormat, CultureInfo.InvariantCulture);
         m_subscriptionInfo.StopTime = dataGap.End.ToString(OutageLog.DateTimeFormat, CultureInfo.InvariantCulture);
@@ -817,7 +809,7 @@ public class DataGapRecoverer : ISupportLifecycle, IProvideStatus
         if (m_abnormalTermination)
         {
             // Make sure any data recovered so far doesn't get unnecessarily re-recovered, this requires that source historian report data in time-sorted order
-            dataGap = new Outage(new DateTime(GSF.Common.Max((Ticks)dataGap.Start.Ticks, m_mostRecentRecoveredTime - (m_subscriptionInfo.UseMillisecondResolution ? Ticks.PerMillisecond : 1L)), DateTimeKind.Utc), dataGap.End);
+            dataGap = new Outage(new DateTime(CommonFunc.Max((Ticks)dataGap.Start.Ticks, m_mostRecentRecoveredTime - (m_subscriptionInfo.UseMillisecondResolution ? Ticks.PerMillisecond : 1L)), DateTimeKind.Utc), dataGap.End);
 
             // Re-insert adjusted data gap at the top of the processing queue
             DataGapLog.Add(dataGap);
@@ -841,15 +833,7 @@ public class DataGapRecoverer : ISupportLifecycle, IProvideStatus
     /// </summary>
     protected virtual void OnRecoveredMeasurements(ICollection<IMeasurement> measurements)
     {
-        try
-        {
-            RecoveredMeasurements?.Invoke(this, new EventArgs<ICollection<IMeasurement>>(measurements));
-        }
-        catch (Exception ex)
-        {
-            // We protect our code from consumer thrown exceptions
-            OnProcessException(MessageLevel.Info, new InvalidOperationException($"Exception in consumer handler for RecoveredMeasurements event: {ex.Message}", ex), "ConsumerEventException");
-        }
+        RecoveredMeasurements?.SafeInvoke(this, new EventArgs<ICollection<IMeasurement>>(measurements));
     }
 
     /// <summary>
@@ -864,20 +848,12 @@ public class DataGapRecoverer : ISupportLifecycle, IProvideStatus
     /// generated. In general, there should only be a few dozen distinct event names per class. Exceeding this
     /// threshold will cause the EventName to be replaced with a general warning that a usage issue has occurred.
     /// </remarks>
-    protected virtual void OnStatusMessage(MessageLevel level, string status, string eventName = null, MessageFlags flags = MessageFlags.None)
+    protected virtual void OnStatusMessage(MessageLevel level, string status, string? eventName = null, MessageFlags flags = MessageFlags.None)
     {
-        try
-        {
-            Log.Publish(level, flags, eventName ?? "DataGapRecovery", status);
+        Log.Publish(level, flags, eventName ?? "DataGapRecovery", status);
 
-            using (Logger.SuppressLogMessages())
-                StatusMessage?.Invoke(this, new EventArgs<string>(AdapterBase.GetStatusWithMessageLevelPrefix(status, level)));
-        }
-        catch (Exception ex)
-        {
-            // We protect our code from consumer thrown exceptions
-            OnProcessException(MessageLevel.Info, new InvalidOperationException($"Exception in consumer handler for StatusMessage event: {ex.Message}", ex), "ConsumerEventException");
-        }
+        using (Logger.SuppressLogMessages())
+            StatusMessage?.SafeInvoke(this, new EventArgs<string>(AdapterBase.GetStatusWithMessageLevelPrefix(status, level)));
     }
 
     /// <summary>
@@ -892,20 +868,12 @@ public class DataGapRecoverer : ISupportLifecycle, IProvideStatus
     /// generated. In general, there should only be a few dozen distinct event names per class. Exceeding this
     /// threshold will cause the EventName to be replaced with a general warning that a usage issue has occurred.
     /// </remarks>
-    protected virtual void OnProcessException(MessageLevel level, Exception exception, string eventName = null, MessageFlags flags = MessageFlags.None)
+    protected virtual void OnProcessException(MessageLevel level, Exception exception, string? eventName = null, MessageFlags flags = MessageFlags.None)
     {
-        try
-        {
-            Log.Publish(level, flags, eventName ?? "DataGapRecovery", exception?.Message, null, exception);
+        Log.Publish(level, flags, eventName ?? "DataGapRecovery", exception.Message, null, exception);
 
-            using (Logger.SuppressLogMessages())
-                ProcessException?.Invoke(this, new EventArgs<Exception>(exception));
-        }
-        catch (Exception ex)
-        {
-            // We protect our code from consumer thrown exceptions
-            Log.Publish(MessageLevel.Info, "ConsumerEventException", $"Exception in consumer handler for ProcessException event: {ex.Message}", null, ex);
-        }
+        using (Logger.SuppressLogMessages())
+            ProcessException?.SafeInvoke(this, new EventArgs<Exception>(exception));
     }
 
     private string GetLoggingPath(string filePath)
@@ -913,12 +881,12 @@ public class DataGapRecoverer : ISupportLifecycle, IProvideStatus
         return string.IsNullOrWhiteSpace(m_loggingPath) ? FilePath.GetAbsolutePath(filePath) : Path.Combine(m_loggingPath, filePath);
     }
 
-    private void TemporalSubscription_ConnectionEstablished(object sender, EventArgs e)
+    private void TemporalSubscription_ConnectionEstablished(object? sender, EventArgs e)
     {
         m_connected = true;
     }
 
-    private void TemporalSubscription_ConnectionTerminated(object sender, EventArgs e)
+    private void TemporalSubscription_ConnectionTerminated(object? sender, EventArgs e)
     {
         m_connected = false;
 
@@ -937,7 +905,7 @@ public class DataGapRecoverer : ISupportLifecycle, IProvideStatus
         }
     }
 
-    private void TemporalSubscription_ProcessingComplete(object sender, EventArgs<string> e)
+    private void TemporalSubscription_ProcessingComplete(object? sender, EventArgs<string> e)
     {
         OnStatusMessage(MessageLevel.Info, "Temporal data recovery processing completed.");
 
@@ -945,7 +913,7 @@ public class DataGapRecoverer : ISupportLifecycle, IProvideStatus
         m_dataStreamMonitor.Enabled = false;
     }
 
-    private void TemporalSubscription_NewMeasurements(object sender, EventArgs<ICollection<IMeasurement>> e)
+    private void TemporalSubscription_NewMeasurements(object? sender, EventArgs<ICollection<IMeasurement>> e)
     {
         ICollection<IMeasurement> measurements = e.Argument;
         int total = measurements.Count;
@@ -976,17 +944,17 @@ public class DataGapRecoverer : ISupportLifecycle, IProvideStatus
         m_dataStreamMonitor.Enabled = false;
     }
 
-    private void Common_StatusMessage(object sender, EventArgs<string> e)
+    private void Common_StatusMessage(object? sender, EventArgs<string> e)
     {
         OnStatusMessage(MessageLevel.Info, e.Argument);
     }
 
-    private void Common_ProcessException(object sender, EventArgs<Exception> e)
+    private void Common_ProcessException(object? sender, EventArgs<Exception> e)
     {
         OnProcessException(MessageLevel.Warning, e.Argument);
     }
 
-    private void DataStreamMonitor_Elapsed(object sender, EventArgs<DateTime> e)
+    private void DataStreamMonitor_Elapsed(object? sender, EventArgs<DateTime> e)
     {
         if (m_measurementsRecoveredOverLastInterval == 0)
         {

@@ -32,40 +32,8 @@
 //       Modified Header.
 //
 //******************************************************************************************************
-
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Configuration;
-using System.Data;
-using System.Globalization;
-using System.IO;
-using System.IO.Compression;
-using System.Linq;
-using System.Net;
-using System.Net.Security;
-using System.Net.Sockets;
-using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Text.RegularExpressions;
-using System.Threading;
-using System.Xml;
-using GSF;
-using GSF.Communication;
-using GSF.Configuration;
-using GSF.Data;
-using GSF.Diagnostics;
-using GSF.IO;
-using GSF.Net.Security;
-using GSF.Security.Cryptography;
-using GSF.Threading;
-using GSF.TimeSeries;
-using GSF.TimeSeries.Adapters;
-using GSF.TimeSeries.Statistics;
-using GSF.TimeSeries.Transport;
-using GSF.Units;
-using TcpClient = GSF.Communication.TcpClient;
+// ReSharper disable ArrangeObjectCreationWhenTypeNotEvident
+// ReSharper disable UseUtf8StringLiteral
 
 namespace sttp;
 
@@ -473,6 +441,7 @@ public enum DataPacketFlags : byte
     /// Bit set = compact, bit clear = full fidelity.
     /// </remarks>
     Compact = (byte)Bits.Bit01,
+
     /// <summary>
     /// Determines which cipher index to use when encrypting data packet.
     /// </summary>
@@ -480,6 +449,7 @@ public enum DataPacketFlags : byte
     /// Bit set = use odd cipher index (i.e., 1), bit clear = use even cipher index (i.e., 0).
     /// </remarks>
     CipherIndex = (byte)Bits.Bit02,
+
     /// <summary>
     /// Determines if data packet payload is compressed.
     /// </summary>
@@ -487,6 +457,7 @@ public enum DataPacketFlags : byte
     /// Bit set = payload compressed, bit clear = payload normal.
     /// </remarks>
     Compressed = (byte)Bits.Bit03,
+
     /// <summary>
     /// Determines which Signal Index Cache index to use when decoding a data packet.
     /// </summary>
@@ -494,6 +465,7 @@ public enum DataPacketFlags : byte
     /// Bit set = use odd Signal Index Cache index (i.e., 1), bit clear = use even Signal Index Cache index (i.e., 0).
     /// </remarks>
     CacheIndex = (byte)Bits.Bit04,
+
     /// <summary>
     /// No flags set.
     /// </summary>
@@ -522,6 +494,7 @@ public enum OperationalModes : uint
     /// Version number is currently set to 2.
     /// </remarks>
     VersionMask = (uint)(Bits.Bit04 | Bits.Bit03 | Bits.Bit02 | Bits.Bit01 | Bits.Bit00),
+
     /// <summary>
     /// Mask to get mode of compression.
     /// </summary>
@@ -530,6 +503,7 @@ public enum OperationalModes : uint
     /// reserved for future compression modes.
     /// </remarks>
     CompressionModeMask = (uint)(Bits.Bit07 | Bits.Bit06 | Bits.Bit05),
+
     /// <summary>
     /// Mask to get character encoding used when exchanging messages between publisher and subscriber.
     /// </summary>
@@ -540,6 +514,7 @@ public enum OperationalModes : uint
     /// 11 = ANSI
     /// </remarks>
     EncodingMask = (uint)(Bits.Bit09 | Bits.Bit08),
+
     /// <summary>
     /// Determines whether external measurements are exchanged during metadata synchronization.
     /// </summary>
@@ -547,6 +522,7 @@ public enum OperationalModes : uint
     /// Bit set = external measurements are exchanged, bit clear = no external measurements are exchanged
     /// </remarks>
     ReceiveExternalMetadata = (uint)Bits.Bit25,
+
     /// <summary>
     /// Determines whether internal measurements are exchanged during metadata synchronization.
     /// </summary>
@@ -554,6 +530,7 @@ public enum OperationalModes : uint
     /// Bit set = internal measurements are exchanged, bit clear = no internal measurements are exchanged
     /// </remarks>
     ReceiveInternalMetadata = (uint)Bits.Bit26,
+
     /// <summary>
     /// Determines whether payload data is compressed when exchanging between publisher and subscriber.
     /// </summary>
@@ -561,6 +538,7 @@ public enum OperationalModes : uint
     /// Bit set = compress, bit clear = no compression
     /// </remarks>
     CompressPayloadData = (uint)Bits.Bit29,
+
     /// <summary>
     /// Determines whether the signal index cache is compressed when exchanging between publisher and subscriber.
     /// </summary>
@@ -568,6 +546,7 @@ public enum OperationalModes : uint
     /// Bit set = compress, bit clear = no compression
     /// </remarks>
     CompressSignalIndexCache = (uint)Bits.Bit30,
+
     /// <summary>
     /// Determines whether metadata is compressed when exchanging between publisher and subscriber.
     /// </summary>
@@ -575,6 +554,7 @@ public enum OperationalModes : uint
     /// Bit set = compress, bit clear = no compression
     /// </remarks>
     CompressMetadata = (uint)Bits.Bit31,
+
     /// <summary>
     /// No flags set.
     /// </summary>
@@ -595,10 +575,12 @@ public enum OperationalEncoding : uint
     /// UTF-16, little endian
     /// </summary>
     UTF16LE = (uint)Bits.Nil,
+
     /// <summary>
     /// UTF-16, big endian
     /// </summary>
     UTF16BE = (uint)Bits.Bit08,
+
     /// <summary>
     /// UTF-8
     /// </summary>
@@ -615,10 +597,12 @@ public enum CompressionModes : uint
     /// GZip compression
     /// </summary>
     GZip = (uint)Bits.Bit05,
+
     /// <summary>
     /// TSSC compression
     /// </summary>
     TSSC = (uint)Bits.Bit06,
+
     /// <summary>
     /// No compression
     /// </summary>
@@ -645,7 +629,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             ConnectionString = connectionString;
         }
 
-        public override DataSet DataSource
+        public override DataSet? DataSource
         {
             get => base.DataSource;
             set
@@ -672,7 +656,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
 
         private void UpdateInputMeasurementKeys()
         {
-            if (Settings.TryGetValue("inputMeasurementKeys", out string inputMeasurementKeys))
+            if (Settings.TryGetValue("inputMeasurementKeys", out string? inputMeasurementKeys))
                 InputMeasurementKeys = ParseInputMeasurementKeys(DataSource, true, inputMeasurementKeys);
         }
     }
@@ -687,7 +671,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <see cref="EventArgs{T1, T2, T3}.Argument2"/> is the connection identification (e.g., IP and DNS name, if available).<br/>
     /// <see cref="EventArgs{T1, T2, T3}.Argument3"/> is the subscriber information as reported by the client.
     /// </remarks>
-    public event EventHandler<EventArgs<Guid, string, string>> ClientConnected;
+    public event EventHandler<EventArgs<Guid, string, string>>? ClientConnected;
 
     /// <summary>
     /// Indicates to the host that processing for an input adapter (via temporal session) has completed.
@@ -696,7 +680,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// This event is expected to only be raised when an input adapter has been designed to process
     /// a finite amount of data, e.g., reading a historical range of data during temporal processing.
     /// </remarks>
-    public event EventHandler ProcessingComplete;
+    public event EventHandler? ProcessingComplete;
 
     // Constants
 
@@ -755,19 +739,28 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// </summary>
     public const bool DefaultValidateClientIPAddress = false;
 
+#if !NET
     /// <summary>
     /// Default value for <see cref="UseSimpleTcpClient"/>.
     /// </summary>
     public const bool DefaultUseSimpleTcpClient = false;
+#endif
 
     /// <summary>
     /// Default value for <see cref="MetadataTables"/>.
     /// </summary>
     public const string DefaultMetadataTables =
+    #if NET
+        "SELECT UniqueID, OriginalSource, IsConcentrator, Acronym, Name, AccessID, ParentAcronym, CompanyAcronym, VendorAcronym, VendorDeviceName, Longitude, Latitude, InterconnectionName, ContactList, Enabled, UpdatedOn FROM DeviceDetail WHERE IsConcentrator = 0;" +
+        "SELECT DeviceAcronym, ID, SignalID, PointTag, AlternateTag, SignalReference, SignalAcronym, PhasorSourceIndex, Description, Internal, Enabled, UpdatedOn FROM MeasurementDetail;" +
+        "SELECT ID, DeviceAcronym, Label, Type, Phase, PrimaryVoltageID, SecondaryVoltageID, SourceIndex, BaseKV, UpdatedOn FROM PhasorDetail;" +
+        "SELECT TOP 1 Version AS VersionNumber FROM VersionInfo AS SchemaVersion";
+    #else
         "SELECT NodeID, UniqueID, OriginalSource, IsConcentrator, Acronym, Name, AccessID, ParentAcronym, ProtocolName, FramesPerSecond, CompanyAcronym, VendorAcronym, VendorDeviceName, Longitude, Latitude, InterconnectionName, ContactList, Enabled, UpdatedOn FROM DeviceDetail WHERE IsConcentrator = 0;" +
         "SELECT DeviceAcronym, ID, SignalID, PointTag, AlternateTag, SignalReference, SignalAcronym, PhasorSourceIndex, Description, Internal, Enabled, UpdatedOn FROM MeasurementDetail;" +
         "SELECT ID, DeviceAcronym, Label, Type, Phase, DestinationPhasorID, SourceIndex, BaseKV, UpdatedOn FROM PhasorDetail;" +
         "SELECT VersionNumber FROM SchemaVersion";
+    #endif
 
     /// <summary>
     /// Default value for <see cref="MutualSubscription"/>.
@@ -790,6 +783,26 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     public const long DefaultMaxPublishInterval = 0L;
 
     /// <summary>
+    /// Default value for <see cref="TimeSortedPublication"/>.
+    /// </summary>
+    public const bool DefaultTimeSortedPublication = false;
+
+    /// <summary>
+    /// Default value for <see cref="TimeSortedSamplingRate"/>.
+    /// </summary>
+    public const int DefaultTimeSortedSamplingRate = 30;
+
+    /// <summary>
+    /// Default value for <see cref="TimeSortedLagTime"/>.
+    /// </summary>
+    public const double DefaultTimeSortedLagTime = 5.0D;
+
+    /// <summary>
+    /// Default value for <see cref="TimeSortedLeadTime"/>.
+    /// </summary>
+    public const double DefaultTimeSortedLeadTime = 5.0D;
+
+    /// <summary>
     /// Size of client response header in bytes.
     /// </summary>
     /// <remarks>
@@ -801,17 +814,17 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     internal const int CipherSaltLength = 8;
 
     // Fields
-    private IServer m_serverCommandChannel;
-    private IClient m_clientCommandChannel;
-    private CertificatePolicyChecker m_certificateChecker;
-    private Dictionary<X509Certificate, DataRow> m_subscriberIdentities;
+    private IServer? m_serverCommandChannel;
+    private IClient? m_clientCommandChannel;
+    private CertificatePolicyChecker? m_certificateChecker;
+    private Dictionary<X509Certificate, DataRow>? m_subscriberIdentities;
     private readonly ConcurrentDictionary<Guid, IServer> m_clientPublicationChannels;
     private readonly Dictionary<Guid, Dictionary<int, string>> m_clientNotifications;
-    private readonly object m_clientNotificationsLock;
-    private SharedTimer m_cipherKeyRotationTimer;
+    private readonly Lock m_clientNotificationsLock;
+    private readonly SharedTimer m_cipherKeyRotationTimer;
+    private readonly RoutingTables m_routingTables;
     private long m_commandChannelConnectionAttempts;
     private Guid? m_proxyClientID;
-    private RoutingTables m_routingTables;
     private bool m_encryptPayload;
 
     private long m_totalMeasurementsPerSecond;
@@ -839,7 +852,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         ClientConnections = new ConcurrentDictionary<Guid, SubscriberConnection>();
         m_clientPublicationChannels = new ConcurrentDictionary<Guid, IServer>();
         m_clientNotifications = new Dictionary<Guid, Dictionary<int, string>>();
-        m_clientNotificationsLock = new object();
+        m_clientNotificationsLock = new();
         SecurityMode = DefaultSecurityMode;
         m_encryptPayload = DefaultEncryptPayload;
         SharedDatabase = DefaultSharedDatabase;
@@ -855,7 +868,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             m_routingTables = OptimizationOptions.DefaultRoutingMethod switch
             {
                 OptimizationOptions.RoutingMethod.HighLatencyLowCpu => new RoutingTables(new RouteMappingHighLatencyLowCpu()),
-                _                                                   => new RoutingTables()
+                _ => new RoutingTables()
             };
         }
 
@@ -880,6 +893,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Define the security mode used for communications over the command channel.")]
     [DefaultValue(DefaultSecurityMode)]
+    [Label("Security Mode")]
     public SecurityMode SecurityMode { get; set; }
 
     /// <summary>
@@ -900,6 +914,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Define the flag that determines whether data sent over the data channel should be encrypted.")]
     [DefaultValue(DefaultEncryptPayload)]
+    [Label("Encrypt Payload")]
     public bool EncryptPayload
     {
         get => m_encryptPayload;
@@ -908,7 +923,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             m_encryptPayload = value;
 
             // Start cipher key rotation timer when encrypting payload
-            if (m_cipherKeyRotationTimer is not null)
+            if (!m_disposed)
                 m_cipherKeyRotationTimer.Enabled = value;
         }
     }
@@ -920,6 +935,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Define the flag that indicates whether this publisher is publishing data that this node subscribed to from another node in a shared database.")]
     [DefaultValue(DefaultSharedDatabase)]
+    [Label("Shared Database")]
     public bool SharedDatabase { get; set; }
 
     /// <summary>
@@ -928,6 +944,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Define the flag that indicates if this publisher will allow payload compression when requested by subscribers.")]
     [DefaultValue(DefaultAllowPayloadCompression)]
+    [Label("Allow Payload Compression")]
     public bool AllowPayloadCompression { get; set; }
 
     /// <summary>
@@ -936,6 +953,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Define the flag that indicates if this publisher will allow metadata refresh commands when requested by subscribers.")]
     [DefaultValue(DefaultAllowMetadataRefresh)]
+    [Label("Allow Metadata Refresh")]
     public bool AllowMetadataRefresh { get; set; }
 
     /// <summary>
@@ -944,6 +962,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Define the flag that indicates if this publisher will allow filtering of data which is not a number.")]
     [DefaultValue(DefaultAllowNaNValueFilter)]
+    [Label("Allow NaN Value Filter")]
     public bool AllowNaNValueFilter { get; set; }
 
     /// <summary>
@@ -952,6 +971,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Define the flag that indicates if this publisher will force filtering of data which is not a number.")]
     [DefaultValue(DefaultForceNaNValueFilter)]
+    [Label("Force NaN Value Filter")]
     public bool ForceNaNValueFilter { get; set; }
 
     /// <summary>
@@ -960,6 +980,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Define the flag that determines whether to use base time offsets to decrease the size of compact measurements.")]
     [DefaultValue(DefaultUseBaseTimeOffsets)]
+    [Label("Force NaN Value Filter")]
     public bool UseBaseTimeOffsets { get; set; }
 
     /// <summary>
@@ -968,11 +989,16 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Defines the maximum packet size to use for data publications. This number should be set as small as possible to reduce fragmentation, but large enough to keep large data flows from falling behind.")]
     [DefaultValue(DefaultMaxPacketSize)]
+    [Label("Max Packet Size")]
     public int MaxPacketSize { get; set; } = DefaultMaxPacketSize;
 
+    /// <summary>
+    /// Get or sets the size of the buffer used for sending and receiving data from clients.
+    /// </summary>
     [ConnectionStringParameter]
-    [Description("The size of the buffer used for sending and receiving data from clients.")]
+    [Description("Define the size of the buffer used for sending and receiving data from clients.")]
     [DefaultValue(DefaultBufferSize)]
+    [Label("Buffer Size")]
     public int BufferSize { get; set; } = DefaultBufferSize;
 
     /// <summary>
@@ -981,24 +1007,16 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Define the period, in milliseconds, over which new cipher keys will be provided to subscribers when EncryptPayload is true.")]
     [DefaultValue(DefaultCipherKeyRotationPeriod)]
+    [Label("Cipher Key Rotation Period")]
     public double CipherKeyRotationPeriod
     {
-        get
-        {
-            if (m_cipherKeyRotationTimer is not null)
-                return m_cipherKeyRotationTimer.Interval;
-
-            return double.NaN;
-        }
+        get => m_cipherKeyRotationTimer.Interval;
         set
         {
             if (value < 1000.0D)
                 throw new ArgumentOutOfRangeException(nameof(value), "Cipher key rotation period should not be set to less than 1000 milliseconds.");
 
-            if (m_cipherKeyRotationTimer is not null)
-                m_cipherKeyRotationTimer.Interval = (int)value;
-            else
-                throw new ArgumentException("Cannot assign new cipher rotation period, timer is not defined.");
+            m_cipherKeyRotationTimer.Interval = (int)value;
         }
     }
 
@@ -1008,9 +1026,12 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// </summary>
     [ConnectionStringParameter]
     [Description("Defines the set of measurements to be cached and sent to subscribers immediately upon subscription.")]
+#if !NET
     [CustomConfigurationEditor("GSF.TimeSeries.UI.WPF.dll", "GSF.TimeSeries.UI.Editors.MeasurementEditor")]
+#endif
     [DefaultValue("")]
-    public string CachedMeasurementExpression { get; set; }
+    [Label("Cached Measurement Expression")]
+    public string CachedMeasurementExpression { get; set; } = "";
 
     /// <summary>
     /// Gets or sets the measurement reporting interval.
@@ -1021,6 +1042,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Defines the measurement reporting interval used to determined how many measurements should be processed, per subscriber, before reporting status.")]
     [DefaultValue(AdapterBase.DefaultMeasurementReportingInterval)]
+    [Label("Measurement Reporting Interval")]
     public int MeasurementReportingInterval { get; set; }
 
     /// <summary>
@@ -1029,7 +1051,57 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Defines the maximum publication interval in milliseconds for data publications. Set to zero for no defined maximum.")]
     [DefaultValue(DefaultMaxPublishInterval)]
+    [Label("Max Publish Interval")]
     public long MaxPublishInterval { get; set; } = DefaultMaxPublishInterval;
+
+    /// <summary>
+    /// Gets or sets flag that determines if data should be pre-processed before publication as time-sorted.
+    /// </summary>
+    [ConnectionStringParameter]
+    [Description("Defines flag that determines if data should be pre-processed before publication as time-sorted.")]
+    [DefaultValue(DefaultTimeSortedPublication)]
+    [Label("Time-sort Measurement Publication")]
+    public bool TimeSortedPublication { get; set; }
+
+    /// <summary>
+    /// Gets or sets the target sampling rate for pre-publication time-sorting.
+    /// </summary>
+    /// <remarks>
+    /// Valid sampling rates for a <see cref="ConcentratorBase"/> are greater than 0 samples per second.
+    /// </remarks>
+    [ConnectionStringParameter]
+    [DefaultValue(DefaultTimeSortedSamplingRate)]
+    [Description("Defines the target sampling rate for pre-publication time-sorting.")]
+    [Label("Time-sorted Sampling Rate")]
+    public int TimeSortedSamplingRate { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the allowed past-time deviation tolerance for pre-publication time-sorting, in seconds (can be sub-second).
+    /// </summary>
+    /// <remarks>
+    /// <para>Defines the time sensitivity to past measurement timestamps.</para>
+    /// <para>The number of seconds allowed before assuming a measurement timestamp is too old.</para>
+    /// <para>This becomes the amount of delay introduced by the concentrator to allow time for data to flow into the system.</para>
+    /// </remarks>
+    [ConnectionStringParameter]
+    [DefaultValue(DefaultTimeSortedLagTime)]
+    [Description("Defines the allowed past time deviation tolerance for pre-publication time-sorting, in seconds (can be sub-second).")]
+    [Label("Time-sorted Lag Time")]
+    public double TimeSortedLagTime { get; set; }
+
+    /// <summary>
+    /// Gets or sets the allowed future time deviation tolerance for pre-publication time-sorting, in seconds (can be sub-second).
+    /// </summary>
+    /// <remarks>
+    /// <para>Defines the time sensitivity to future measurement timestamps.</para>
+    /// <para>The number of seconds allowed before assuming a measurement timestamp is too advanced.</para>
+    /// <para>This becomes the tolerated +/- accuracy of the local clock to real-time.</para>
+    /// </remarks>
+    [ConnectionStringParameter]
+    [DefaultValue(DefaultTimeSortedLeadTime)]
+    [Description("Defines the allowed future time deviation tolerance for pre-publication time-sorting, in seconds (can be sub-second).")]
+    [Label("Time-sorted Lead Time")]
+    public double TimeSortedLeadTime { get; set; }
 
     /// <summary>
     /// Gets or sets flag that determines whether measurement rights validation is enforced. Defaults to true for TLS connections.
@@ -1037,6 +1109,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Define the flag that determines whether measurement rights validation is enforced. Defaults to true for TLS connections.")]
     [DefaultValue(DefaultValidateMeasurementRights)]
+    [Label("Validate Measurement Rights")]
     public bool ValidateMeasurementRights { get; set; }
 
     /// <summary>
@@ -1045,8 +1118,10 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Define the flag that determines whether client subscriber IP address is validated. Defaults to true when measurement rights are validated.")]
     [DefaultValue(DefaultValidateClientIPAddress)]
+    [Label("Validate Client IP Address")]
     public bool ValidateClientIPAddress { get; set; }
 
+#if !NET
     /// <summary>
     /// Gets or sets flag that determines if a <see cref="TcpSimpleClient"/> should be used for reverse connections.
     /// </summary>
@@ -1054,12 +1129,13 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [DefaultValue(DefaultUseSimpleTcpClient)]
     [Description("Define the flag that determines whether a simple TCP client should be used for reverse connections.")]
     public bool UseSimpleTcpClient { get; set; } = DefaultUseSimpleTcpClient;
+#endif
 
     /// <summary>
     /// Gets or sets <see cref="DataSet"/> based data source used to load each <see cref="IAdapter"/>.
     /// Updates to this property will cascade to all items in this <see cref="AdapterCollectionBase{T}"/>.
     /// </summary>
-    public override DataSet DataSource
+    public override DataSet? DataSource
     {
         get => base.DataSource;
         set
@@ -1092,10 +1168,13 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             status.Append(m_serverCommandChannel?.Status);
             status.Append(m_clientCommandChannel?.Status);
 
+        #if !NET
             if (m_clientCommandChannel is not null)
                 status.AppendLine($"   Using simple TCP client: {UseSimpleTcpClient}");
+        #endif
 
             status.Append(base.Status);
+
             status.AppendLine($"       Mutual Subscription: {MutualSubscription}");
             status.AppendLine($"        Reporting interval: {MeasurementReportingInterval:N0} per subscriber");
             status.AppendLine($"  Buffer block retransmits: {BufferBlockRetransmissions:N0}");
@@ -1119,8 +1198,10 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             // Only server command channel settings are persisted to config file
             base.Name = value.ToUpper();
 
+        #if !NET
             if (m_serverCommandChannel is IPersistSettings commandChannel)
                 commandChannel.SettingsCategory = value.Replace("!", "").ToLower();
+        #endif
         }
     }
 
@@ -1130,6 +1211,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Semi-colon separated list of SQL select statements used to create data for meta-data exchange.")]
     [DefaultValue(DefaultMetadataTables)]
+    [Label("Metadata Tables")]
     public string MetadataTables { get; set; }
 
     /// <summary>
@@ -1153,6 +1235,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [ConnectionStringParameter]
     [Description("Gets or sets flag that determines if a subscription is mutual, i.e., bi-directional pub/sub.")]
     [DefaultValue(DefaultMutualSubscription)]
+    [Label("Mutual Subscription")]
     public bool MutualSubscription { get; set; }
 
     /// <summary>
@@ -1164,12 +1247,12 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <summary>
     /// Gets dictionary of connected clients.
     /// </summary>
-    protected internal ConcurrentDictionary<Guid, SubscriberConnection> ClientConnections { get; private set; }
+    protected internal ConcurrentDictionary<Guid, SubscriberConnection> ClientConnections { get; }
 
     /// <summary>
     /// Gets or sets reference to <see cref="TcpServer"/> command channel, attaching and/or detaching to events as needed.
     /// </summary>
-    protected IServer ServerCommandChannel
+    protected IServer? ServerCommandChannel
     {
         get => m_serverCommandChannel;
         set
@@ -1214,7 +1297,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <remarks>
     /// This handles reverse connectivity operations.
     /// </remarks>
-    protected IClient ClientCommandChannel
+    protected IClient? ClientCommandChannel
     {
         get => m_clientCommandChannel;
         set
@@ -1321,30 +1404,21 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
 
             ServerCommandChannel = null;
 
-            ClientConnections?.Values.AsParallel().ForAll(cc => cc.Dispose());
+            ClientConnections.Values.AsParallel().ForAll(cc => cc.Dispose());
+            ClientConnections.Clear();
 
-            ClientConnections = null;
-
-            if (m_routingTables is not null)
-            {
-                m_routingTables.StatusMessage -= RoutingTables_StatusMessage;
-                m_routingTables.ProcessException -= RoutingTables_ProcessException;
-                m_routingTables.Dispose();
-            }
-            m_routingTables = null;
+            m_routingTables.StatusMessage -= RoutingTables_StatusMessage;
+            m_routingTables.ProcessException -= RoutingTables_ProcessException;
+            m_routingTables.Dispose();
 
             // Dispose the cipher key rotation timer
-            if (m_cipherKeyRotationTimer is not null)
-            {
-                m_cipherKeyRotationTimer.Elapsed -= CipherKeyRotationTimer_Elapsed;
-                m_cipherKeyRotationTimer.Dispose();
-            }
-            m_cipherKeyRotationTimer = null;
+            m_cipherKeyRotationTimer.Elapsed -= CipherKeyRotationTimer_Elapsed;
+            m_cipherKeyRotationTimer.Dispose();
         }
         finally
         {
-            m_disposed = true;          // Prevent duplicate dispose.
-            base.Dispose(disposing);    // Call base class Dispose().
+            m_disposed = true; // Prevent duplicate dispose.
+            base.Dispose(disposing); // Call base class Dispose().
         }
     }
 
@@ -1362,7 +1436,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         Dictionary<string, string> settings = Settings;
 
         // Check flag that will determine if subscriber payloads should be encrypted by default
-        if (settings.TryGetValue(nameof(EncryptPayload), out string setting))
+        if (settings.TryGetValue(nameof(EncryptPayload), out string? setting))
             m_encryptPayload = setting.ParseBoolean();
 
         // Check flag that indicates whether publisher is publishing data
@@ -1412,6 +1486,33 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
 
         if (MaxPublishInterval < 0L)
             MaxPublishInterval = 0L;
+        
+        if (settings.TryGetValue(nameof(TimeSortedPublication), out setting))
+            TimeSortedPublication = setting.ParseBoolean();
+
+        if (settings.TryGetValue(nameof(TimeSortedSamplingRate), out setting) && int.TryParse(setting, out int samplingRate))
+            TimeSortedSamplingRate = samplingRate;
+        else
+            TimeSortedSamplingRate = DefaultTimeSortedSamplingRate;
+
+        if (TimeSortedPublication && TimeSortedSamplingRate < 1)
+            throw new ArgumentOutOfRangeException(nameof(TimeSortedSamplingRate), "Time-sorted sampling rate must be greater than 0");
+
+        if (settings.TryGetValue(nameof(TimeSortedLagTime), out setting) && double.TryParse(setting, out double lagTime))
+            TimeSortedLagTime = lagTime;
+        else
+            TimeSortedLagTime = DefaultTimeSortedLagTime;
+        
+        if (TimeSortedPublication && TimeSortedLagTime <= 0.0D)
+            throw new ArgumentOutOfRangeException(nameof(TimeSortedLagTime), "Time-sorted lag-time must be greater than zero, but it can be less than one");
+
+        if (settings.TryGetValue(nameof(TimeSortedLeadTime), out setting) && double.TryParse(setting, out double leadTime))
+            TimeSortedLeadTime = leadTime;
+        else
+            TimeSortedLeadTime = DefaultTimeSortedLeadTime;
+
+        if (TimeSortedPublication && TimeSortedLeadTime <= 0.0D)
+            throw new ArgumentOutOfRangeException(nameof(TimeSortedLeadTime), "Time-sorted lead-time must be greater than zero, but it can be less than one");
 
         // Get user specified period for cipher key rotation
         if (settings.TryGetValue(nameof(CipherKeyRotationPeriod), out setting) && double.TryParse(setting, out double period))
@@ -1463,11 +1564,11 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         bool clientBasedConnection = false;
 
         // Attempt to retrieve any defined command channel settings
-        Dictionary<string, string> commandChannelSettings = settings.TryGetValue("commandChannel", out string commandChannelConnectionString) ?
+        Dictionary<string, string> commandChannelSettings = settings.TryGetValue("commandChannel", out string? commandChannelConnectionString) ? 
             commandChannelConnectionString.ParseKeyValuePairs() :
             settings;
 
-        if (commandChannelSettings.TryGetValue("server", out string server))
+        if (commandChannelSettings.TryGetValue("server", out string? server))
             clientBasedConnection = !string.IsNullOrWhiteSpace(server);
 
         if (!commandChannelSettings.TryGetValue("bufferSize", out setting) || !int.TryParse(setting, out bufferSize))
@@ -1476,8 +1577,10 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         if (bufferSize == 0)
             bufferSize = BufferSize;
 
+    #if !NET
         if (settings.TryGetValue(nameof(UseSimpleTcpClient), out setting))
             UseSimpleTcpClient = setting.ParseBoolean();
+    #endif
 
         if (SecurityMode == SecurityMode.TLS)
         {
@@ -1490,7 +1593,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             {
                 bool checkCertificateRevocation;
 
-                if (!commandChannelSettings.TryGetValue("localCertificate", out string localCertificate) || !File.Exists(localCertificate))
+                if (!commandChannelSettings.TryGetValue("localCertificate", out string? localCertificate) || !File.Exists(localCertificate))
                     localCertificate = DataSubscriber.GetLocalCertificate();
 
                 if (commandChannelSettings.TryGetValue("remoteCertificate", out setting))
@@ -1513,14 +1616,16 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                     PayloadAware = true,
                     PayloadMarker = null,
                     PayloadEndianOrder = EndianOrder.BigEndian,
-                    PersistSettings = false,
                     MaxConnectionAttempts = 1,
-                    CertificateFile = FilePath.GetAbsolutePath(localCertificate),
+                    CertificateFile = FilePath.GetAbsolutePath(localCertificate!),
                     CheckCertificateRevocation = checkCertificateRevocation,
                     CertificateChecker = m_certificateChecker,
                     SendBufferSize = BufferSize,
                     ReceiveBufferSize = bufferSize,
-                    NoDelay = true
+                    NoDelay = true,
+                #if !NET
+                    PersistSettings = false,
+                #endif
                 };
 
                 // Assign command channel client reference and attach to needed events
@@ -1531,17 +1636,19 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                 // Create a new TLS server
                 TlsServer commandChannel = new()
                 {
-                    SettingsCategory = Name.Replace("!", "").ToLower(),
                     ConfigurationString = "port=7167",
                     PayloadAware = true,
                     PayloadMarker = null,
                     PayloadEndianOrder = EndianOrder.BigEndian,
                     RequireClientCertificate = true,
                     CertificateChecker = m_certificateChecker,
-                    PersistSettings = true,
                     SendBufferSize = BufferSize,
                     ReceiveBufferSize = BufferSize,
-                    NoDelay = true
+                    NoDelay = true,
+                #if !NET
+                    PersistSettings = true,
+                    SettingsCategory = Name.Replace("!", "").ToLower(),
+                #endif
                 };
 
                 // Assign command channel server reference and attach to needed events
@@ -1552,6 +1659,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         {
             if (clientBasedConnection)
             {
+            #if !NET
                 if (UseSimpleTcpClient)
                 {
                     // Create a new simple TCP client
@@ -1572,37 +1680,44 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                 }
                 else
                 {
-                    // Create a new TCP client
-                    TcpClient commandChannel = new()
-                    {
-                        PayloadAware = true,
-                        PayloadMarker = null,
-                        PayloadEndianOrder = EndianOrder.BigEndian,
-                        PersistSettings = false,
-                        MaxConnectionAttempts = -1,
-                        SendBufferSize = BufferSize,
-                        ReceiveBufferSize = bufferSize,
-                        NoDelay = true
-                    };
+            #endif
+                // Create a new TCP client
+                TcpClient commandChannel = new()
+                {
+                    PayloadAware = true,
+                    PayloadMarker = null,
+                    PayloadEndianOrder = EndianOrder.BigEndian,
+                    MaxConnectionAttempts = -1,
+                    SendBufferSize = BufferSize,
+                    ReceiveBufferSize = bufferSize,
+                    NoDelay = true,
+                #if !NET
+                    PersistSettings = false,
+                #endif
+                };
 
-                    // Assign command channel client reference and attach to needed events
-                    ClientCommandChannel = commandChannel;
+                // Assign command channel client reference and attach to needed events
+                ClientCommandChannel = commandChannel;
+            #if !NET
                 }
+            #endif
             }
             else
             {
                 // Create a new TCP server
                 TcpServer commandChannel = new()
                 {
-                    SettingsCategory = Name.Replace("!", "").ToLower(),
                     ConfigurationString = "port=7165",
                     PayloadAware = true,
                     PayloadMarker = null,
                     PayloadEndianOrder = EndianOrder.BigEndian,
-                    PersistSettings = true,
                     SendBufferSize = BufferSize,
                     ReceiveBufferSize = BufferSize,
-                    NoDelay = true
+                    NoDelay = true,
+                #if !NET
+                    PersistSettings = true,
+                    SettingsCategory = Name.Replace("!", "").ToLower(),
+                #endif
                 };
 
                 // Assign command channel server reference and attach to needed events
@@ -1613,12 +1728,12 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         if (clientBasedConnection)
         {
             // Set client-based connection string
-            m_clientCommandChannel.ConnectionString = commandChannelConnectionString ?? ConnectionString;
+            m_clientCommandChannel!.ConnectionString = commandChannelConnectionString ?? ConnectionString;
         }
         else
         {
             // Initialize TCP server - this will load persisted settings
-            m_serverCommandChannel.Initialize();
+            m_serverCommandChannel!.Initialize();
 
             // Allow user to override persisted server settings by specifying a command channel setting
             if (!string.IsNullOrWhiteSpace(commandChannelConnectionString))
@@ -1627,7 +1742,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
 
         // Start cipher key rotation timer when encrypting payload
         if (m_encryptPayload)
-            m_cipherKeyRotationTimer?.Start();
+            m_cipherKeyRotationTimer.Start();
 
         // Register publisher with the statistics engine
         StatisticsEngine.Register(this, "Publisher", "PUB");
@@ -1645,7 +1760,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// Queues a collection of measurements for processing to each <see cref="IActionAdapter"/> connected to this <see cref="DataPublisher"/>.
     /// </summary>
     /// <param name="measurements">Measurements to queue for processing.</param>
-    public override void QueueMeasurementsForProcessing(IEnumerable<IMeasurement> measurements)
+    public override void QueueMeasurementsForProcessing(IEnumerable<IMeasurement>? measurements)
     {
         if (measurements is null)
             return;
@@ -1666,7 +1781,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// Queues a collection of measurements for processing to each <see cref="IActionAdapter"/> connected to this <see cref="DataPublisher"/>.
     /// </summary>
     /// <param name="measurements">Measurements to queue for processing.</param>
-    private void QueueMeasurementsForProcessing(List<IMeasurement> measurements)
+    private void QueueMeasurementsForProcessing(List<IMeasurement>? measurements)
     {
         if (measurements is null || measurements.Count == 0)
             return;
@@ -1725,25 +1840,31 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <summary>
     /// Enumerates connected clients.
     /// </summary>
-    [AdapterCommand("Enumerates connected clients.", "Administrator", "Editor", "Viewer")]
-    public virtual void EnumerateClients()
+    [AdapterCommand("Enumerates connected clients.")]
+    [Label("Enumerate Clients")]
+    public virtual string EnumerateClients()
     {
-        OnStatusMessage(MessageLevel.Info, EnumerateClients(false));
+        string result = EnumerateClients(false);
+        OnStatusMessage(MessageLevel.Info, result);
+        return result;
     }
 
     /// <summary>
     /// Enumerates connected clients with active temporal sessions.
     /// </summary>
-    [AdapterCommand("Enumerates connected clients with active temporal sessions.", "Administrator", "Editor", "Viewer")]
-    public virtual void EnumerateTemporalClients()
+    [AdapterCommand("Enumerates connected clients with active temporal sessions.")]
+    [Label("Enumerate Temporal Clients")]
+    public virtual string EnumerateTemporalClients()
     {
-        OnStatusMessage(MessageLevel.Info, EnumerateClients(true));
+        string result = EnumerateClients(true);
+        OnStatusMessage(MessageLevel.Info, result);
+        return result;
     }
 
     private string EnumerateClients(bool filterToTemporalSessions)
     {
         StringBuilder clientEnumeration = new();
-        Guid[] clientIDs = (Guid[])m_serverCommandChannel?.ClientIDs.Clone() ?? [m_proxyClientID.GetValueOrDefault()];
+        Guid[] clientIDs = (Guid[]?)m_serverCommandChannel?.ClientIDs.Clone() ?? [m_proxyClientID.GetValueOrDefault()];
 
         clientEnumeration.AppendLine(filterToTemporalSessions ? 
             $"{Environment.NewLine}Indices for connected clients with active temporal sessions:{Environment.NewLine}" : 
@@ -1751,7 +1872,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
 
         for (int i = 0; i < clientIDs.Length; i++)
         {
-            if (!ClientConnections.TryGetValue(clientIDs[i], out SubscriberConnection connection) || connection?.Subscription is null)
+            if (!ClientConnections.TryGetValue(clientIDs[i], out SubscriberConnection? connection) || connection.Subscription is null)
                 continue;
 
             bool hasActiveTemporalSession = connection.Subscription.TemporalConstraintIsDefined();
@@ -1773,7 +1894,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// Rotates cipher keys for specified client connection.
     /// </summary>
     /// <param name="clientIndex">Enumerated index for client connection.</param>
-    [AdapterCommand("Rotates cipher keys for client connection using its enumerated index.", "Administrator")]
+    [AdapterCommand("Rotates cipher keys for client connection using its enumerated index.")]
+    [Label("Rotate Cipher Keys")]
+    [Parameter(nameof(clientIndex), "Client Index", "Enumerated index for client connection.")]
     public virtual void RotateCipherKeys(int clientIndex)
     {
         Guid clientID = Guid.Empty;
@@ -1791,8 +1914,8 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
 
         if (!success)
             return;
-            
-        if (ClientConnections.TryGetValue(clientID, out SubscriberConnection connection))
+
+        if (ClientConnections.TryGetValue(clientID, out SubscriberConnection? connection))
             connection.RotateCipherKeys();
         else
             OnStatusMessage(MessageLevel.Error, $"Failed to find connected client {clientID}");
@@ -1802,7 +1925,8 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// Gets subscriber information for specified client connection.
     /// </summary>
     /// <param name="clientIndex">Enumerated index for client connection.</param>
-    [AdapterCommand("Gets subscriber information for client connection using its enumerated index.", "Administrator", "Editor", "Viewer")]
+    [AdapterCommand("Gets subscriber information for client connection using its enumerated index.")]
+    [Label("Get Subscriber Info")]
     public virtual string GetSubscriberInfo(int clientIndex)
     {
         Guid clientID = Guid.Empty;
@@ -1820,7 +1944,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
 
         if (success)
         {
-            if (ClientConnections.TryGetValue(clientID, out SubscriberConnection connection))
+            if (ClientConnections.TryGetValue(clientID, out SubscriberConnection? connection))
                 return connection.SubscriberInfo;
 
             OnStatusMessage(MessageLevel.Error, $"Failed to find connected client {clientID}");
@@ -1833,7 +1957,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// Gets temporal status for a specified client connection.
     /// </summary>
     /// <param name="clientIndex">Enumerated index for client connection.</param>
-    [AdapterCommand("Gets temporal status for a subscriber, if any, using its enumerated index.", "Administrator", "Editor", "Viewer")]
+    [AdapterCommand("Gets temporal status for a subscriber, if any, using its enumerated index.")]
+    [Label("Get Temporal Status")]
+    [Parameter(nameof(clientIndex), "Client Index", "Enumerated index for client connection.")]
     public virtual string GetTemporalStatus(int clientIndex)
     {
         Guid clientID = Guid.Empty;
@@ -1851,9 +1977,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
 
         if (success)
         {
-            if (ClientConnections.TryGetValue(clientID, out SubscriberConnection connection))
+            if (ClientConnections.TryGetValue(clientID, out SubscriberConnection? connection))
             {
-                string temporalStatus = null;
+                string? temporalStatus = null;
 
                 if (connection.Subscription is not null)
                 {
@@ -1878,10 +2004,11 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// Gets the local certificate currently in use by the data publisher.
     /// </summary>
     /// <returns>The local certificate file read directly from the certificate file as an array of bytes.</returns>
-    [AdapterCommand("Gets the local certificate currently in use by the data publisher.", "Administrator", "Editor")]
+    [AdapterCommand("Gets the local certificate currently in use by the data publisher.")]
+    [Label("Get Local Certificate")]
     public virtual byte[] GetLocalCertificate()
     {
-        if (m_serverCommandChannel is not TlsServer commandChannel)
+        if (m_serverCommandChannel is not TlsServer commandChannel || string.IsNullOrWhiteSpace(commandChannel.CertificateFile))
             throw new InvalidOperationException("Certificates can only be exported in TLS security mode with a server-based command channel.");
 
         return File.ReadAllBytes(FilePath.GetAbsolutePath(commandChannel.CertificateFile));
@@ -1893,7 +2020,10 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <param name="fileName">The file name to give to the certificate when imported.</param>
     /// <param name="certificateData">The data to be written to the certificate file.</param>
     /// <returns>The local path on the server where the file was written.</returns>
-    [AdapterCommand("Imports a certificate to the trusted certificates path.", "Administrator", "Editor")]
+    [AdapterCommand("Imports a certificate to the trusted certificates path.")]
+    [Label("Import Certificate")]
+    [Parameter(nameof(fileName), "File Name", "The file name to give to the certificate when imported.")]
+    [Parameter(nameof(certificateData), "Certificate Data", "The data to be written to the certificate file.")]
     public virtual string ImportCertificate(string fileName, byte[] certificateData)
     {
         if (m_serverCommandChannel is not TlsServer commandChannel)
@@ -1915,18 +2045,21 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// Gets subscriber status for specified subscriber ID.
     /// </summary>
     /// <param name="subscriberID">Guid based subscriber ID for client connection.</param>
-    [AdapterCommand("Gets subscriber status for client connection using its subscriber ID.", "Administrator", "Editor", "Viewer")]
+    [AdapterCommand("Gets subscriber status for client connection using its subscriber ID.")]
+    [Label("Get Subscriber Status")]
+    [Parameter(nameof(subscriberID), "Subscriber ID", "Guid based subscriber ID for client connection.")]
     public virtual Tuple<Guid, bool, string> GetSubscriberStatus(Guid subscriberID)
     {
-        return new Tuple<Guid, bool, string>(subscriberID, 
-            GetConnectionProperty(subscriberID, sc => sc.IsConnected), 
-            GetConnectionProperty(subscriberID, sc => sc.SubscriberInfo));
+        return new Tuple<Guid, bool, string>(subscriberID,
+            GetConnectionProperty(subscriberID, sc => sc.IsConnected),
+            GetConnectionProperty(subscriberID, sc => sc.SubscriberInfo) ?? "undefined");
     }
 
     /// <summary>
     /// Resets the counters for the lifetime statistics without interrupting the adapter's operations.
     /// </summary>
-    [AdapterCommand("Resets the counters for the lifetime statistics without interrupting the adapter's operations.", "Administrator", "Editor")]
+    [AdapterCommand("Resets the counters for the lifetime statistics without interrupting the adapter's operations.")]
+    [Label("Reset Lifetime Counters")]
     public virtual void ResetLifetimeCounters()
     {
         LifetimeMeasurements = 0L;
@@ -1941,7 +2074,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// Sends a notification to all subscribers.
     /// </summary>
     /// <param name="message">The message to be sent.</param>
-    [AdapterCommand("Sends a notification to all subscribers.", "Administrator", "Editor")]
+    [AdapterCommand("Sends a notification to all subscribers.")]
+    [Label("Send Notification")]
+    [Parameter(nameof(message), "Message", "The message to be sent.")]
     public virtual void SendNotification(string message)
     {
         string notification = $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss.fff}] {message}";
@@ -1964,7 +2099,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <param name="clientID">Client ID of connection over which to update signal index cache.</param>
     /// <param name="signalIndexCache">New signal index cache.</param>
     /// <param name="inputMeasurementKeys">Subscribed measurement keys.</param>
-    public Guid[] UpdateSignalIndexCache(Guid clientID, SignalIndexCache signalIndexCache, MeasurementKey[] inputMeasurementKeys)
+    public Guid[] UpdateSignalIndexCache(Guid clientID, SignalIndexCache? signalIndexCache, MeasurementKey[]? inputMeasurementKeys)
     {
         ConcurrentDictionary<int, MeasurementKey> reference = new();
         List<Guid> unauthorizedKeys = [];
@@ -1973,7 +2108,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         if (inputMeasurementKeys is not null)
         {
             Func<Guid, bool> hasRightsFunc = ValidateMeasurementRights ?
-                new SubscriberRightsLookup(DataSource, signalIndexCache.SubscriberID).HasRightsFunc :
+                new SubscriberRightsLookup(DataSource, signalIndexCache?.SubscriberID ?? Guid.Empty).HasRightsFunc :
                 _ => true;
 
             // We will now go through the client's requested keys and see which ones are authorized for subscription,
@@ -1992,7 +2127,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         }
 
         // Send client updated signal index cache
-        if (ClientConnections.TryGetValue(clientID, out SubscriberConnection connection))
+        if (ClientConnections.TryGetValue(clientID, out SubscriberConnection? connection))
         {
             if (connection.Version > 1)
             {
@@ -2002,7 +2137,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                     UnauthorizedSignalIDs = unauthorizedKeys.ToArray()
                 };
 
-                byte[] serializedSignalIndexCache = SerializeSignalIndexCache(clientID, nextSignalIndexCache);
+                byte[]? serializedSignalIndexCache = SerializeSignalIndexCache(clientID, nextSignalIndexCache);
 
                 if (serializedSignalIndexCache is null || serializedSignalIndexCache.Length == 0)
                 {
@@ -2013,7 +2148,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                     lock (connection.CacheUpdateLock)
                     {
                         // Update primary signal cache index at startup
-                        if (connection.SignalIndexCache.RefreshCount == 0)
+                        if (connection.SignalIndexCache is not null && connection.SignalIndexCache.RefreshCount == 0)
                         {
                             connection.SignalIndexCache.Reference = reference;
                             connection.SignalIndexCache.UnauthorizedSignalIDs = unauthorizedKeys.ToArray();
@@ -2041,15 +2176,17 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                     }
                 }
             }
-            else
+            else if (signalIndexCache is not null)
             {
                 signalIndexCache.Reference = reference;
                 signalIndexCache.UnauthorizedSignalIDs = unauthorizedKeys.ToArray();
-                    
+
                 if (connection.IsSubscribed)
                 {
-                    byte[] serializedSignalIndexCache = SerializeSignalIndexCache(clientID, signalIndexCache);
-                    SendClientResponse(clientID, ServerResponse.UpdateSignalIndexCache, ServerCommand.Subscribe, serializedSignalIndexCache);
+                    byte[]? serializedSignalIndexCache = SerializeSignalIndexCache(clientID, signalIndexCache);
+
+                    if (serializedSignalIndexCache is not null)
+                        SendClientResponse(clientID, ServerResponse.UpdateSignalIndexCache, ServerCommand.Subscribe, serializedSignalIndexCache);
                 }
             }
         }
@@ -2065,13 +2202,13 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     {
         try
         {
-            if (!Settings.TryGetValue(nameof(CachedMeasurementExpression), out string cachedMeasurementExpression))
+            if (!Settings.TryGetValue(nameof(CachedMeasurementExpression), out string? cachedMeasurementExpression))
                 return;
 
-            if (!TryGetAdapterByName(nameof(LatestMeasurementCache), out IActionAdapter cache))
+            if (!TryGetAdapterByName(nameof(LatestMeasurementCache), out IActionAdapter? cache))
                 return;
 
-            cache.InputMeasurementKeys = AdapterBase.ParseInputMeasurementKeys(DataSource, true, cachedMeasurementExpression);
+            cache!.InputMeasurementKeys = AdapterBase.ParseInputMeasurementKeys(DataSource, true, cachedMeasurementExpression);
             m_routingTables.CalculateRoutingTables(null);
         }
         catch (Exception ex)
@@ -2100,9 +2237,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             {
                 m_clientNotifications.Clear();
 
-                if (DataSource.Tables.Contains("Subscribers"))
+                if (DataSource?.Tables.Contains("Subscribers") ?? false)
                 {
-                    foreach (DataRow row in DataSource.Tables["Subscribers"].Rows)
+                    foreach (DataRow row in DataSource.Tables["Subscribers"]!.Rows)
                     {
                         if (Guid.TryParse(row["ID"].ToNonNullString(), out Guid subscriberID))
                             m_clientNotifications.Add(subscriberID, new Dictionary<int, string>());
@@ -2160,17 +2297,17 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
 
         using FileStream fileStream = File.OpenRead(notificationsFileName);
         using TextReader reader = new StreamReader(fileStream);
-        string line = reader.ReadLine();
+        string? line = reader.ReadLine();
 
         while (line is not null)
         {
             int separatorIndex = line.IndexOf(',');
 
-            if (Guid.TryParse(line.Substring(0, separatorIndex), out Guid subscriberID))
+            if (Guid.TryParse(line[..separatorIndex], out Guid subscriberID))
             {
-                if (m_clientNotifications.TryGetValue(subscriberID, out Dictionary<int, string> notifications))
+                if (m_clientNotifications.TryGetValue(subscriberID, out Dictionary<int, string>? notifications) /* && notifications is not null */)
                 {
-                    string notification = line.Substring(separatorIndex + 1);
+                    string notification = line[(separatorIndex + 1)..];
                     notifications.Add(notification.GetHashCode(), notification);
                 }
             }
@@ -2189,7 +2326,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     {
         using BlockAllocatedMemoryStream buffer = new();
 
-        if (!m_clientNotifications.TryGetValue(connection.SubscriberID, out Dictionary<int, string> notifications))
+        if (!m_clientNotifications.TryGetValue(connection.SubscriberID, out Dictionary<int, string>? notifications) /* || notifications is null */)
             return;
 
         foreach (KeyValuePair<int, string> pair in notifications)
@@ -2211,12 +2348,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <returns>Text encoding associated with a particular client.</returns>
     protected internal Encoding GetClientEncoding(Guid clientID)
     {
-        if (!ClientConnections.TryGetValue(clientID, out SubscriberConnection connection))
-            return Encoding.UTF8;
-            
-        Encoding clientEncoding = connection.Encoding;
-
-        return clientEncoding ?? Encoding.UTF8;
+        return !ClientConnections.TryGetValue(clientID, out SubscriberConnection? connection) ?
+            Encoding.UTF8 :
+            connection.Encoding;
     }
 
     /// <summary>
@@ -2228,7 +2362,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     {
         bool result = SendClientResponse(clientID, ServerResponse.DataStartTime, ServerCommand.Subscribe, BigEndian.GetBytes((long)startTime));
 
-        if (ClientConnections.TryGetValue(clientID, out SubscriberConnection connection))
+        if (ClientConnections.TryGetValue(clientID, out SubscriberConnection? connection) /* && connection is not null */)
             OnStatusMessage(MessageLevel.Info, $"Start time sent to {connection.ConnectionID}.");
 
         return result;
@@ -2245,7 +2379,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <returns><c>true</c> if send was successful; otherwise <c>false</c>.</returns>
     protected internal virtual bool SendClientResponse(Guid clientID, ServerResponse response, ServerCommand command)
     {
-        return SendClientResponse(clientID, response, command, (byte[])null);
+        return SendClientResponse(clientID, response, command, (byte[]?)null);
     }
 
     /// <summary>
@@ -2256,10 +2390,10 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <param name="command">In response to command.</param>
     /// <param name="status">Status message to return.</param>
     /// <returns><c>true</c> if send was successful; otherwise <c>false</c>.</returns>
-    protected internal virtual bool SendClientResponse(Guid clientID, ServerResponse response, ServerCommand command, string status)
+    protected internal virtual bool SendClientResponse(Guid clientID, ServerResponse response, ServerCommand command, string? status)
     {
-        return status is null ? 
-            SendClientResponse(clientID, response, command) : 
+        return status is null ?
+            SendClientResponse(clientID, response, command) :
             SendClientResponse(clientID, response, command, GetClientEncoding(clientID).GetBytes(status));
     }
 
@@ -2274,8 +2408,8 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <returns><c>true</c> if send was successful; otherwise <c>false</c>.</returns>
     protected internal virtual bool SendClientResponse(Guid clientID, ServerResponse response, ServerCommand command, string formattedStatus, params object[] args)
     {
-        return string.IsNullOrWhiteSpace(formattedStatus) ? 
-            SendClientResponse(clientID, response, command) : 
+        return string.IsNullOrWhiteSpace(formattedStatus) ?
+            SendClientResponse(clientID, response, command) :
             SendClientResponse(clientID, response, command, GetClientEncoding(clientID).GetBytes(string.Format(formattedStatus, args)));
     }
 
@@ -2287,7 +2421,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <param name="command">In response to command.</param>
     /// <param name="data">Data to return to client; null if none.</param>
     /// <returns><c>true</c> if send was successful; otherwise <c>false</c>.</returns>
-    protected internal virtual bool SendClientResponse(Guid clientID, ServerResponse response, ServerCommand command, byte[] data)
+    protected internal virtual bool SendClientResponse(Guid clientID, ServerResponse response, ServerCommand command, byte[]? data)
     {
         return SendClientResponse(clientID, (byte)response, (byte)command, data);
     }
@@ -2318,7 +2452,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     // Attempts to get the subscriber for the given client based on that client's X.509 certificate.
     private void TryFindClientDetails(SubscriberConnection connection)
     {
-        X509Certificate remoteCertificate;
+        X509Certificate? remoteCertificate;
 
         // If connection is not TLS, there is no X.509 certificate
         if (m_serverCommandChannel is not TlsServer serverCommandChannel)
@@ -2327,22 +2461,22 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                 return;
 
             // Get remote certificate and corresponding trusted certificate
-            remoteCertificate = clientCommandChannel.SslStream.RemoteCertificate;
+            remoteCertificate = clientCommandChannel.SslStream?.RemoteCertificate;
         }
         else
         {
             // If connection is not found, cannot get X.509 certificate
-            if (!serverCommandChannel.TryGetClient(connection.ClientID, out TransportProvider<TlsServer.TlsSocket> client))
+            if (!serverCommandChannel.TryGetClient(connection.ClientID, out TransportProvider<TlsServer.TlsSocket>? client))
                 return;
 
             // Get remote certificate and corresponding trusted certificate
-            remoteCertificate = client.Provider.SslStream.RemoteCertificate;
+            remoteCertificate = client!.Provider?.SslStream?.RemoteCertificate;
         }
 
         if (remoteCertificate is null)
             return;
 
-        if (!m_subscriberIdentities.TryGetValue(m_certificateChecker.GetTrustedCertificate(remoteCertificate), out DataRow subscriber))
+        if (m_certificateChecker is null || m_subscriberIdentities is null || !m_subscriberIdentities.TryGetValue(m_certificateChecker.GetTrustedCertificate(remoteCertificate)!, out DataRow? subscriber) /* || subscriber is null */)
             return;
 
         // Load client details from subscriber identity
@@ -2357,13 +2491,13 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     {
         try
         {
-            if (m_certificateChecker is null || m_subscriberIdentities is null || SecurityMode != SecurityMode.TLS)
+            if (m_certificateChecker is null || m_subscriberIdentities is null || SecurityMode != SecurityMode.TLS || DataSource is null || !DataSource.Tables.Contains("Subscribers"))
                 return;
 
             m_certificateChecker.DistrustAll();
             m_subscriberIdentities.Clear();
 
-            foreach (DataRow subscriber in DataSource.Tables["Subscribers"].Select("Enabled <> 0"))
+            foreach (DataRow subscriber in DataSource.Tables["Subscribers"]!.Select("Enabled <> 0"))
             {
                 try
                 {
@@ -2379,7 +2513,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                     if (!File.Exists(remoteCertificateFile))
                         continue;
 
+                    #pragma warning disable SYSLIB0057
                     X509Certificate certificate = new X509Certificate2(remoteCertificateFile);
+                    #pragma warning restore SYSLIB0057
                     m_certificateChecker.Trust(certificate, policy);
                     m_subscriberIdentities.Add(certificate, subscriber);
                 }
@@ -2396,18 +2532,17 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     }
 
     // Update rights for the given subscription.
-    private void UpdateRights(SubscriberConnection connection)
+    private void UpdateRights(SubscriberConnection? connection)
     {
-        if (connection is null)
+        if (connection is null || DataSource is null || !DataSource.Tables.Contains("Subscribers"))
             return;
 
         try
         {
-            SubscriberAdapter subscription = connection.Subscription;
+            SubscriberAdapter? subscription = connection.Subscription;
 
             // Determine if the connection has been disabled or removed - make sure to set authenticated to false if necessary
-            if (DataSource is not null && DataSource.Tables.Contains("Subscribers") &&
-                !DataSource.Tables["Subscribers"].Select($"ID = '{connection.SubscriberID}' AND Enabled <> 0").Any())
+            if (DataSource is not null && DataSource.Tables.Contains("Subscribers") && DataSource.Tables["Subscribers"]!.Select($"ID = '{connection.SubscriberID}' AND Enabled <> 0").Length == 0)
                 connection.Authenticated = false;
 
             if (subscription is null)
@@ -2415,7 +2550,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
 
             // It is important here that "SELECT" not be allowed in parsing the input measurement keys expression since this key comes
             // from the remote subscription - this will prevent possible SQL injection attacks.
-            MeasurementKey[] requestedInputs = AdapterBase.ParseInputMeasurementKeys(DataSource, false, subscription.RequestedInputFilter);
+            MeasurementKey[] requestedInputs = AdapterBase.ParseInputMeasurementKeys(DataSource, false, subscription.RequestedInputFilter ?? "FILTER ActiveMeasurements WHERE True");
             HashSet<MeasurementKey> authorizedSignals = [];
 
             Func<Guid, bool> hasRightsFunc = ValidateMeasurementRights ?
@@ -2428,7 +2563,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                     authorizedSignals.Add(input);
             }
 
-            if (authorizedSignals.SetEquals(subscription.InputMeasurementKeys))
+            if (authorizedSignals.SetEquals(subscription.InputMeasurementKeys ?? []))
                 return;
 
             // Update the subscription associated with this connection based on newly acquired or revoked rights
@@ -2446,13 +2581,13 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     }
 
     // Send binary response packet to client
-    private bool SendClientResponse(Guid clientID, byte responseCode, byte commandCode, byte[] data)
+    private bool SendClientResponse(Guid clientID, byte responseCode, byte commandCode, byte[]? data)
     {
         // Attempt to lookup associated client connection
-        if (!ClientConnections.TryGetValue(clientID, out SubscriberConnection connection) || connection is null || connection.ClientNotFoundExceptionOccurred)
+        if (!ClientConnections.TryGetValue(clientID, out SubscriberConnection? connection) /* || connection is null */ || connection.ClientNotFoundExceptionOccurred)
             return false;
 
-        BlockAllocatedMemoryStream workingBuffer = null;
+        BlockAllocatedMemoryStream? workingBuffer = null;
         bool success = false;
 
         try
@@ -2530,11 +2665,11 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             {
                 // Data packets and buffer blocks can be published on a UDP data channel, so check for this...
                 IServer publishChannel = useDataChannel ?
-                    m_clientPublicationChannels.GetOrAdd(clientID, _ => connection.ServerPublishChannel) :
-                    m_serverCommandChannel;
+                    m_clientPublicationChannels.GetOrAdd(clientID, _ => connection.ServerPublishChannel!) :
+                    m_serverCommandChannel!;
 
                 // Send response packet
-                if (publishChannel?.CurrentState == ServerState.Running)
+                if (publishChannel.CurrentState == ServerState.Running)
                 {
                     byte[] responseData = workingBuffer.ToArray();
 
@@ -2603,26 +2738,23 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     }
 
     // Socket exception handler
-    private bool HandleSocketException(Guid clientID, Exception ex)
+    private bool HandleSocketException(Guid clientID, Exception? ex)
     {
-        if (ex is SocketException socketException)
+        // WSAECONNABORTED and WSAECONNRESET are common errors after a client disconnect,
+        // if they happen for other reasons, make sure disconnect procedure is handled
+        if (ex is SocketException { ErrorCode: 10053 or 10054 })
         {
-            // WSAECONNABORTED and WSAECONNRESET are common errors after a client disconnect,
-            // if they happen for other reasons, make sure disconnect procedure is handled
-            if (socketException.ErrorCode == 10053 || socketException.ErrorCode == 10054)
+            try
             {
-                try
-                {
-                    ThreadPool.QueueUserWorkItem(DisconnectClient, clientID);
-                }
-                catch (Exception queueException)
-                {
-                    // Process exception for logging
-                    OnProcessException(MessageLevel.Info, new InvalidOperationException($"Failed to queue client disconnect due to exception: {queueException.Message}", queueException));
-                }
-
-                return true;
+                ThreadPool.QueueUserWorkItem(DisconnectClient, clientID);
             }
+            catch (Exception queueException)
+            {
+                // Process exception for logging
+                OnProcessException(MessageLevel.Info, new InvalidOperationException($"Failed to queue client disconnect due to exception: {queueException.Message}", queueException));
+            }
+
+            return true;
         }
 
         if (ex is not null)
@@ -2632,8 +2764,11 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     }
 
     // Disconnect client - this should be called from non-blocking thread (e.g., thread pool)
-    private void DisconnectClient(object state)
+    private void DisconnectClient(object? state)
     {
+        if (state is null)
+            return;
+
         m_commandChannelConnectionAttempts = 0;
 
         try
@@ -2642,12 +2777,12 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
 
             RemoveClientSubscription(clientID);
 
-            if (ClientConnections.TryRemove(clientID, out SubscriberConnection connection))
+            if (ClientConnections.TryRemove(clientID, out SubscriberConnection? connection))
             {
                 connection.Dispose();
 
-                OnStatusMessage(MessageLevel.Info, clientID == m_proxyClientID ? 
-                    $"Data publisher client-based connection disconnected from subscriber via {m_clientCommandChannel.ServerUri}." : 
+                OnStatusMessage(MessageLevel.Info, clientID == m_proxyClientID ?
+                    $"Data publisher client-based connection disconnected from subscriber via {m_clientCommandChannel?.ServerUri ?? "undefined server URI"}." :
                     "Client disconnected from command channel.");
             }
 
@@ -2665,7 +2800,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     {
         lock (this)
         {
-            if (!TryGetClientSubscription(clientID, out SubscriberAdapter clientSubscription))
+            if (!TryGetClientSubscription(clientID, out SubscriberAdapter? clientSubscription) || clientSubscription is null)
                 return;
 
             clientSubscription.Stop();
@@ -2685,18 +2820,18 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     }
 
     // Handle notification on input measurement key change
-    private void NotifyHostOfSubscriptionRemoval(object state)
+    private void NotifyHostOfSubscriptionRemoval(object? _)
     {
         OnInputMeasurementKeysUpdated();
     }
 
     // Attempt to find client subscription
-    private bool TryGetClientSubscription(Guid clientID, out SubscriberAdapter subscription)
+    private bool TryGetClientSubscription(Guid clientID, out SubscriberAdapter? subscription)
     {
         // Lookup adapter by its client ID
-        if (TryGetAdapter(clientID, GetClientSubscription, out IActionAdapter adapter))
+        if (TryGetAdapter(clientID, GetClientSubscription, out IActionAdapter? adapter))
         {
-            subscription = (SubscriberAdapter)adapter;
+            subscription = (SubscriberAdapter)adapter!;
             return true;
         }
 
@@ -2710,12 +2845,12 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     }
 
     // Gets specified property from client connection based on subscriber ID
-    private TResult GetConnectionProperty<TResult>(Guid subscriberID, Func<SubscriberConnection, TResult> predicate)
+    private TResult? GetConnectionProperty<TResult>(Guid subscriberID, Func<SubscriberConnection, TResult> predicate)
     {
-        TResult result = default;
+        TResult? result = default;
 
         // Lookup client connection by subscriber ID
-        SubscriberConnection connection = ClientConnections.Values.FirstOrDefault(cc => cc.SubscriberID == subscriberID);
+        SubscriberConnection? connection = ClientConnections.Values.FirstOrDefault(cc => cc.SubscriberID == subscriberID);
 
         // Extract desired property from client connection using given predicate function
         if (connection is not null)
@@ -2729,15 +2864,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// </summary>
     protected virtual void OnProcessingComplete()
     {
-        try
-        {
-            ProcessingComplete?.Invoke(this, EventArgs.Empty);
-        }
-        catch (Exception ex)
-        {
-            // We protect our code from consumer thrown exceptions
-            OnProcessException(MessageLevel.Info, new InvalidOperationException($"Exception in consumer handler for ProcessingComplete event: {ex.Message}", ex), "ConsumerEventException");
-        }
+        ProcessingComplete?.SafeInvoke(this, EventArgs.Empty);
     }
 
     /// <summary>
@@ -2748,54 +2875,69 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <param name="subscriberInfo">Subscriber information (normally <see cref="SubscriberConnection.SubscriberInfo"/>).</param>
     protected virtual void OnClientConnected(Guid subscriberID, string connectionID, string subscriberInfo)
     {
-        try
-        {
-            ClientConnected?.Invoke(this, new EventArgs<Guid, string, string>(subscriberID, connectionID, subscriberInfo));
-        }
-        catch (Exception ex)
-        {
-            // We protect our code from consumer thrown exceptions
-            OnProcessException(MessageLevel.Info, new InvalidOperationException($"Exception in consumer handler for ClientConnected event: {ex.Message}", ex), "ConsumerEventException");
-        }
+        ClientConnected?.SafeInvoke(this, new EventArgs<Guid, string, string>(subscriberID, connectionID, subscriberInfo));
     }
 
-    protected internal new void OnStatusMessage(MessageLevel level, string status, string eventName = null, MessageFlags flags = MessageFlags.None)
+    /// <summary>
+    /// Raises the <see cref="AdapterBase.StatusMessage"/> event and sends this data to the <see cref="Logger"/>.
+    /// </summary>
+    /// <param name="level">The <see cref="MessageLevel"/> to assign to this message</param>
+    /// <param name="status">New status message.</param>
+    /// <param name="eventName">A fixed string to classify this event; defaults to <c>null</c>.</param>
+    /// <param name="flags"><see cref="MessageFlags"/> to use, if any; defaults to <see cref="MessageFlags.None"/>.</param>
+    /// <remarks>
+    /// <see pref="eventName"/> should be a constant string value associated with what type of message is being
+    /// generated. In general, there should only be a few dozen distinct event names per class. Exceeding this
+    /// threshold will cause the EventName to be replaced with a general warning that a usage issue has occurred.
+    /// </remarks>
+    // Re-exposed for internal use, see SubscriberConnection
+    protected internal new void OnStatusMessage(MessageLevel level, string status, string? eventName = null, MessageFlags flags = MessageFlags.None)
     {
         base.OnStatusMessage(level, status, eventName, flags);
     }
 
-    protected internal new void OnProcessException(MessageLevel level, Exception exception, string eventName = null, MessageFlags flags = MessageFlags.None)
+    /// <summary>
+    /// Raises the <see cref="AdapterBase.ProcessException"/> event.
+    /// </summary>
+    /// <param name="level">The <see cref="MessageLevel"/> to assign to this message</param>
+    /// <param name="exception">Processing <see cref="Exception"/>.</param>
+    /// <param name="eventName">A fixed string to classify this event; defaults to <c>null</c>.</param>
+    /// <param name="flags"><see cref="MessageFlags"/> to use, if any; defaults to <see cref="MessageFlags.None"/>.</param>
+    /// <remarks>
+    /// <see pref="eventName"/> should be a constant string value associated with what type of message is being
+    /// generated. In general, there should only be a few dozen distinct event names per class. Exceeding this
+    /// threshold will cause the EventName to be replaced with a general warning that a usage issue has occurred.
+    /// </remarks>
+    // Re-exposed for internal use, see SubscriberConnection
+    protected internal new void OnProcessException(MessageLevel level, Exception exception, string? eventName = null, MessageFlags flags = MessageFlags.None)
     {
         base.OnProcessException(level, exception, eventName, flags);
     }
 
     // Make sure to expose any routing table messages
-    private void RoutingTables_StatusMessage(object sender, EventArgs<string> e)
+    private void RoutingTables_StatusMessage(object? sender, EventArgs<string> e)
     {
         OnStatusMessage(MessageLevel.Info, e.Argument);
     }
 
     // Make sure to expose any routing table exceptions
-    private void RoutingTables_ProcessException(object sender, EventArgs<Exception> e)
+    private void RoutingTables_ProcessException(object? sender, EventArgs<Exception> e)
     {
         OnProcessException(MessageLevel.Warning, e.Argument);
     }
 
     // Cipher key rotation timer handler
-    private void CipherKeyRotationTimer_Elapsed(object sender, EventArgs<DateTime> e)
+    private void CipherKeyRotationTimer_Elapsed(object? sender, EventArgs<DateTime> e)
     {
-        if (ClientConnections is null)
-            return;
-
         foreach (SubscriberConnection connection in ClientConnections.Values)
         {
-            if (connection is not null && connection.Authenticated)
+            if (connection.Authenticated)
                 connection.RotateCipherKeys();
         }
     }
 
     // Determines whether the data in the data source has actually changed when receiving a new data source.
-    private bool DataSourceChanged(DataSet newDataSource)
+    private bool DataSourceChanged(DataSet? newDataSource)
     {
         try
         {
@@ -2813,7 +2955,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     private void HandleSubscribeRequest(SubscriberConnection connection, byte[] buffer, int startIndex, int length)
     {
         Guid clientID = connection.ClientID;
-        SubscriberAdapter subscription;
+        SubscriberAdapter? subscription;
         string message;
 
         // Handle subscribe
@@ -2856,11 +2998,20 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                     // Update connection string settings for GSF adapter syntax:
                     Dictionary<string, string> settings = connectionString.ParseKeyValuePairs();
 
-                    if (settings.TryGetValue(nameof(SubscriptionInfo.Throttled), out string setting))
+                    if (settings.TryGetValue(nameof(SubscriptionInfo.Throttled), out string? setting))
                         settings[nameof(FacileActionAdapterBase.TrackLatestMeasurements)] = setting;
 
                     if (settings.TryGetValue(nameof(SubscriptionInfo.FilterExpression), out setting))
                         settings[nameof(InputMeasurementKeys)] = setting;
+                    
+                    settings[nameof(TimeSortedPublication)] = TimeSortedPublication.ToString();
+
+                    if (TimeSortedPublication)
+                    {
+                        settings[nameof(TimeSortedSamplingRate)] = TimeSortedSamplingRate.ToString();
+                        settings[nameof(TimeSortedLagTime)] = TimeSortedLagTime.ToString(CultureInfo.InvariantCulture);
+                        settings[nameof(TimeSortedLeadTime)] = TimeSortedLeadTime.ToString(CultureInfo.InvariantCulture);
+                    }
 
                     connectionString = settings.JoinKeyValuePairs();
 
@@ -2877,9 +3028,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
 
                     if (subscription.Settings.TryGetValue("dataChannel", out setting))
                     {
-                        Socket clientSocket = connection.GetCommandChannelSocket();
+                        Socket? clientSocket = connection.GetCommandChannelSocket();
                         settings = setting.ParseKeyValuePairs();
-                        IPEndPoint localEndPoint = null;
+                        IPEndPoint? localEndPoint = null;
                         string networkInterface = "::0";
 
                         // Make sure return interface matches incoming client connection
@@ -2892,7 +3043,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
 
                             // Remove dual-stack prefix
                             if (networkInterface.StartsWith("::ffff:", true, CultureInfo.InvariantCulture))
-                                networkInterface = networkInterface.Substring(7);
+                                networkInterface = networkInterface[7..];
                         }
 
                         if (settings.TryGetValue("port", out setting) || settings.TryGetValue("localport", out setting))
@@ -2914,7 +3065,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                     }
 
                     // Remove any existing cached publication channel since connection is changing
-                    m_clientPublicationChannels.TryRemove(clientID, out IServer _);
+                    m_clientPublicationChannels.TryRemove(clientID, out _);
 
                     // Update payload compression state and strength
                     subscription.UsePayloadCompression = usePayloadCompression;
@@ -2956,7 +3107,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                     if (connection.Version == 1)
                     {
                         // Send updated signal index cache to client with validated rights of the selected input measurement keys
-                        byte[] serializedSignalIndexCache = SerializeSignalIndexCache(clientID, connection.SignalIndexCache);
+                        byte[]? serializedSignalIndexCache = SerializeSignalIndexCache(clientID, connection.SignalIndexCache);
                         SendClientResponse(clientID, ServerResponse.UpdateSignalIndexCache, ServerCommand.Subscribe, serializedSignalIndexCache);
                     }
 
@@ -2969,9 +3120,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                     subscription.Start();
 
                     // If client has subscribed to any cached measurements, queue them up for the client
-                    if (TryGetAdapterByName(nameof(LatestMeasurementCache), out IActionAdapter cacheAdapter))
+                    if (TryGetAdapterByName(nameof(LatestMeasurementCache), out IActionAdapter? cacheAdapter))
                     {
-                        if (cacheAdapter is LatestMeasurementCache cache)
+                        if (cacheAdapter is LatestMeasurementCache cache && subscription.InputMeasurementKeys is not null)
                         {
                             IEnumerable<IMeasurement> cachedMeasurements = cache.LatestMeasurements.Where(measurement => subscription.InputMeasurementKeys.Any(key => key.SignalID == measurement.ID));
                             subscription.QueueMeasurementsForProcessing(cachedMeasurements);
@@ -3065,12 +3216,17 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <returns>Meta-data to be returned to client.</returns>
     protected virtual DataSet AcquireMetadata(SubscriberConnection connection, Dictionary<string, Tuple<string, string, int>> filterExpressions)
     {
+    #if NET
+        using AdoDataConnection adoDatabase = new(ConfigSettings.Default);
+        DbConnection dbConnection = adoDatabase.Connection;
+    #else
         using AdoDataConnection adoDatabase = new("systemSettings");
         IDbConnection dbConnection = adoDatabase.Connection;
-        DataSet metadata = new();
 
         // Initialize active node ID
-        Guid nodeID = Guid.Parse(dbConnection.ExecuteScalar($"SELECT NodeID FROM IaonActionAdapter WHERE ID = {ID}").ToString());
+        Guid nodeID = Guid.Parse(dbConnection.ExecuteScalar($"SELECT NodeID FROM IaonActionAdapter WHERE ID = {ID}")?.ToString() ?? Guid.Empty.ToString());
+    #endif
+        DataSet metadata = new();
 
         // Determine whether we're sending internal and external meta-data
         bool sendExternalMetadata = connection.OperationalModes.HasFlag(OperationalModes.ReceiveExternalMetadata);
@@ -3082,11 +3238,37 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             if (string.IsNullOrWhiteSpace(tableExpression))
                 continue;
 
+            string metadataQuery = tableExpression.Trim();
+
             // Query the table or view information from the database
-            DataTable table = dbConnection.RetrieveData(adoDatabase.AdapterType, tableExpression);
+            // ReSharper disable once JoinDeclarationAndInitializer
+            DataTable table;
+            Match regexMatch;
+
+            if (adoDatabase.IsSqlite)
+            {
+                // SQLite does not support TOP clause, so we need to replace it with LIMIT
+                regexMatch = Regex.Match(tableExpression, @"\s+TOP\s+(\d+)\s+", RegexOptions.IgnoreCase);
+
+                if (regexMatch.Success)
+                {
+                    // Remove TOP clause with count
+                    string topCount = regexMatch.Groups[1].Value;
+                    metadataQuery = Regex.Replace(tableExpression, @"\s+TOP\s+\d+\s+", " ");
+                    
+                    // Append LIMIT clause with count
+                    metadataQuery = $"{metadataQuery} LIMIT {topCount}";
+                }
+            }
+
+        #if NET
+            table = dbConnection.RetrieveData(metadataQuery);
+        #else
+            table = dbConnection.RetrieveData(adoDatabase.AdapterType, metadataQuery);
+        #endif
 
             // Remove any expression from table name
-            Match regexMatch = Regex.Match(tableExpression, @"FROM \w+");
+            regexMatch = Regex.Match(metadataQuery, @"FROM \w+");
             table.TableName = regexMatch.Value.Split(' ')[1];
 
             string sortField = "";
@@ -3095,8 +3277,10 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             // Build filter list
             List<string> filters = [];
 
+        #if !NET
             if (table.Columns.Contains("NodeID"))
                 filters.Add($"NodeID = '{nodeID}'");
+        #endif
 
             if (table.Columns.Contains("Internal") && !(sendInternalMetadata && sendExternalMetadata))
                 filters.Add($"Internal {(sendExternalMetadata ? "=" : "<>")} 0");
@@ -3104,7 +3288,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             if (table.Columns.Contains("OriginalSource") && !(sendInternalMetadata && sendExternalMetadata) && !MutualSubscription)
                 filters.Add($"OriginalSource IS {(sendExternalMetadata ? "NOT" : "")} NULL");
 
-            if (filterExpressions.TryGetValue(table.TableName, out Tuple<string, string, int> filterParameters))
+            if (filterExpressions.TryGetValue(table.TableName, out Tuple<string, string, int>? filterParameters))
             {
                 filters.Add($"({filterParameters.Item1})");
                 sortField = filterParameters.Item2;
@@ -3140,7 +3324,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                 if (filteredRowList.Count == 0)
                     continue;
 
-                DataTable metadataTable = metadata.Tables[table.TableName];
+                DataTable metadataTable = metadata.Tables[table.TableName]!;
 
                 // Manually copy-in each row into table
                 foreach (DataRow row in filteredRowList)
@@ -3157,41 +3341,41 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         }
 
         // Do some post analysis on the meta-data to be delivered to the client, e.g., if a device exists with no associated measurements - don't send the device.
-        if (!metadata.Tables.Contains("MeasurementDetail") || !metadata.Tables["MeasurementDetail"].Columns.Contains("DeviceAcronym") || !metadata.Tables.Contains("DeviceDetail") || !metadata.Tables["DeviceDetail"].Columns.Contains("Acronym"))
+        if (!metadata.Tables.Contains("MeasurementDetail") || !metadata.Tables["MeasurementDetail"]!.Columns.Contains("DeviceAcronym") || !metadata.Tables.Contains("DeviceDetail") || !metadata.Tables["DeviceDetail"]!.Columns.Contains("Acronym"))
             return metadata;
 
         List<DataRow> rowsToRemove = [];
         string deviceAcronym;
 
         // Remove device records where no associated measurement records exist
-        foreach (DataRow row in metadata.Tables["DeviceDetail"].Rows)
+        foreach (DataRow row in metadata.Tables["DeviceDetail"]!.Rows)
         {
             deviceAcronym = row["Acronym"].ToNonNullString();
 
-            if (!string.IsNullOrEmpty(deviceAcronym) && (int)metadata.Tables["MeasurementDetail"].Compute("Count(DeviceAcronym)", $"DeviceAcronym = '{deviceAcronym}'") == 0)
+            if (!string.IsNullOrEmpty(deviceAcronym) && (int)metadata.Tables["MeasurementDetail"]!.Compute("Count(DeviceAcronym)", $"DeviceAcronym = '{deviceAcronym}'") == 0)
                 rowsToRemove.Add(row);
         }
 
-        if (metadata.Tables.Contains("PhasorDetail") && metadata.Tables["PhasorDetail"].Columns.Contains("DeviceAcronym"))
+        if (metadata.Tables.Contains("PhasorDetail") && metadata.Tables["PhasorDetail"]!.Columns.Contains("DeviceAcronym"))
         {
             // Remove phasor records where no associated device records exist
-            foreach (DataRow row in metadata.Tables["PhasorDetail"].Rows)
+            foreach (DataRow row in metadata.Tables["PhasorDetail"]!.Rows)
             {
                 deviceAcronym = row["DeviceAcronym"].ToNonNullString();
 
-                if (!string.IsNullOrEmpty(deviceAcronym) && (int)metadata.Tables["DeviceDetail"].Compute("Count(Acronym)", $"Acronym = '{deviceAcronym}'") == 0)
+                if (!string.IsNullOrEmpty(deviceAcronym) && (int)metadata.Tables["DeviceDetail"]!.Compute("Count(Acronym)", $"Acronym = '{deviceAcronym}'") == 0)
                     rowsToRemove.Add(row);
             }
 
-            if (metadata.Tables["PhasorDetail"].Columns.Contains("SourceIndex") && metadata.Tables["MeasurementDetail"].Columns.Contains("PhasorSourceIndex"))
+            if (metadata.Tables["PhasorDetail"]!.Columns.Contains("SourceIndex") && metadata.Tables["MeasurementDetail"]!.Columns.Contains("PhasorSourceIndex"))
             {
                 // Remove measurement records where no associated phasor records exist
-                foreach (DataRow row in metadata.Tables["MeasurementDetail"].Rows)
+                foreach (DataRow row in metadata.Tables["MeasurementDetail"]!.Rows)
                 {
                     deviceAcronym = row["DeviceAcronym"].ToNonNullString();
                     int? phasorSourceIndex = row.ConvertField<int?>("PhasorSourceIndex");
 
-                    if (!string.IsNullOrEmpty(deviceAcronym) && phasorSourceIndex is not null && (int)metadata.Tables["PhasorDetail"].Compute("Count(DeviceAcronym)", $"DeviceAcronym = '{deviceAcronym}' AND SourceIndex = {phasorSourceIndex}") == 0)
+                    if (!string.IsNullOrEmpty(deviceAcronym) && phasorSourceIndex is not null && (int)metadata.Tables["PhasorDetail"]!.Compute("Count(DeviceAcronym)", $"DeviceAcronym = '{deviceAcronym}' AND SourceIndex = {phasorSourceIndex}") == 0)
                         rowsToRemove.Add(row);
                 }
             }
@@ -3250,7 +3434,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         try
         {
             DataSet metadata = AcquireMetadata(connection, filterExpressions);
-            byte[] serializedMetadata = SerializeMetadata(clientID, metadata);
+            byte[]? serializedMetadata = SerializeMetadata(clientID, metadata);
             long rowCount = metadata.Tables.Cast<DataTable>().Select(dataTable => (long)dataTable.Rows.Count).Sum();
 
             if (rowCount > 0)
@@ -3285,7 +3469,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             // Next 4 bytes are an integer representing the new processing interval
             int processingInterval = BigEndian.ToInt32(buffer, startIndex);
 
-            SubscriberAdapter subscription = connection.Subscription;
+            SubscriberAdapter? subscription = connection.Subscription;
 
             if (subscription is null)
             {
@@ -3337,9 +3521,10 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         {
             lock (m_clientNotificationsLock)
             {
-                if (m_clientNotifications.TryGetValue(connection.SubscriberID, out Dictionary<int, string> notifications))
+                if (m_clientNotifications.TryGetValue(connection.SubscriberID, out Dictionary<int, string>? notifications) /* && notifications is not null */)
                 {
-                    if (notifications.TryGetValue(hash, out string notification))
+                    // ReSharper disable once CanSimplifyDictionaryRemovingWithSingleCall
+                    if (notifications.TryGetValue(hash, out string? notification))
                     {
                         notifications.Remove(hash);
                         OnStatusMessage(MessageLevel.Info, $"Subscriber {connection.ConnectionID} confirmed receipt of notification: {notification}.");
@@ -3362,18 +3547,18 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         }
     }
 
-    private void HandleConfirmBufferBlock(SubscriberConnection connection, byte[] buffer, int startIndex, int length)
+    private static void HandleConfirmBufferBlock(SubscriberConnection connection, byte[] buffer, int startIndex, int length)
     {
         if (length < 4)
             return;
 
         uint sequenceNumber = BigEndian.ToUInt32(buffer, startIndex);
-        connection.Subscription.ConfirmBufferBlock(sequenceNumber);
+        connection.Subscription?.ConfirmBufferBlock(sequenceNumber);
     }
 
-    private void HandleConfirmSignalIndexCache(SubscriberConnection connection)
+    private static void HandleConfirmSignalIndexCache(SubscriberConnection connection)
     {
-        connection.Subscription.ConfirmSignalIndexCache(connection.ClientID);
+        connection.Subscription?.ConfirmSignalIndexCache(connection.ClientID);
     }
 
     private void HandlePublishCommandMeasurements(SubscriberConnection connection, byte[] buffer, int startIndex)
@@ -3394,7 +3579,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                 CommandMeasurement measurement = new();
                 connectionStringParser.ParseConnectionString(measurementString, measurement);
 
-                measurements.Add(new Measurement()
+                measurements.Add(new Measurement
                 {
                     Metadata = MeasurementKey.LookUpBySignalID(measurement.SignalID).Metadata,
                     Timestamp = measurement.Timestamp,
@@ -3429,12 +3614,12 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         OnStatusMessage(MessageLevel.Info, $"Received command code for user-defined command \"{command}\".");
     }
 
-    private byte[] SerializeSignalIndexCache(Guid clientID, SignalIndexCache signalIndexCache)
+    private byte[]? SerializeSignalIndexCache(Guid clientID, SignalIndexCache? signalIndexCache)
     {
-        if (!ClientConnections.TryGetValue(clientID, out SubscriberConnection connection) || connection is null)
+        if (!ClientConnections.TryGetValue(clientID, out SubscriberConnection? connection) /* || connection is null */)
             return null;
 
-        if (signalIndexCache.Reference.Count == 0)
+        if (signalIndexCache is null || signalIndexCache.Reference.Count == 0)
             return null;
 
         OperationalModes operationalModes = connection.OperationalModes;
@@ -3443,7 +3628,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         using BlockAllocatedMemoryStream compressedData = new();
 
         if (connection.Version > 1)
-            compressedData.Write(byte.MaxValue); // Place-holder - actual value updated inside lock
+            compressedData.WriteByte(byte.MaxValue); // Place-holder - actual value updated inside lock
 
         signalIndexCache.Encoding = GetClientEncoding(clientID);
         byte[] serializedSignalIndexCache = new byte[signalIndexCache.BinaryLength];
@@ -3454,12 +3639,12 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         {
             if (connection.Version <= 1)
                 return serializedSignalIndexCache;
-                
+
             compressedData.Write(serializedSignalIndexCache);
             return compressedData.ToArray();
         }
 
-        GZipStream deflater = null;
+        GZipStream? deflater = null;
 
         try
         {
@@ -3479,9 +3664,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         return serializedSignalIndexCache;
     }
 
-    private byte[] SerializeMetadata(Guid clientID, DataSet metadata)
+    private byte[]? SerializeMetadata(Guid clientID, DataSet metadata)
     {
-        if (!ClientConnections.TryGetValue(clientID, out SubscriberConnection connection))
+        if (!ClientConnections.TryGetValue(clientID, out SubscriberConnection? connection))
             return null;
 
         byte[] serializedMetadata;
@@ -3489,7 +3674,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         OperationalModes operationalModes = connection.OperationalModes;
         CompressionModes compressionModes = (CompressionModes)(operationalModes & OperationalModes.CompressionModeMask);
         bool compressMetadata = (operationalModes & OperationalModes.CompressMetadata) > 0;
-        GZipStream deflater = null;
+        GZipStream? deflater = null;
 
         // Encode XML into encoded data buffer
         using (BlockAllocatedMemoryStream encodedData = new())
@@ -3557,30 +3742,29 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         m_measurementsPerSecondCount = 0L;
     }
 
-    private void Subscription_BufferBlockRetransmission(object sender, EventArgs eventArgs)
+    private void Subscription_BufferBlockRetransmission(object? sender, EventArgs eventArgs)
     {
         BufferBlockRetransmissions++;
     }
 
     // Bubble up processing complete notifications from subscriptions
-    private void Subscription_ProcessingComplete(object sender, EventArgs<IClientSubscription, EventArgs> e)
+    private void Subscription_ProcessingComplete(object? sender, EventArgs<IClientSubscription, EventArgs> e)
     {
         // Expose notification via data publisher event subscribers
-        ProcessingComplete?.Invoke(sender, e.Argument2);
+        ProcessingComplete?.SafeInvoke(sender, e.Argument2);
 
         IClientSubscription subscription = e.Argument1;
         string senderType = sender is null ? "N/A" : sender.GetType().Name;
 
         // Send direct notification to associated client
-        if (subscription is not null)
-            SendClientResponse(subscription.ClientID, ServerResponse.ProcessingComplete, ServerCommand.Subscribe, senderType);
+        SendClientResponse(subscription.ClientID, ServerResponse.ProcessingComplete, ServerCommand.Subscribe, senderType);
     }
 
     #endregion
 
     #region [ Server Command Channel Event Handlers ]
 
-    private void ServerCommandChannelReceiveClientDataComplete(object sender, EventArgs<Guid, byte[], int> e)
+    private void ServerCommandChannelReceiveClientDataComplete(object? sender, EventArgs<Guid, byte[], int> e)
     {
         try
         {
@@ -3589,7 +3773,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             int length = e.Argument3;
             int index = 0;
 
-            if (length <= 0 || buffer is null)
+            if (length <= 0)
                 return;
 
             byte commandByte = buffer[index];
@@ -3599,7 +3783,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             bool validServerCommand = Enum.TryParse(commandByte.ToString(), out ServerCommand command);
 
             // Look up this client connection
-            if (!ClientConnections.TryGetValue(clientID, out SubscriberConnection connection))
+            if (!ClientConnections.TryGetValue(clientID, out SubscriberConnection? connection))
             {
                 // Received a request from an unknown client, this request is denied
                 OnStatusMessage(MessageLevel.Warning, $"Ignored {length} byte {(validServerCommand ? command.ToString() : "unidentified")} command request received from an unrecognized client: {clientID}", flags: MessageFlags.UsageIssue);
@@ -3675,7 +3859,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                     case ServerCommand.UserCommand14:
                     case ServerCommand.UserCommand15:
                         // Handle confirmation of receipt of a user-defined command
-                        HandleUserCommand(connection, command, buffer, index, length);
+                        HandleUserCommand(connection, command, buffer, index, --length);
                         break;
                 }
             }
@@ -3693,7 +3877,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         }
     }
 
-    private void ServerCommandChannelClientConnected(object sender, EventArgs<Guid> e)
+    private void ServerCommandChannelClientConnected(object? sender, EventArgs<Guid> e)
     {
         Guid clientID = e.Argument;
 
@@ -3711,7 +3895,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
 
         ClientConnections[clientID] = connection;
 
-        OnStatusMessage(MessageLevel.Info, $"Client connected to command channel {(m_clientCommandChannel is null ? "" : $" via {m_clientCommandChannel.ServerUri}")}.");
+        OnStatusMessage(MessageLevel.Info, $"Client connected to command channel{(m_clientCommandChannel is null ? "" : $" via {m_clientCommandChannel.ServerUri}")}.");
 
         if (connection.Authenticated)
         {
@@ -3731,7 +3915,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         }
     }
 
-    private void ServerCommandChannelClientDisconnected(object sender, EventArgs<Guid> e)
+    private void ServerCommandChannelClientDisconnected(object? sender, EventArgs<Guid> e)
     {
         try
         {
@@ -3744,18 +3928,18 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         }
     }
 
-    private void ServerCommandChannelClientConnectingException(object sender, EventArgs<Exception> e)
+    private void ServerCommandChannelClientConnectingException(object? sender, EventArgs<Exception> e)
     {
         Exception ex = e.Argument;
         OnProcessException(MessageLevel.Info, new ConnectionException($"Data publisher encountered an exception while connecting client to the command channel: {ex.Message}", ex));
     }
 
-    private void ServerCommandChannelServerStarted(object sender, EventArgs e)
+    private void ServerCommandChannelServerStarted(object? sender, EventArgs e)
     {
         OnStatusMessage(MessageLevel.Info, "Data publisher command channel started.");
     }
 
-    private void ServerCommandChannelServerStopped(object sender, EventArgs e)
+    private void ServerCommandChannelServerStopped(object? sender, EventArgs e)
     {
         if (Enabled)
         {
@@ -3765,7 +3949,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             {
                 try
                 {
-                    m_serverCommandChannel.Start();
+                    m_serverCommandChannel?.Start();
                 }
                 catch (Exception ex)
                 {
@@ -3782,7 +3966,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         }
     }
 
-    private void ServerCommandChannelSendClientDataException(object sender, EventArgs<Guid, Exception> e)
+    private void ServerCommandChannelSendClientDataException(object? sender, EventArgs<Guid, Exception> e)
     {
         Exception ex = e.Argument2;
 
@@ -3790,7 +3974,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data publisher encountered an exception while sending command channel data to client connection: {ex.Message}", ex));
     }
 
-    private void ServerCommandChannelReceiveClientDataException(object sender, EventArgs<Guid, Exception> e)
+    private void ServerCommandChannelReceiveClientDataException(object? sender, EventArgs<Guid, Exception> e)
     {
         Exception ex = e.Argument2;
 
@@ -3802,7 +3986,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
 
     #region [ Client Command Channel Event Handlers ]
 
-    private void ClientCommandChannelConnectionEstablished(object sender, EventArgs e)
+    private void ClientCommandChannelConnectionEstablished(object? sender, EventArgs e)
     {
         try
         {
@@ -3810,18 +3994,18 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             if (m_proxyClientID is not null && ClientConnections.ContainsKey(m_proxyClientID.GetValueOrDefault()))
                 return;
 
-            OnStatusMessage(MessageLevel.Info, $"Client-based command channel subscriber connection established via {m_clientCommandChannel.ServerUri}.");
+            OnStatusMessage(MessageLevel.Info, $"Client-based command channel subscriber connection established{(m_clientCommandChannel is null ? "" : $" via {m_clientCommandChannel.ServerUri}")}.");
 
             m_proxyClientID ??= Guid.NewGuid();
             ServerCommandChannelClientConnected(sender, new EventArgs<Guid>(m_proxyClientID.GetValueOrDefault()));
         }
         catch (Exception ex)
         {
-            OnProcessException(MessageLevel.Error, new InvalidOperationException($"Failed to establish client connection session via {m_clientCommandChannel.ServerUri}: {ex.Message}", ex));
+            OnProcessException(MessageLevel.Error, new InvalidOperationException($"Failed to establish client connection session{(m_clientCommandChannel is null ? "" : $" via {m_clientCommandChannel.ServerUri}")}: {ex.Message}", ex));
         }
     }
 
-    private void ClientCommandChannelConnectionTerminated(object sender, EventArgs e)
+    private void ClientCommandChannelConnectionTerminated(object? sender, EventArgs e)
     {
         ServerCommandChannelClientDisconnected(sender, new EventArgs<Guid>(m_proxyClientID.GetValueOrDefault()));
 
@@ -3830,57 +4014,57 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
 
         // If user didn't initiate disconnect, restart the connection
         new Action(() =>
-        {
-            if (!Enabled || m_clientCommandChannel is null || m_clientCommandChannel.CurrentState != ClientState.Disconnected)
-                return;
+            {
+                if (!Enabled || m_clientCommandChannel is null || m_clientCommandChannel.CurrentState != ClientState.Disconnected)
+                    return;
 
-            OnStatusMessage(MessageLevel.Info, $"Attempting to re-establish client-based command channel subscriber connection via {m_clientCommandChannel.ServerUri}...");
-            m_commandChannelConnectionAttempts = 0;
-            m_clientCommandChannel.ConnectAsync();
-        })
-        .DelayAndExecute(1000);
+                OnStatusMessage(MessageLevel.Info, $"Attempting to re-establish client-based command channel subscriber connection{(m_clientCommandChannel is null ? "" : $" via {m_clientCommandChannel.ServerUri}")}...");
+                m_commandChannelConnectionAttempts = 0;
+                m_clientCommandChannel?.ConnectAsync();
+            })
+            .DelayAndExecute(1000);
     }
 
-    private void ClientCommandChannelConnectionException(object sender, EventArgs<Exception> e)
+    private void ClientCommandChannelConnectionException(object? sender, EventArgs<Exception> e)
     {
         Exception ex = e.Argument;
-        OnProcessException(MessageLevel.Info, new ConnectionException($"Data publisher encountered an exception while attempting client-based command channel subscriber connection via {m_clientCommandChannel.ServerUri}: {ex.Message}", ex));
+        OnProcessException(MessageLevel.Info, new ConnectionException($"Data publisher encountered an exception while attempting client-based command channel subscriber connection{(m_clientCommandChannel is null ? "" : $" via {m_clientCommandChannel.ServerUri}")}: {ex.Message}", ex));
     }
 
-    private void ClientCommandChannelConnectionAttempt(object sender, EventArgs e)
+    private void ClientCommandChannelConnectionAttempt(object? sender, EventArgs e)
     {
         // Inject a short delay between multiple connection attempts
         if (m_commandChannelConnectionAttempts > 0)
             Thread.Sleep(2000);
 
-        OnStatusMessage(MessageLevel.Info, $"Attempting client-based command channel connection to subscriber via {m_clientCommandChannel.ServerUri}...");
+        OnStatusMessage(MessageLevel.Info, $"Attempting client-based command channel connection to subscriber{(m_clientCommandChannel is null ? "" : $" via {m_clientCommandChannel.ServerUri}")}...");
         m_commandChannelConnectionAttempts++;
     }
 
-    private void ClientCommandChannelSendDataException(object sender, EventArgs<Exception> e)
+    private void ClientCommandChannelSendDataException(object? sender, EventArgs<Exception> e)
     {
         Exception ex = e.Argument;
 
         if (!HandleSocketException(m_proxyClientID.GetValueOrDefault(), ex) && ex is not ObjectDisposedException)
-            OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data publisher encountered an exception while sending client-based command channel data to subscriber connection via {m_clientCommandChannel.ServerUri}: {ex.Message}", ex));
+            OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data publisher encountered an exception while sending client-based command channel data to subscriber connection{(m_clientCommandChannel is null ? "" : $" via {m_clientCommandChannel.ServerUri}")}: {ex.Message}", ex));
     }
 
-    private void ClientCommandChannelReceiveDataComplete(object sender, EventArgs<byte[], int> e)
+    private void ClientCommandChannelReceiveDataComplete(object? sender, EventArgs<byte[], int> e)
     {
         ServerCommandChannelReceiveClientDataComplete(sender, new EventArgs<Guid, byte[], int>(m_proxyClientID.GetValueOrDefault(), e.Argument1, e.Argument2));
     }
 
-    private void ClientCommandChannelReceiveDataException(object sender, EventArgs<Exception> e)
+    private void ClientCommandChannelReceiveDataException(object? sender, EventArgs<Exception> e)
     {
         Exception ex = e.Argument;
 
         if (!HandleSocketException(m_proxyClientID.GetValueOrDefault(), ex) && ex is not ObjectDisposedException)
-            OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data publisher encountered an exception while receiving client-based command channel data from subscriber connection via {m_clientCommandChannel.ServerUri}: {ex.Message}", ex));
+            OnProcessException(MessageLevel.Info, new InvalidOperationException($"Data publisher encountered an exception while receiving client-based command channel data from subscriber connection{(m_clientCommandChannel is null ? "" : $" via {m_clientCommandChannel.ServerUri}")}: {ex.Message}", ex));
     }
 
     #endregion
 
-    #endregion
+#endregion
 
     #region [ Static ]
 
@@ -3900,7 +4084,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         foreach (string address in splitList)
         {
             // Attempt to parse the IP address
-            if (!IPAddress.TryParse(address.Trim(), out IPAddress ipAddress))
+            if (!IPAddress.TryParse(address.Trim(), out IPAddress? ipAddress))
                 continue;
 
             // Add the parsed address to the list
@@ -3934,8 +4118,8 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         }
         else
         {
-            description.Append($"          {(connection.Subscription.UseCompactMeasurementFormat ? "Compact" : "FullSize")}PayloadData[");
-            description.AppendLine($"{connection.Subscription.TimestampSize}-byte Timestamps]");
+            description.Append($"          {(connection.Subscription?.UseCompactMeasurementFormat ?? true ? "Compact" : "FullSize")}PayloadData[");
+            description.AppendLine($"{connection.Subscription?.TimestampSize ?? 8}-byte Timestamps]");
         }
 
         if ((operationalModes & OperationalModes.CompressSignalIndexCache) > 0 && gzipEnabled)

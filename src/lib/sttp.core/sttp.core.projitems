@@ -1,0 +1,28 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <MSBuildAllProjects Condition="'$(MSBuildVersion)' == '' Or '$(MSBuildVersion)' &lt; '16.0'">$(MSBuildAllProjects);$(MSBuildThisFileFullPath)</MSBuildAllProjects>
+    <HasSharedItems>true</HasSharedItems>
+    <SharedGUID>5a705fbb-8702-4628-bd2e-9b04e4f7f517</SharedGUID>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration">
+    <Import_RootNamespace>sttp.core</Import_RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)Common.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)CompactMeasurement.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)DataGapRecoverer.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)DataPublisher.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)DataSubscriber.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)LockExtensions.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)SignalIndexCache.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)SubscriberAdapter.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)SubscriberConnection.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)SubscriberRightsLookup.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)SubscriptionInfo.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)tssc\TsscCodeWords.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)tssc\TsscDecoder.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)tssc\TsscEncoder.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)tssc\TsscPointMetadata.cs" />
+  </ItemGroup>
+</Project>

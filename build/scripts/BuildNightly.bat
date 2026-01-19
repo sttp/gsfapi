@@ -24,4 +24,17 @@ SetLocal
 IF NOT "%1" == "" SET logflag=/l:FileLogger,Microsoft.Build.Engine;logfile=%1
 
 ECHO BuildNightly: C:\Program Files\Microsoft Visual Studio\2022\Community\Msbuild\Current\Bin\MSBuild.exe sttp.buildproj /p:ForceBuild=false %logflag%
-"C:\Program Files\Microsoft Visual Studio\2022\Community\Msbuild\Current\Bin\MSBuild.exe" sttp.buildproj /p:ForceBuild=false %logflag%
+"C:\Program Files\Microsoft Visual Studio\2022\Community\Msbuild\Current\Bin\MSBuild.exe" sttp.buildproj /p:ForceBuild=false %logflag% 
+
+SET "CHANGES_DETECTED=false"
+
+IF EXIST "ChangesDetected.cmd" (
+  CALL "ChangesDetected.cmd"
+) ELSE (
+  ECHO WARNING: ChangesDetected.cmd not found; assuming no changes.
+)
+
+IF /I "%CHANGES_DETECTED%"=="true" (
+    ECHO Changes detected — publishing Gemstone.STTP package...
+    CALL PowerShell -NoProfile -ExecutionPolicy ByPass -File .\publish-packages.ps1
+)

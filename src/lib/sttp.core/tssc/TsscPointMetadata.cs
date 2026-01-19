@@ -20,9 +20,7 @@
 //       Generated original version of source code.
 //
 //******************************************************************************************************
-
-
-using System;
+// ReSharper disable NullCoalescingConditionIsAlwaysNotNullAccordingToAPIContract
 
 namespace sttp.tssc;
 
