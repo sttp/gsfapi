@@ -23,7 +23,7 @@ SetLocal
 
 IF NOT "%1" == "" SET logflag=/l:FileLogger,Microsoft.Build.Engine;logfile=%1
 
-ECHO BuildBeta: C:\Program Files\Microsoft Visual Studio\2022\Community\Msbuild\Current\Bin\MSBuild.exe sttp.buildproj /p:ForceBuild=true %logflag%
-"C:\Program Files\Microsoft Visual Studio\2022\Community\Msbuild\Current\Bin\MSBuild.exe" sttp.buildproj /p:ForceBuild=true %logFlag%
+ECHO BuildBeta: dotnet msbuild exe sttp.buildproj /p:ForceBuild=true %logflag%
+dotnet msbuild sttp.buildproj /p:ForceBuild=true %logFlag%
 
  CALL PowerShell -NoProfile -ExecutionPolicy ByPass -File .\publish-packages.ps1

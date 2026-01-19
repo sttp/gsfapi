@@ -23,8 +23,8 @@ SetLocal
 
 IF NOT "%1" == "" SET logflag=/l:FileLogger,Microsoft.Build.Engine;logfile=%1
 
-ECHO BuildNightly: C:\Program Files\Microsoft Visual Studio\2022\Community\Msbuild\Current\Bin\MSBuild.exe sttp.buildproj /p:ForceBuild=false %logflag%
-"C:\Program Files\Microsoft Visual Studio\2022\Community\Msbuild\Current\Bin\MSBuild.exe" sttp.buildproj /p:ForceBuild=false %logflag% 
+ECHO BuildNightly: dotnet msbuild exe sttp.buildproj /p:ForceBuild=false %logflag%
+dotnet msbuild sttp.buildproj /p:ForceBuild=false %logflag% 
 
 SET "CHANGES_DETECTED=false"
 
