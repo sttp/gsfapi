@@ -18,15 +18,15 @@ function Publish-Package([string]$package) {
         if ($env:NuGetCertFingerprint -ne $null) {
             # Prime the certificate store to avoid issues with signing
             certutil -scinfo | Out-Null     
-            & dotnet nuget sign $using:package --certificate-fingerprint $env:NuGetCertFingerprint --timestamper http://timestamp.digicert.com
-            if ($LASTEXITCODE -ne 0) { throw "dotnet nuget sign failed ($LASTEXITCODE) for: $using:package" }
+            & dotnet nuget sign $package --certificate-fingerprint $env:NuGetCertFingerprint --timestamper http://timestamp.digicert.com
+            if ($LASTEXITCODE -ne 0) { throw "dotnet nuget sign failed ($LASTEXITCODE) for: $package" }
         }
 
         # Push package to NuGet
         if ($env:GemstoneNuGetApiKey) {
             Write-Host "Pushing package to NuGet..."
-            & dotnet nuget push $using:package -k $env:GemstoneNuGetApiKey --skip-duplicate -s "https://api.nuget.org/v3/index.json"
-            if ($LASTEXITCODE -ne 0) { Write-Warning "NuGet push failed ($LASTEXITCODE) for: $using:package" }
+            & dotnet nuget push $package -k $env:GemstoneNuGetApiKey --skip-duplicate -s "https://api.nuget.org/v3/index.json"
+            if ($LASTEXITCODE -ne 0) { Write-Warning "NuGet push failed ($LASTEXITCODE) for: $package" }
         }
     } | Write-Host
 }
