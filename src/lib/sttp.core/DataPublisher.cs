@@ -837,7 +837,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     private long m_lifetimeLatencyMeasurements;
     private bool m_disposed;
 
-#endregion
+    #endregion
 
     #region [ Constructors ]
 
