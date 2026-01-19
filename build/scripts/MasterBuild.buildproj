@@ -69,8 +69,7 @@
 <Project DefaultTargets="All" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
 
   <Import Project="Targets\Inline\GitHistory.targets"/>
-  <Import Project="Targets\MSBuild Extension Pack\MSBuild.ExtensionPack.tasks"/>
-
+  
   <PropertyGroup>
     <!-- Name of the project being built. -->
     <ProjectName></ProjectName>
@@ -440,7 +439,12 @@
       <FilesToDeploy Include="$(BuildOutputFolder)\**\*.*"/>
     </ItemGroup>
     <MakeDir Directories="$(BuildDeployFolder)" Condition="!Exists('$(BuildDeployFolder)')"/>
-    <Folder TaskAction="RemoveContent" Path="$(BuildDeployFolder)"/>
+    <!-- Clear deploy folder contents (no Extension Pack) -->
+    <ItemGroup>
+      <DeployFiles Include="$(BuildDeployFolder)\**\*.*" />
+    </ItemGroup>
+    <Delete Files="@(DeployFiles)" ContinueOnError="true" />
+    <RemoveDir Directories="$(BuildDeployFolder)\**" ContinueOnError="true" />
     <Copy SourceFiles="@(FilesToDeploy)" DestinationFolder="$(BuildDeployFolder)\%(FilesToDeploy.RecursiveDir)"/>
     <CallTarget Targets="ArchiveBuildOutput"/>
     <CallTarget Targets="ArchiveSource"/>
