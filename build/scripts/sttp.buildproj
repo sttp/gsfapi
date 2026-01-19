@@ -114,7 +114,7 @@
     </ItemGroup>
   </Target>
 
-  <Target Name="AfterUpdateRepository">
+  <Target Name="AfterVersionSource">
     <PropertyGroup>
       <ChangesDetected Condition="'$(ForceBuild)' == 'true'">true</ChangesDetected>
       <ChangesDetected Condition="'$(ForceBuild)' != 'true'">false</ChangesDetected>
