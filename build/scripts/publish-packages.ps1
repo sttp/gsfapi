@@ -51,10 +51,10 @@ Write-Host "Current STTP Library version = $fullVersion"
 Write-Host "NuGet package version        = $packageVersion"
 
 # Query file system for package files to get proper casing
-$packages = [IO.Directory]::GetFiles("$buildPath", "*.$version.nupkg")
+$packages = [IO.Directory]::GetFiles("$buildPath", "*.$packageVersion.nupkg")
 
 if ($packages.Length -eq 0) {
-    Write-Host "WARNING: No STTP v$version package found in $buildPath, build failure? No packages pushed."
+    Write-Host "WARNING: No STTP v$packageVersion package found in $buildPath, build failure? No packages pushed."
 }
 
 foreach ($package in $packages) {
