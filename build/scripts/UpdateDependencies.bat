@@ -36,8 +36,6 @@ IF "%target%" == "" SET target=%defaulttarget%
 
 SET gsflibraries=%gsf%\Libraries\*.*
 SET gsfdependencies=%target%\depends\GSF
-SET sourcemasterbuild=%gsf%\Build Scripts\MasterBuild.buildproj
-SET targetmasterbuild=%target%\scripts
 
 ECHO.
 ECHO Entering working directory...
@@ -67,7 +65,6 @@ GOTO UpdateDependencies
 ECHO.
 ECHO Updating dependencies...
 XCOPY "%gsflibraries%" "%gsfdependencies%\" /E /U /Y
-XCOPY "%sourcemasterbuild%" "%targetmasterbuild%\" /Y
 
 :CommitChanges
 ECHO.
