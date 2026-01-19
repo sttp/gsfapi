@@ -21,7 +21,7 @@
 
 SetLocal
 
-IF NOT "%1" == "" SET logflag=/l:FileLogger,Microsoft.Build.Engine;logfile=%1
+IF NOT "%1" == "" SET "logFlag=/fl /flp:logfile=%~1;verbosity=diagnostic;encoding=UTF-8;append=false"
 
 ECHO BuildNightly: dotnet msbuild exe sttp.buildproj /p:ForceBuild=false %logflag%
 dotnet msbuild sttp.buildproj /p:ForceBuild=false %logflag% 
@@ -36,5 +36,5 @@ IF EXIST "ChangesDetected.cmd" (
 
 IF /I "%CHANGES_DETECTED%"=="true" (
     ECHO Changes detected — publishing Gemstone.STTP package...
-    CALL PowerShell -NoProfile -ExecutionPolicy ByPass -File .\publish-packages.ps1
+    CALL PowerShell -NoProfile -ExecutionPolicy ByPass -File ".\publish-packages.ps1" "C:\Users\buildbot\Projects\sttp-gsfapi"
 )

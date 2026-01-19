@@ -21,9 +21,9 @@
 
 SetLocal
 
-IF NOT "%1" == "" SET logflag=/l:FileLogger,Microsoft.Build.Engine;logfile=%1
+IF NOT "%1" == "" SET "logFlag=/fl /flp:logfile=%~1;verbosity=diagnostic;encoding=UTF-8;append=false"
 
 ECHO BuildBeta: dotnet msbuild exe sttp.buildproj /p:ForceBuild=true %logflag%
 dotnet msbuild sttp.buildproj /p:ForceBuild=true %logFlag%
 
- CALL PowerShell -NoProfile -ExecutionPolicy ByPass -File .\publish-packages.ps1
+ CALL PowerShell -NoProfile -ExecutionPolicy ByPass -File ".\publish-packages.ps1" "C:\Users\buildbot\Projects\sttp-gsfapi"
