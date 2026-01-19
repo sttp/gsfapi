@@ -69,7 +69,6 @@
 <Project DefaultTargets="All" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
 
   <Import Project="Targets\Inline\GitHistory.targets"/>
-  <Import Project="Targets\MSBuild Community Tasks\MSBuild.Community.Tasks.Targets"/>
   <Import Project="Targets\MSBuild Extension Pack\MSBuild.ExtensionPack.tasks"/>
 
   <PropertyGroup>
@@ -462,9 +461,25 @@
       <InstallsToArchive Include="$(InstallsArchiveWorkingDirectory)\**\*.*"/>
       <ScriptsToArchive Include="$(ScriptsArchiveWorkingDirectory)\**\*.*"/>
     </ItemGroup>
-    <MSBuild.Community.Tasks.Zip Files="@(BinariesToArchive)" ZipFileName="$(BinariesArchiveFileName)" WorkingDirectory="$(BinariesArchiveWorkingDirectory)" Condition="'@(BinariesToArchive)' != ''"/>
-    <MSBuild.Community.Tasks.Zip Files="@(InstallsToArchive)" ZipFileName="$(InstallsArchiveFileName)" WorkingDirectory="$(InstallsArchiveWorkingDirectory)" Condition="'@(InstallsToArchive)' != ''"/>
-    <MSBuild.Community.Tasks.Zip Files="@(ScriptsToArchive)" ZipFileName="$(ScriptsArchiveFileName)" WorkingDirectory="$(ScriptsArchiveWorkingDirectory)" Condition="'@(ScriptsToArchive)' != ''"/>
+
+    <!-- Binaries -->
+    <Exec
+      Condition="'@(BinariesToArchive)' != ''"
+      Command='PowerShell -NoProfile -ExecutionPolicy Bypass -Command "if (Test-Path &quot;$(BinariesArchiveFileName)&quot;) { Remove-Item -Force &quot;$(BinariesArchiveFileName)&quot; }; Compress-Archive -Path &quot;$(BinariesArchiveWorkingDirectory)\*&quot; -DestinationPath &quot;$(BinariesArchiveFileName)&quot; -Force"'
+    />
+
+    <!-- Installs -->
+    <Exec
+      Condition="'@(InstallsToArchive)' != ''"
+      Command='PowerShell -NoProfile -ExecutionPolicy Bypass -Command "if (Test-Path &quot;$(InstallsArchiveFileName)&quot;) { Remove-Item -Force &quot;$(InstallsArchiveFileName)&quot; }; Compress-Archive -Path &quot;$(InstallsArchiveWorkingDirectory)\*&quot; -DestinationPath &quot;$(InstallsArchiveFileName)&quot; -Force"'
+    />
+
+    <!-- Scripts -->
+    <Exec
+      Condition="'@(ScriptsToArchive)' != ''"
+      Command='PowerShell -NoProfile -ExecutionPolicy Bypass -Command "if (Test-Path &quot;$(ScriptsArchiveFileName)&quot;) { Remove-Item -Force &quot;$(ScriptsArchiveFileName)&quot; }; Compress-Archive -Path &quot;$(ScriptsArchiveWorkingDirectory)\*&quot; -DestinationPath &quot;$(ScriptsArchiveFileName)&quot; -Force"'
+    />
+
     <ItemGroup>
       <Archives Include="$(LocalFolder)\*.zip"/>
     </ItemGroup>
@@ -478,7 +493,10 @@
       <SourcesToArchive Remove="@(SourcesToArchive)"/>
       <SourcesToArchive Include="$(SourceArchiveWorkingDirectory)\**\*.*"/>
     </ItemGroup>
-    <MSBuild.Community.Tasks.Zip Files="@(SourcesToArchive)" ZipFileName="$(SourceArchiveFileName)" WorkingDirectory="$(SourceArchiveWorkingDirectory)" Condition="'@(SourcesToArchive)' != ''"/>
+    <Exec
+      Condition="'@(SourcesToArchive)' != ''"
+      Command='PowerShell -NoProfile -ExecutionPolicy Bypass -Command "if (Test-Path &quot;$(SourceArchiveFileName)&quot;) { Remove-Item -Force &quot;$(SourceArchiveFileName)&quot; }; Compress-Archive -Path &quot;$(SourceArchiveWorkingDirectory)\*&quot; -DestinationPath &quot;$(SourceArchiveFileName)&quot; -Force"'
+    />
     <ItemGroup>
       <Archives Include="$(SourceArchiveFileName)"/>
     </ItemGroup>
