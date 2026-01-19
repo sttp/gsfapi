@@ -387,6 +387,7 @@
       <BuildTag Condition="'$(BuildTag)' == ''">v$(Major).$(Minor).$(Build).$(Revision)-$(GitBranch)</BuildTag>
     </PropertyGroup>
 
+    <Message Text="Pushing version change for build $(BuildTag) to GitHub..."/>
     <Exec Command="%22$(GitClient)%22 add --all" WorkingDirectory="$(LocalFolder)" ContinueOnError="true"/>
     <Exec Command="%22$(GitClient)%22 commit -m %22$(ProjectName): Version change for build $(BuildTag).%22" WorkingDirectory="$(LocalFolder)" ContinueOnError="true"/>
     <Exec Command="%22$(GitClient)%22 tag -f %22$(BuildTag)%22" WorkingDirectory="$(LocalFolder)" ContinueOnError="true"/>
