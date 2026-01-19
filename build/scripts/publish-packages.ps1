@@ -18,7 +18,7 @@ function Publish-Package([string]$package) {
         if ($env:NuGetCertFingerprint -ne $null) {
             # Prime the certificate store to avoid issues with signing
             certutil -scinfo | Out-Null     
-            & dotnet nuget sign $package --certificate-fingerprint $env:NuGetCertFingerprint --certificate-store-location LocalMachine --certificate-store-name AddressBook --timestamper http://timestamp.digicert.com
+            & dotnet nuget sign $package --certificate-fingerprint $env:NuGetCertFingerprint --timestamper http://timestamp.digicert.com
             if ($LASTEXITCODE -ne 0) { throw "dotnet nuget sign failed ($LASTEXITCODE) for: $package" }
         }
 
