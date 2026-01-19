@@ -8,7 +8,7 @@ param(
 
 # Script Constants
 Set-Variable sttpVersionFile -Option Constant -Scope Script -Value "build\scripts\sttp.version"
-Set-Variable libBuildFolder  -Option Constant -Scope Script -Value "build\$buildConfig"
+Set-Variable libBuildFolder  -Option Constant -Scope Script -Value "build\output\$buildConfig"
 
 # Script Functions
 
