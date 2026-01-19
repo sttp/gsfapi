@@ -36,10 +36,19 @@ function Publish-Package([string]$package) {
 $versionPath = Join-Path $projectDir $sttpVersionFile
 $buildPath   = Join-Path $projectDir $libBuildFolder
 
-# Get current STTP version
-$version = (Get-Content -Path "$versionPath" -TotalCount 1).Trim()
+# Get current STTP version (expects a.b.c.d)
+$fullVersion = (Get-Content -Path $versionPath -TotalCount 1).Trim()
 
-Write-Host "Current STTP Library version = $version"
+$parts = $fullVersion.Split('.')
+
+if ($parts.Length -lt 3) {
+    throw "Invalid version format '$fullVersion' (expected at least 3 parts)"
+}
+
+$packageVersion = ($parts[0..2] -join '.')
+
+Write-Host "Current STTP Library version = $fullVersion"
+Write-Host "NuGet package version        = $packageVersion"
 
 # Query file system for package files to get proper casing
 $packages = [IO.Directory]::GetFiles("$buildPath", "*.$version.nupkg")
