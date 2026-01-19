@@ -255,7 +255,6 @@
     <CallTarget Targets="InitializeBuild"/>
     <CallTarget Targets="CompileBuild"/>
     <CallTarget Targets="FinalizeBuild"/>
-    <Beep/>
     <OnError ExecuteTargets="HandleBuildFailure"/>
   </Target>
 
@@ -524,6 +523,5 @@
   <Target Name="HandleBuildFailure">
     <!-- Handle any unexpected build errors. -->
     <Exec Command="%22$(GitClient)%22 reset --hard %22origin/$(GitBranch)%22" WorkingDirectory="$(LocalFolder)"/>
-    <Beep Duration="2000"/>
   </Target>
 </Project>
