@@ -710,19 +710,20 @@ public class DataSubscriber : InputAdapterBase
     /// </summary>
     /// <remarks>
     /// This is useful when using an STTP connection to only synchronize metadata from a publisher, but not to receive data. When enabled,
-    /// the device enabled state will not be synchronized upon creation unless <see cref="AutoEnableIndependentlySyncedDevices"/> is set to
-    /// <c>true</c>. In this mode it may be useful to add the original "ConnectionString" field to the publisher's device metadata so it can
-    /// be synchronized to the subscriber. To ensure no data is received, the subscriber should be configured with an "OutputMeasurements"
+    /// the device enabled state will not be synchronized upon creation unless <see cref="AutoEnableSyncedDevices"/> is set to <c>true</c>.
+    /// In this mode it may be useful to add the original "ConnectionString" field to the publisher's device metadata so it can be
+    /// synchronized to the subscriber. To ensure no data is received, the subscriber should be configured with an "OutputMeasurements"
     /// filter in the adapter's connection string that does not include any measurements, e.g.:
     /// <code>outputMeasurements={FILTER ActiveMeasurements WHERE False}</code>
     /// </remarks>
     public bool SyncIndependentDevices { get; set; }
 
     /// <summary>
-    /// Gets or sets flag that determines if the data subscriber should automatically enable independently synced devices.
-    /// Defaults to <c>false</c>.
+    /// Gets or sets flag that determines if the data subscriber should automatically enable synced devices.
+    /// Defaults to <c>true</c> when <see cref="SyncIndependentDevices"/> is <c>false</c> (default); otherwise,
+    /// defaults to <c>false</c> when <see cref="SyncIndependentDevices"/> is <c>true</c>.
     /// </summary>
-    public bool AutoEnableIndependentlySyncedDevices { get; set; }
+    public bool AutoEnableSyncedDevices { get; set; }
 
     /// <summary>
     /// Gets or sets flag that determines if statistics engine should be enabled for the data subscriber.
@@ -1005,11 +1006,8 @@ public class DataSubscriber : InputAdapterBase
             status.AppendLine($"  Synchronize metadata IDs: {UseIdentityInsertsForMetadata}");
             status.AppendLine($"  Auto delete CALC signals: {AutoDeleteCalculatedMeasurements}");
             status.AppendLine($"  Auto delete ALRM signals: {AutoDeleteAlarmMeasurements}");
+            status.AppendLine($"Auto enable synced devices: {AutoEnableSyncedDevices} - {(AutoEnableSyncedDevices ? "enabled" : "disabled")} on creation");
             status.AppendLine($"  Sync independent devices: {SyncIndependentDevices}");
-
-            if (SyncIndependentDevices)
-                status.AppendLine($"Independent synced devices: {(AutoEnableIndependentlySyncedDevices ? "enabled" : "disabled")} on creation");
-
             status.AppendLine($"  Bypass statistics engine: {BypassStatistics}");
             status.AppendLine($"      Total bytes received: {TotalBytesReceived:N0}");
             status.AppendLine($"      Data packet security: {(SecurityMode == SecurityMode.TLS && m_dataChannel is null ? "Secured via TLS" : m_keyIVs is null ? "Unencrypted" : "AES Encrypted")}");
@@ -1376,9 +1374,11 @@ public class DataSubscriber : InputAdapterBase
         if (settings.TryGetValue(nameof(SyncIndependentDevices), out setting))
             SyncIndependentDevices = setting.ParseBoolean();
 
-        // Check if user has defined a flag for auto-enabling independently synced devices
-        if (settings.TryGetValue(nameof(AutoEnableIndependentlySyncedDevices), out setting))
-            AutoEnableIndependentlySyncedDevices = setting.ParseBoolean();
+        // Check if user has defined a flag for auto-enabling synced devices ("AutoEnableIndependentlySyncedDevices" is old config param name)
+        if (settings.TryGetValue(nameof(AutoEnableSyncedDevices), out setting) || settings.TryGetValue("AutoEnableIndependentlySyncedDevices", out setting))
+            AutoEnableSyncedDevices = setting.ParseBoolean();
+        else
+            AutoEnableSyncedDevices = !SyncIndependentDevices;
 
         // Check if user wants to request that publisher use millisecond resolution to conserve bandwidth
         #pragma warning disable CS0618 // Type or member is obsolete
@@ -3219,7 +3219,6 @@ public class DataSubscriber : InputAdapterBase
                     Dictionary<string, int> deviceIDs = new(StringComparer.OrdinalIgnoreCase);
                     DateTime updateTime;
                     string deviceAcronym;
-                    int deviceID;
 
                     // Check to see if data for the "DeviceDetail" table was included in the meta-data
                     if (metadata.Tables.Contains("DeviceDetail"))
@@ -3234,7 +3233,7 @@ public class DataSubscriber : InputAdapterBase
                         //                                                                             0         1            2        3     4               5         6          7         8            9                 --              10        --
                         // Define SQL statement to insert new device record
                         string insertDeviceSql = database.ParameterizedQueryString("INSERT INTO Device(ParentID, HistorianID, Acronym, Name, OriginalSource, AccessID, Longitude, Latitude, ContactList, ConnectionString, IsConcentrator, Internal, Enabled) " +
-                                                                                   "VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, 0, {10}, " + (SyncIndependentDevices ? AutoEnableIndependentlySyncedDevices ? "1" : "0" : "1") + ")",
+                                                                                   "VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, 0, {10}, " + (AutoEnableSyncedDevices ? "1" : "0") + ")",
                                                                                    "parentID", "historianID", "acronym", "name", "originalSource", "accessID", "longitude", "latitude", "contactList", "connectionString", "internal");
 
                         // Define SQL statement to update existing device record
@@ -3246,7 +3245,7 @@ public class DataSubscriber : InputAdapterBase
                     #else
                         // Define SQL statement to insert new device record
                         string insertDeviceSql = database.ParameterizedQueryString("INSERT INTO Device(NodeID, ParentID, HistorianID, Acronym, Name, ProtocolID, FramesPerSecond, OriginalSource, AccessID, Longitude, Latitude, ContactList, ConnectionString, IsConcentrator, Enabled) " +
-                                                                                   "VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11}, {12}, 0, " + (SyncIndependentDevices ? AutoEnableIndependentlySyncedDevices ? "1" : "0" : "1") + ")",
+                                                                                   "VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11}, {12}, 0, " + (AutoEnableSyncedDevices ? "1" : "0") + ")",
                                                                                    "nodeID", "parentID", "historianID", "acronym", "name", "protocolID", "framesPerSecond", "originalSource", "accessID", "longitude", "latitude", "contactList", "connectionString");
 
                         // Define SQL statement to update existing device record
@@ -3648,7 +3647,7 @@ public class DataSubscriber : InputAdapterBase
                                     string pointTag = sourcePrefix + row.Field<string>("PointTag");
 
                                     // Look up associated device ID (local DB auto-inc)
-                                    deviceID = deviceIDs[deviceAcronym];
+                                    int deviceID = deviceIDs[deviceAcronym];
 
                                     // Determine if measurement record already exists
                                     if (Convert.ToInt32(ExecuteScalar(command, measurementExistsSql, database.Guid(signalID))) == 0)
@@ -3786,7 +3785,7 @@ public class DataSubscriber : InputAdapterBase
 
                             // Make sure we have an associated device already defined for the phasor record
                             // ReSharper disable once CanSimplifyDictionaryLookupWithTryGetValue
-                            if (!string.IsNullOrWhiteSpace(deviceAcronym) && deviceIDs.ContainsKey(deviceAcronym))
+                            if (!string.IsNullOrWhiteSpace(deviceAcronym) && deviceIDs.TryGetValue(deviceAcronym, out int deviceID))
                             {
                                 bool recordNeedsUpdating;
 
@@ -3803,8 +3802,6 @@ public class DataSubscriber : InputAdapterBase
                                 {
                                     recordNeedsUpdating = true;
                                 }
-
-                                deviceID = deviceIDs[deviceAcronym];
 
                                 int sourceIndex = row.ConvertField<int>("SourceIndex");
                                 bool updateRecord = false;
