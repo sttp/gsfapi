@@ -98,7 +98,6 @@
     <Compile Include="GlobalUsings.cs" />
     <Compile Include="internal\Index.cs" />
     <Compile Include="internal\IsExternalInit.cs" />
-    <Compile Include="ComponentModel\LabelAttribute.cs" />
     <Compile Include="ComponentModel\ParameterAttribute.cs" />
     <Compile Include="internal\RequiredMemberAttribute.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
