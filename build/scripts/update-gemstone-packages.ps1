@@ -44,16 +44,17 @@ if (!(Test-Path -LiteralPath $TargetCsprojPath)) {
     exit 1
 }
 
-# Extract version from source Gemstone.Common.csproj
+# Extract version from source Gemstone.Common.csproj using XPath to avoid
+# strict mode errors when multiple PropertyGroup elements exist without Version
 [xml]$sourceXml = Get-Content -LiteralPath $SourceCsprojPath -Raw
-$version = $sourceXml.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+$versionNode = $sourceXml.SelectSingleNode("//PropertyGroup/Version")
 
-if ([string]::IsNullOrWhiteSpace($version)) {
+if ($null -eq $versionNode -or [string]::IsNullOrWhiteSpace($versionNode.InnerText)) {
     Write-Error "Could not extract Version from $SourceCsprojPath"
     exit 1
 }
 
-$version = $version.Trim()
+$version = $versionNode.InnerText.Trim()
 Write-Host "Gemstone version extracted: $version"
 
 # Read target csproj and update Gemstone PackageReference versions
