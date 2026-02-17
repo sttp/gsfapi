@@ -63,14 +63,23 @@ GOTO UpdateDependencies
 
 :UpdateDependencies
 ECHO.
-ECHO Updating dependencies...
+ECHO Updating GSF dependencies...
 XCOPY "%gsflibraries%" "%gsfdependencies%\" /E /U /Y
+
+REM Gemstone package versions are controlled by the Gemstone.Common.csproj file, we set the sttp.Gemstone.csproj
+REM file to reference the package version parsed from the previously updated Gemstone.Common.csproj file:
+ECHO.
+ECHO Updating Gemstone package versions...
+SET scriptdir=%~dp0
+SET gemstonecsproj=%scriptdir%..\..\..\gemstone\common\src\Gemstone\Gemstone.Common.csproj
+SET targetcsproj=%target%\src\lib\sttp.gemstone\sttp.gemstone.csproj
+PowerShell -ExecutionPolicy Bypass -File "%scriptdir%update-gemstone-packages.ps1" -SourceCsprojPath "%gemstonecsproj%" -TargetCsprojPath "%targetcsproj%"
 
 :CommitChanges
 ECHO.
 ECHO Committing updates to local repository...
 "%git%" add .
-"%git%" commit -m "Updated GSF dependencies."
+"%git%" commit -m "Updated GSF dependencies and Gemstone package versions."
 IF NOT "%donotpush%" == "" GOTO Finish
 
 :PushChanges
