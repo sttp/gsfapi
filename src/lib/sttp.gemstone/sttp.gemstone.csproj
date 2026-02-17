@@ -20,6 +20,7 @@
     <RepositoryType>git</RepositoryType>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageTags>GPA;Gemstone;STTP;IEEE2664;library;timeseries</PackageTags>
     <LangVersion>latest</LangVersion>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <Nullable>enable</Nullable>
