@@ -2434,7 +2434,9 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <param name="data">Data to return to client; null if none.</param>
     public void BroadcastUserCommandResponse(ServerResponse response, ServerCommand command, byte[]? data = null)
     {
-        foreach (Guid clientID in ClientConnections.Keys)
+        Guid[] clientIDs = ClientConnections.Keys.ToArray();
+
+        foreach (Guid clientID in clientIDs)
             SendUserCommandResponse(clientID, response, command, data);
     }
 
