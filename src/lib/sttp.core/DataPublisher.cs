@@ -2427,6 +2427,35 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     }
 
     /// <summary>
+    /// Broadcasts user command response to all connected clients.
+    /// </summary>
+    /// <param name="response">Server response.</param>
+    /// <param name="command">In response to command.</param>
+    /// <param name="data">Data to return to client; null if none.</param>
+    public void BroadcastUserCommandResponse(ServerResponse response, ServerCommand command, byte[]? data = null)
+    {
+        foreach (Guid clientID in ClientConnections.Keys)
+            SendUserCommandResponse(clientID, response, command, data);
+    }
+
+    /// <summary>
+    /// Sends user command response back to specified client with attached data.
+    /// </summary>
+    /// <param name="clientID">ID of client to send response.</param>
+    /// <param name="response">Server response.</param>
+    /// <param name="command">In response to command.</param>
+    /// <param name="data">Data to return to client; null if none.</param>
+    /// <returns><c>true</c> if send was successful; otherwise <c>false</c>.</returns>
+    public bool SendUserCommandResponse(Guid clientID, ServerResponse response, ServerCommand command, byte[]? data = null)
+    {
+        const string Error = $"Response must range from '{nameof(ServerResponse.UserResponse00)}' to '{nameof(ServerResponse.UserResponse15)}'";
+
+        return response is < ServerResponse.UserResponse00 or > ServerResponse.UserResponse15 ?
+            throw new ArgumentOutOfRangeException(nameof(response), response, Error) :
+            SendClientResponse(clientID, response, command, data);
+    }
+
+    /// <summary>
     /// Updates latency statistics based on the collection of latencies passed into the method.
     /// </summary>
     /// <param name="latencies">The latencies of the measurements sent by the publisher.</param>
