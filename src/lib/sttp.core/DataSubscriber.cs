@@ -38,10 +38,10 @@ namespace sttp;
 /// <summary>
 /// Represents a data subscribing client that will connect to a data publisher for a data subscription.
 /// </summary>
-[Description("STTP Subscriber: client that subscribes to an STTP-style publishing server for a streaming data.")]
+[Description("STTP Subscriber: client that subscribes to an STTP-style publishing server for streaming data.")]
 [EditorBrowsable(EditorBrowsableState.Advanced)] // Normally defined as an input device protocol
 #if NET
-[AdapterProtocol("STTP", "Streaming Telemetry Transport Protocol", ProtocolType.Measurement, UIVisibility.Input, false)]
+[AdapterProtocol("STTP", "IEEE 2664 Streaming Telemetry Transport Protocol", ProtocolType.Measurement, UIVisibility.Input, false)]
 [UIAdapterProtocol("STTP", "sttp.gemstone", "sttp.UI.STTP.js")]
 [UIAdapterProtocol("STTP", "sttp.gemstone", "sttp.UI.STTPChunk.js")]
 #endif
