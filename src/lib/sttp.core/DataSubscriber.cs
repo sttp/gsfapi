@@ -2526,8 +2526,8 @@ public class DataSubscriber : InputAdapterBase
                         if (TotalBytesReceived == 0)
                         {
                             // At the point when data is being received, data monitor should be enabled
-                            if (!(m_dataStreamMonitor?.Enabled ?? false))
-                                m_dataStreamMonitor!.Enabled = true;
+                            if (m_dataStreamMonitor is not null && m_dataStreamMonitor.Enabled)
+                                m_dataStreamMonitor.Enabled = true;
 
                             // Establish run-time log for subscriber
                             if (AutoConnect || m_dataGapRecoveryEnabled)
@@ -3156,7 +3156,7 @@ public class DataSubscriber : InputAdapterBase
             }
 
             // Reset data stream monitor while meta-data synchronization is in progress
-            if (m_dataStreamMonitor?.Enabled ?? false)
+            if (m_dataStreamMonitor is not null && m_dataStreamMonitor.Enabled)
             {
                 m_dataStreamMonitor.Enabled = false;
                 dataMonitoringEnabled = true;
