@@ -371,6 +371,10 @@ public class SignalIndexCache : ISupportBinaryImage
             m_reference[signalIndex] = MeasurementKey.LookUpOrCreate(signalID, source, id);
         }
 
+        // Treat unauthorized count as optional
+        if (offset >= startIndex + binaryLength)
+            return binaryLength;
+
         // Number of unauthorized IDs
         int unauthorizedIDCount = BigEndian.ToInt32(buffer, offset);
         m_unauthorizedSignalIDs = new Guid[unauthorizedIDCount];
