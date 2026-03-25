@@ -34,6 +34,7 @@
 //******************************************************************************************************
 // ReSharper disable ArrangeObjectCreationWhenTypeNotEvident
 // ReSharper disable UseUtf8StringLiteral
+// ReSharper disable VirtualMemberCallInConstructor
 
 namespace sttp;
 
@@ -1212,7 +1213,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     [Description("Semi-colon separated list of SQL select statements used to create data for meta-data exchange.")]
     [DefaultValue(DefaultMetadataTables)]
     [Label("Metadata Tables")]
-    public string MetadataTables { get; set; }
+    public virtual string MetadataTables { get; set; }
 
     /// <summary>
     /// Gets or sets flag that determines if a subscription is mutual, i.e., bidirectional pub/sub. In this mode one node will
