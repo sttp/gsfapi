@@ -23,6 +23,7 @@
 
 #if NET
 using CommonFunc = Gemstone.Common;
+using UILogMessage = Gemstone.Data.Model.UILogMessage;
 #else
 using CommonFunc = GSF.Common;
 #endif
@@ -944,10 +945,17 @@ public class DataGapRecoverer : ISupportLifecycle, IProvideStatus
         m_dataStreamMonitor.Enabled = false;
     }
 
+#if NET
+    private void Common_StatusMessage(object? sender, EventArgs<UILogMessage> e)
+    {
+        OnStatusMessage(e.Argument.Level, e.Argument.Message);
+    }
+#else
     private void Common_StatusMessage(object? sender, EventArgs<string> e)
     {
         OnStatusMessage(MessageLevel.Info, e.Argument);
     }
+#endif
 
     private void Common_ProcessException(object? sender, EventArgs<Exception> e)
     {
