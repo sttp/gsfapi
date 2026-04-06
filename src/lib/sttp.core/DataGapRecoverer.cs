@@ -23,7 +23,7 @@
 
 #if NET
 using CommonFunc = Gemstone.Common;
-using UILogMessage = Gemstone.Data.Model.UILogMessage;
+using UILogMessage = Gemstone.IO.UILogMessage;
 #else
 using CommonFunc = GSF.Common;
 #endif
