@@ -2851,7 +2851,7 @@ public class DataSubscriber : InputAdapterBase
                             // Buffer block received - wrap as a buffer block measurement and expose back to consumer
                             uint sequenceNumber = BigEndian.ToUInt32(buffer, responseIndex);
                             int bufferCacheIndex = (int)(sequenceNumber - m_expectedBufferBlockSequenceNumber);
-                            int signalCacheIndex = Version > 1 ? buffer[responseIndex + 4] : 0;
+                            int signalCacheIndex = buffer[responseIndex + 4];
 
                             // Check if this buffer block has already been processed (e.g., mistaken retransmission due to timeout)
                             if (bufferCacheIndex >= 0 && (bufferCacheIndex >= m_bufferBlockCache.Count || m_bufferBlockCache[bufferCacheIndex] is null))
@@ -2859,11 +2859,8 @@ public class DataSubscriber : InputAdapterBase
                                 // Send confirmation that buffer block is received
                                 SendServerCommand(ServerCommand.ConfirmBufferBlock, buffer.BlockCopy(responseIndex, 4));
 
-                                if (Version > 1)
-                                    responseIndex += 1;
-
                                 // Get measurement key from signal index cache
-                                int signalIndex = BigEndian.ToInt32(buffer, responseIndex + 4);
+                                int signalIndex = BigEndian.ToInt32(buffer, responseIndex + 5);
 
                                 SignalIndexCache? signalIndexCache;
 
@@ -2874,7 +2871,7 @@ public class DataSubscriber : InputAdapterBase
                                     throw new InvalidOperationException($"Failed to find associated signal identification for runtime ID {signalIndex}");
 
                                 // Skip the sequence number and signal index when creating the buffer block measurement
-                                BufferBlockMeasurement bufferBlockMeasurement = new(buffer, responseIndex + 8, responseLength - 8)
+                                BufferBlockMeasurement bufferBlockMeasurement = new(buffer, responseIndex + 9, responseLength - 9)
                                 {
                                     Metadata = measurementKey.Metadata
                                 };
