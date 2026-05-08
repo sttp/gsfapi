@@ -616,6 +616,10 @@ public enum CompressionModes : uint
 /// Represents a data publishing server that allows multiple connections for data subscriptions.
 /// </summary>
 [Description("STTP Publisher: server component that allows STTP-style gateway subscription connections.")]
+# if NET
+[UIResource("AdaptersUI", $".sttp.gemstone.DataPublisher.main.js")]
+[UIResource("AdaptersUI", $".sttp.gemstone.DataPublisher.chunk.js")]
+# endif
 [EditorBrowsable(EditorBrowsableState.Always)]
 public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
 {
