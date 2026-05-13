@@ -667,6 +667,9 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
         // Includes data packet flags and measurement count
         const int PacketHeaderSize = DataPublisher.ClientResponseHeaderSize + 5;
 
+        // Includes sequence number and buffer block flags
+        const int BufferBlockHeaderSize = DataPublisher.ClientResponseHeaderSize + 5;
+
         try
         {
             if (!Enabled)
@@ -700,17 +703,15 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
 
                     // Handle buffer block measurements as a special case - this can be any kind of data,
                     // measurement subscriber will need to know how to interpret buffer
-                    byte[] bufferBlock = new byte[6 + bufferBlockMeasurement.Length + (m_connection.Version > 1 ? 4 : 0)];
+                    byte[] bufferBlock = new byte[BufferBlockHeaderSize + 4 + bufferBlockMeasurement.Length];
                     int index = 0;
 
                     // Prepend sequence number
                     index += BigEndian.CopyBytes(m_bufferBlockSequenceNumber, bufferBlock, index);
                     m_bufferBlockSequenceNumber++;
 
-                    if (m_connection.Version > 1)
-                        bufferBlock[index++] = (byte)currentCacheIndex;
-
                     // Copy signal index into buffer
+                    bufferBlock[index++] = (byte)currentCacheIndex;
                     int bufferBlockSignalIndex = signalIndexCache.GetSignalIndex(bufferBlockMeasurement.Key);
                     index += BigEndian.CopyBytes(bufferBlockSignalIndex, bufferBlock, index);
 
