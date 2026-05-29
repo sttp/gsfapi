@@ -2848,10 +2848,18 @@ public class DataSubscriber : InputAdapterBase
                         }
                     case ServerResponse.BufferBlock:
                         {
-                            // Buffer block received - wrap as a buffer block measurement and expose back to consumer
-                            uint sequenceNumber = BigEndian.ToUInt32(buffer, responseIndex);
+                        // Buffer block received - wrap as a buffer block measurement and expose back to consumer.
+                        //
+                        // Wire layout (per IEEE Std 2664-2024 § 5.5.10 Figure 34 with SIGNAL INDEX per corrigendum)
+                        //   +0  uint32  SEQUENCE VALUE
+                        //   +4  byte    BUFFER BLOCK FLAGS (Table 8: 0x08 Compressed, 0x10 CacheIndex)
+                        //   +5  int32   SIGNAL INDEX
+                        //   +9  byte[]  payload (GZip-compressed when Compressed bit set)
+                        uint sequenceNumber = BigEndian.ToUInt32(buffer, responseIndex);
                             int bufferCacheIndex = (int)(sequenceNumber - m_expectedBufferBlockSequenceNumber);
-                            int signalCacheIndex = buffer[responseIndex + 4];
+                            BufferBlockFlags bufferBlockFlags = (BufferBlockFlags)buffer[responseIndex + 4];
+                            int signalCacheIndex = bufferBlockFlags.HasFlag(BufferBlockFlags.CacheIndex) ? 1 : 0;
+                            bool payloadCompressed = bufferBlockFlags.HasFlag(BufferBlockFlags.Compressed);
 
                             // Check if this buffer block has already been processed (e.g., mistaken retransmission due to timeout)
                             if (bufferCacheIndex >= 0 && (bufferCacheIndex >= m_bufferBlockCache.Count || m_bufferBlockCache[bufferCacheIndex] is null))
@@ -2870,8 +2878,32 @@ public class DataSubscriber : InputAdapterBase
                                 if (signalIndexCache is null || !signalIndexCache.Reference.TryGetValue(signalIndex, out MeasurementKey? measurementKey))
                                     throw new InvalidOperationException($"Failed to find associated signal identification for runtime ID {signalIndex}");
 
-                                // Skip the sequence number and signal index when creating the buffer block measurement
-                                BufferBlockMeasurement bufferBlockMeasurement = new(buffer, responseIndex + 9, responseLength - 9)
+                                // Decompress the payload if the publisher set the Compressed flag. GZip is the
+                                // always-available baseline per IEEE Std 2664-2024 Table 4 default.
+                                byte[] payloadBuffer;
+                                int payloadOffset;
+                                int payloadLength;
+
+                                if (payloadCompressed)
+                                {
+                                    using MemoryStream compressedStream = new(buffer, responseIndex + 9, responseLength - 9, writable: false);
+                                    using BlockAllocatedMemoryStream decompressedStream = new();
+
+                                    using (GZipStream inflater = new(compressedStream, CompressionMode.Decompress, leaveOpen: true))
+                                        inflater.CopyTo(decompressedStream);
+
+                                    payloadBuffer = decompressedStream.ToArray();
+                                    payloadOffset = 0;
+                                    payloadLength = payloadBuffer.Length;
+                                }
+                                else
+                                {
+                                    payloadBuffer = buffer;
+                                    payloadOffset = responseIndex + 9;
+                                    payloadLength = responseLength - 9;
+                                }
+
+                                BufferBlockMeasurement bufferBlockMeasurement = new(payloadBuffer, payloadOffset, payloadLength)
                                 {
                                     Metadata = measurementKey.Metadata
                                 };

@@ -477,6 +477,56 @@ public enum DataPacketFlags : byte
 }
 
 /// <summary>
+/// <see cref="DataPublisher"/> buffer block flags.
+/// </summary>
+/// <remarks>
+/// These flags occupy the single byte at offset +4 of the <see cref="ServerResponse.BufferBlock"/>
+/// payload, immediately after the 4-byte SEQUENCE VALUE. Bit definitions follow IEEE Std
+/// 2664-2024 Table 8 and are intentionally parallel to <see cref="DataPacketFlags"/>.
+/// </remarks>
+[Flags]
+public enum BufferBlockFlags : byte
+{
+    /// <summary>
+    /// No flags set.
+    /// </summary>
+    NoFlags = (byte)Bits.Nil,
+
+    /// <summary>
+    /// Determines if BUFFER BLOCK requires confirmation with a CONFIRM BUFFER BLOCK command.
+    /// </summary>
+    /// <remarks>
+    /// Bit set = require confirmation, bit clear = do not require confirmation.
+    /// </remarks>
+    RequireConfirmation = (byte)Bits.Bit00,
+
+    /// <summary>
+    /// Determines which cipher key index to use when decrypting BUFFER BLOCK payload.
+    /// </summary>
+    /// <remarks>
+    /// Bit set = use odd KEY INDEX, bit clear = use even KEY INDEX.
+    /// </remarks>
+    KeyIndex = (byte)Bits.Bit02,
+
+    /// <summary>
+    /// Determines if BUFFER BLOCK payload is compressed.
+    /// </summary>
+    /// <remarks>
+    /// Bit set = payload compressed (per the algorithm negotiated for buffer-block payloads,
+    /// default GZip per IEEE Std 2664-2024 Annex), bit clear = payload uncompressed.
+    /// </remarks>
+    Compressed = (byte)Bits.Bit03,
+
+    /// <summary>
+    /// Determines which Signal Index Cache index to use when decoding the BUFFER BLOCK payload.
+    /// </summary>
+    /// <remarks>
+    /// Bit set = use odd CACHE INDEX, bit clear = use even CACHE INDEX.
+    /// </remarks>
+    CacheIndex = (byte)Bits.Bit04
+}
+
+/// <summary>
 /// Operational modes that affect how <see cref="DataPublisher"/> and <see cref="DataSubscriber"/> communicate.
 /// </summary>
 /// <remarks>
