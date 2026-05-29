@@ -2680,7 +2680,8 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         {
             // Create a new working buffer
             bool dataPacketResponse = responseCode == (byte)ServerResponse.DataPacket;
-            bool useDataChannel = dataPacketResponse || responseCode == (byte)ServerResponse.BufferBlock;
+            bool bufferBlockResponse = responseCode == (byte)ServerResponse.BufferBlock;
+            bool useDataChannel = dataPacketResponse || bufferBlockResponse;
 
             // Initialize target working buffer
             workingBuffer = MaxPublishInterval == 0L ? new BlockAllocatedMemoryStream() : connection.PublishBuffer;
@@ -2725,6 +2726,52 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                     Common.SymmetricAlgorithm.Encrypt(sourceData, workingBuffer, keyIVs[cipherIndex][0], keyIVs[cipherIndex][1]);
 
                     // Calculate length of encrypted data payload
+                    int payloadLength = (int)workingBuffer.Length - 6;
+
+                    // Move the response packet position back to the packet size reservation
+                    workingBuffer.Seek(2, SeekOrigin.Begin);
+
+                    // Add the actual size of payload length to response packet
+                    workingBuffer.Write(BigEndian.GetBytes(payloadLength), 0, 4);
+                }
+                // If response is for a buffer block and a connection key is defined, encrypt the
+                // buffer block payload. Parallel to the DATA PACKET branch above, modeled per
+                // IEEE Std 2664-2024 § 5.5.10: "When UDP encryption is established with the
+                // UPDATE CIPHER KEYS response, data is encrypted and replaces the BUFFER BLOCK
+                // PAYLOAD." SEQUENCE VALUE and FLAGS stay cleartext - the subscriber needs them
+                // to dedup retransmits and choose the correct cipher key set before decryption.
+                // SIGNAL INDEX and PAYLOAD are encrypted together (the parallel to DATA PACKET
+                // encrypting MEASUREMENT COUNT + PAYLOAD).
+                else if (bufferBlockResponse && connection.KeyIVs is not null)
+                {
+                    // Get a local copy of volatile keyIVs and cipher index since these can change at any time
+                    byte[][][] keyIVs = connection.KeyIVs;
+                    int cipherIndex = connection.CipherIndex;
+
+                    // Reserve space for size of data buffer to go into response packet
+                    workingBuffer.Write(s_zeroLengthBytes, 0, 4);
+
+                    // Write SEQUENCE VALUE cleartext (4 bytes)
+                    workingBuffer.Write(data, 0, 4);
+
+                    // Get buffer block flags
+                    BufferBlockFlags flags = (BufferBlockFlags)data[4];
+
+                    // Encode current cipher index into buffer block flags (KEY INDEX, Table 8 bit 0x04)
+                    if (cipherIndex > 0)
+                        flags |= BufferBlockFlags.KeyIndex;
+
+                    // Write buffer block flags into response packet
+                    workingBuffer.WriteByte((byte)flags);
+
+                    // Copy SIGNAL INDEX + PAYLOAD into a memory stream for encryption
+                    MemoryStream sourceData = new(data, 5, data.Length - 5);
+
+                    // Encrypt payload portion of buffer block and copy into the response packet
+                    Common.SymmetricAlgorithm.Encrypt(sourceData, workingBuffer, keyIVs[cipherIndex][0], keyIVs[cipherIndex][1]);
+
+                    // Calculate length of encrypted payload (response packet length minus the
+                    // 6-byte ClientResponseHeader, which is response code + command code + size field)
                     int payloadLength = (int)workingBuffer.Length - 6;
 
                     // Move the response packet position back to the packet size reservation

@@ -2859,16 +2859,39 @@ public class DataSubscriber : InputAdapterBase
                         int bufferCacheIndex = (int)(sequenceNumber - m_expectedBufferBlockSequenceNumber);
                         BufferBlockFlags bufferBlockFlags = (BufferBlockFlags)buffer[responseIndex + 4];
                         int signalCacheIndex = bufferBlockFlags.HasFlag(BufferBlockFlags.CacheIndex) ? 1 : 0;
+                        int bufferBlockKeyIndex = bufferBlockFlags.HasFlag(BufferBlockFlags.KeyIndex) ? 1 : 0;
                         bool payloadCompressed = bufferBlockFlags.HasFlag(BufferBlockFlags.Compressed);
+                        bool requireConfirmation = bufferBlockFlags.HasFlag(BufferBlockFlags.RequireConfirmation);
 
                         // Check if this buffer block has already been processed (e.g., mistaken retransmission due to timeout)
                         if (bufferCacheIndex >= 0 && (bufferCacheIndex >= m_bufferBlockCache.Count || m_bufferBlockCache[bufferCacheIndex] is null))
                         {
-                            // Send confirmation that buffer block is received
-                            SendServerCommand(ServerCommand.ConfirmBufferBlock, buffer.BlockCopy(responseIndex, 4));
+                            // Confirm only when the publisher set REQUIRE CONFIRMATION (IEEE 2664-2024 Table 8 bit 0x01).
+                            // Sequence-number bookkeeping below still proceeds either way so ordering / dropout detection
+                            // keeps working on fire-and-forget streams.
+                            if (requireConfirmation)
+                                SendServerCommand(ServerCommand.ConfirmBufferBlock, buffer.BlockCopy(responseIndex, 4));
+
+                            // Decrypt the encrypted region if cipher keys are active. Per IEEE Std 2664-2024 § 5.5.10
+                            // SEQUENCE VALUE and FLAGS are cleartext; SIGNAL INDEX and PAYLOAD are encrypted together.
+                            // This parallels the DATA PACKET decrypt path: the cipher key set is chosen by the
+                            // KeyIndex flag (Table 8 bit 0x04), matching DataPacketFlags.CipherIndex semantics.
+                            byte[] encryptedRegion = buffer;
+                            int encryptedOffset = responseIndex + 5;
+                            int encryptedLength = responseLength - 5;
+
+                            if (m_keyIVs is not null)
+                            {
+                                // Get a local copy of volatile keyIVs reference since this can change at any time
+                                keyIVs = m_keyIVs;
+
+                                encryptedRegion = Common.SymmetricAlgorithm.Decrypt(encryptedRegion, encryptedOffset, encryptedLength, keyIVs[bufferBlockKeyIndex][0], keyIVs[bufferBlockKeyIndex][1]);
+                                encryptedOffset = 0;
+                                encryptedLength = encryptedRegion.Length;
+                            }
 
                             // Get measurement key from signal index cache
-                            int signalIndex = BigEndian.ToInt32(buffer, responseIndex + 5);
+                            int signalIndex = BigEndian.ToInt32(encryptedRegion, encryptedOffset);
 
                             SignalIndexCache? signalIndexCache;
 
@@ -2879,14 +2902,15 @@ public class DataSubscriber : InputAdapterBase
                                 throw new InvalidOperationException($"Failed to find associated signal identification for runtime ID {signalIndex}");
 
                             // Decompress the payload if the publisher set the Compressed flag. GZip is the
-                            // always-available baseline per IEEE Std 2664-2024 Table 4 default.
+                            // always-available baseline per IEEE Std 2664-2024 Table 4 default. Note: compression
+                            // happens BEFORE encryption per IEEE 2664, so decryption happens before decompression.
                             byte[] payloadBuffer;
                             int payloadOffset;
                             int payloadLength;
 
                             if (payloadCompressed)
                             {
-                                using MemoryStream compressedStream = new(buffer, responseIndex + 9, responseLength - 9, writable: false);
+                                using MemoryStream compressedStream = new(encryptedRegion, encryptedOffset + 4, encryptedLength - 4, writable: false);
                                 using BlockAllocatedMemoryStream decompressedStream = new();
 
                                 using (GZipStream inflater = new(compressedStream, CompressionMode.Decompress, leaveOpen: true))
@@ -2898,14 +2922,16 @@ public class DataSubscriber : InputAdapterBase
                             }
                             else
                             {
-                                payloadBuffer = buffer;
-                                payloadOffset = responseIndex + 9;
-                                payloadLength = responseLength - 9;
+                                payloadBuffer = encryptedRegion;
+                                payloadOffset = encryptedOffset + 4;
+                                payloadLength = encryptedLength - 4;
                             }
 
                             BufferBlockMeasurement bufferBlockMeasurement = new(payloadBuffer, payloadOffset, payloadLength)
                             {
-                                Metadata = measurementKey.Metadata
+                                Metadata = measurementKey.Metadata,
+                                Flags = (byte)bufferBlockFlags,
+                                RequireConfirmation = requireConfirmation,
                             };
 
                             // Determine if this is the next buffer block in the sequence

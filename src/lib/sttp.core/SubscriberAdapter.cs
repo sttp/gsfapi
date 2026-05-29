@@ -698,9 +698,8 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
             {
                 if (measurement is BufferBlockMeasurement { Buffer: not null } bufferBlockMeasurement)
                 {
-                    // Still sending buffer block measurements to client; we are expecting
-                    // confirmations which will indicate whether retransmission is necessary,
-                    // so we will restart the retransmission timer
+                    // Pause the retransmission timer while we emit. If this block requires
+                    // confirmation we'll restart it on the way out; if not, we leave it stopped.
                     m_bufferBlockRetransmissionTimer.Stop();
 
                     // Send the buffer block - the helper handles framing (sequence, IEEE flags
@@ -708,14 +707,16 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
                     // the payload when the session has payload compression enabled.
                     SendBufferBlockMeasurement(bufferBlockMeasurement, signalIndexCache, currentCacheIndex, compressPayload: false, out byte[] bufferBlock);
 
-                    lock (m_bufferBlockCacheLock)
+                    // REQUIRE CONFIRMATION (Table 8 bit 0x01) gates retransmission. When the
+                    // application opted out (RequireConfirmation == false), the block is
+                    // fire-and-forget: no cache entry, no retransmission timer.
+                    if (bufferBlockMeasurement.RequireConfirmation)
                     {
-                        // Cache buffer block for retransmission
-                        m_bufferBlockCache.Add(bufferBlock);
-                    }
+                        lock (m_bufferBlockCacheLock)
+                            m_bufferBlockCache.Add(bufferBlock);
 
-                    // Start the retransmission timer in case we never receive a confirmation
-                    m_bufferBlockRetransmissionTimer.Start();
+                        m_bufferBlockRetransmissionTimer.Start();
+                    }
                 }
                 else
                 {
@@ -833,6 +834,12 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
         if (currentCacheIndex == 1)
             flags |= BufferBlockFlags.CacheIndex;
 
+        // REQUIRE CONFIRMATION (Table 8 bit 0x01): when set, the subscriber is required to emit a
+        // CONFIRM BUFFER BLOCK command on receipt; this is also the trigger that gates whether the
+        // caller below caches the frame for retransmission and arms the retransmission timer.
+        if (bufferBlockMeasurement.RequireConfirmation)
+            flags |= BufferBlockFlags.RequireConfirmation;
+
         // Optionally GZip-compress the payload. Default algorithm per IEEE Std 2664-2024 is GZip;
         // selection is configurable at the session level via the BufferBlockPayloadCompressionAlgorithms
         // operational mode key, but we hard-code GZip here as the always-available baseline.
@@ -926,10 +933,16 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
                         m_bufferBlockRetransmissionTimer.Stop();
                         SendBufferBlockMeasurement(bufferBlockMeasurement, signalIndexCache, currentCacheIndex, compressPayload: true, out byte[] bufferBlock);
 
-                        lock (m_bufferBlockCacheLock)
-                            m_bufferBlockCache.Add(bufferBlock);
+                        // Cache + retransmit only when the application asked for it; otherwise the
+                        // block is fire-and-forget (no cache, timer stays stopped).
+                        if (bufferBlockMeasurement.RequireConfirmation)
+                        {
+                            lock (m_bufferBlockCacheLock)
+                                m_bufferBlockCache.Add(bufferBlock);
 
-                        m_bufferBlockRetransmissionTimer.Start();
+                            m_bufferBlockRetransmissionTimer.Start();
+                        }
+
                         continue;
                     }
 
