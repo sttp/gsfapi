@@ -95,6 +95,11 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
     private SharedTimer m_bufferBlockRetransmissionTimer = null!;
     private double m_bufferBlockRetransmissionTimeout;
 
+    // Per-buffer-block header that travels inside the BUFFER BLOCK response payload, immediately
+    // before the free-form bytes. Matches IEEE Std 2664-2024 § 5.5.10 Figure 34 (SEQUENCE VALUE +
+    // BUFFER BLOCK FLAGS + 4-byte SIGNAL INDEX per corrigendum)
+    private const int BufferBlockMeasurementHeaderSize = 4 /* sequence */ + 1 /* flags */ + 4 /* signal index */;
+
     private bool m_disposed;
 
 #endregion
@@ -667,9 +672,6 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
         // Includes data packet flags and measurement count
         const int PacketHeaderSize = DataPublisher.ClientResponseHeaderSize + 5;
 
-        // Includes sequence number and buffer block flags
-        const int BufferBlockHeaderSize = DataPublisher.ClientResponseHeaderSize + 5;
-
         try
         {
             if (!Enabled)
@@ -696,37 +698,25 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
             {
                 if (measurement is BufferBlockMeasurement { Buffer: not null } bufferBlockMeasurement)
                 {
-                    // Still sending buffer block measurements to client; we are expecting
-                    // confirmations which will indicate whether retransmission is necessary,
-                    // so we will restart the retransmission timer
+                    // Pause the retransmission timer while we emit. If this block requires
+                    // confirmation we'll restart it on the way out; if not, we leave it stopped.
                     m_bufferBlockRetransmissionTimer.Stop();
 
-                    // Handle buffer block measurements as a special case - this can be any kind of data,
-                    // measurement subscriber will need to know how to interpret buffer
-                    byte[] bufferBlock = new byte[BufferBlockHeaderSize + 4 + bufferBlockMeasurement.Length];
-                    int index = 0;
+                    // Send the buffer block - the helper handles framing (sequence, IEEE flags
+                    // byte, signal index, then the opaque payload) and applies GZip compression to
+                    // the payload when the session has payload compression enabled.
+                    SendBufferBlockMeasurement(bufferBlockMeasurement, signalIndexCache, currentCacheIndex, compressPayload: false, out byte[] bufferBlock);
 
-                    // Prepend sequence number
-                    index += BigEndian.CopyBytes(m_bufferBlockSequenceNumber, bufferBlock, index);
-                    m_bufferBlockSequenceNumber++;
-
-                    // Copy signal index into buffer
-                    bufferBlock[index++] = (byte)currentCacheIndex;
-                    int bufferBlockSignalIndex = signalIndexCache.GetSignalIndex(bufferBlockMeasurement.Key);
-                    index += BigEndian.CopyBytes(bufferBlockSignalIndex, bufferBlock, index);
-
-                    // Append measurement data and send
-                    Buffer.BlockCopy(bufferBlockMeasurement.Buffer, 0, bufferBlock, index, bufferBlockMeasurement.Length);
-                    m_parent.SendClientResponse(ClientID, ServerResponse.BufferBlock, ServerCommand.Subscribe, bufferBlock);
-
-                    lock (m_bufferBlockCacheLock)
+                    // REQUIRE CONFIRMATION (Table 8 bit 0x01) gates retransmission. When the
+                    // application opted out (RequireConfirmation == false), the block is
+                    // fire-and-forget: no cache entry, no retransmission timer.
+                    if (bufferBlockMeasurement.RequireConfirmation)
                     {
-                        // Cache buffer block for retransmission
-                        m_bufferBlockCache.Add(bufferBlock);
-                    }
+                        lock (m_bufferBlockCacheLock)
+                            m_bufferBlockCache.Add(bufferBlock);
 
-                    // Start the retransmission timer in case we never receive a confirmation
-                    m_bufferBlockRetransmissionTimer.Start();
+                        m_bufferBlockRetransmissionTimer.Start();
+                    }
                 }
                 else
                 {
@@ -802,6 +792,91 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
         m_lastPublishTime = DateTime.UtcNow.Ticks;
     }
 
+    /// <summary>
+    /// Builds the per-IEEE-2664 BUFFER BLOCK response payload for a single <see cref="BufferBlockMeasurement"/>,
+    /// sends it to the client, and outputs the constructed byte array so the caller can cache it for retransmission.
+    /// </summary>
+    /// <param name="bufferBlockMeasurement">Source measurement; its <see cref="BufferBlockMeasurement.Buffer"/> supplies the opaque payload.</param>
+    /// <param name="signalIndexCache">Active signal index cache - used to resolve the measurement key to the 32-bit runtime ID embedded in the frame.</param>
+    /// <param name="currentCacheIndex">Which signal index cache (even=0 or odd=1) is in use. Sets <see cref="BufferBlockFlags.CacheIndex"/> when non-zero.</param>
+    /// <param name="compressPayload">
+    /// When true, the payload bytes are GZip-compressed and the <see cref="BufferBlockFlags.Compressed"/>
+    /// flag is set on the wire. GZip is the IEEE Std 2664-2024 default for buffer-block payload compression
+    /// (Annex / Table 4 <c>BufferBlockPayloadCompressionAlgorithms</c>).
+    /// </param>
+    /// <param name="bufferBlock">
+    /// The constructed on-wire byte array. Caller is responsible for inserting this into the retransmission cache;
+    /// the helper itself does not touch the cache.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// Wire layout matches IEEE Std 2664-2024 § 5.5.10 Figure 34
+    /// <code>
+    ///     +0  uint32  SEQUENCE VALUE      (big-endian, ack tracker)
+    ///     +4  byte    BUFFER BLOCK FLAGS  (Table 8 - 0x01 RequireConfirmation, 0x08 Compressed, 0x10 CacheIndex)
+    ///     +5  int32   SIGNAL INDEX        (big-endian, runtime ID -- per IEEE 2664 corrigendum)
+    ///     +9  byte[]  PAYLOAD             (opaque; GZip-compressed when Compressed bit is set)
+    /// </code>
+    /// </para>
+    /// <para>
+    /// Future implementations will parse buffer block compression algorithm from BufferBlockPayloadCompressionAlgorithms
+    /// connection string parameter key in Define Operational Modes per IEEE 2264. Current implementation defaults to GZip.
+    /// </para>
+    /// </remarks>
+    private void SendBufferBlockMeasurement(BufferBlockMeasurement bufferBlockMeasurement, SignalIndexCache signalIndexCache, int currentCacheIndex, bool compressPayload, out byte[] bufferBlock)
+    {
+        byte[] sourceBuffer = bufferBlockMeasurement.Buffer!;
+        int sourceOffset = 0;
+        int sourceLength = bufferBlockMeasurement.Length;
+
+        BufferBlockFlags flags = BufferBlockFlags.NoFlags;
+
+        if (currentCacheIndex == 1)
+            flags |= BufferBlockFlags.CacheIndex;
+
+        // REQUIRE CONFIRMATION (Table 8 bit 0x01): when set, the subscriber is required to emit a
+        // CONFIRM BUFFER BLOCK command on receipt; this is also the trigger that gates whether the
+        // caller below caches the frame for retransmission and arms the retransmission timer.
+        if (bufferBlockMeasurement.RequireConfirmation)
+            flags |= BufferBlockFlags.RequireConfirmation;
+
+        // Optionally GZip-compress the payload. Default algorithm per IEEE Std 2664-2024 is GZip;
+        // selection is configurable at the session level via the BufferBlockPayloadCompressionAlgorithms
+        // operational mode key, but we hard-code GZip here as the always-available baseline.
+        if (compressPayload)
+        {
+            using BlockAllocatedMemoryStream compressedStream = new();
+
+            using (GZipStream deflater = new(compressedStream, CompressionLevel.Fastest, leaveOpen: true))
+                deflater.Write(sourceBuffer, 0, sourceLength);
+
+            byte[] compressed = compressedStream.ToArray();
+            sourceBuffer = compressed;
+            sourceOffset = 0;
+            sourceLength = compressed.Length;
+            flags |= BufferBlockFlags.Compressed;
+        }
+
+        bufferBlock = new byte[BufferBlockMeasurementHeaderSize + sourceLength];
+        int index = 0;
+
+        // SEQUENCE VALUE (4 bytes, uint32)
+        index += BigEndian.CopyBytes(m_bufferBlockSequenceNumber, bufferBlock, index);
+        m_bufferBlockSequenceNumber++;
+
+        // BUFFER BLOCK FLAGS (1 byte)
+        bufferBlock[index++] = (byte)flags;
+
+        // SIGNAL INDEX (4 bytes, int32)
+        int signalIndex = signalIndexCache.GetSignalIndex(bufferBlockMeasurement.Key);
+        index += BigEndian.CopyBytes(signalIndex, bufferBlock, index);
+
+        // PAYLOAD (opaque)
+        Buffer.BlockCopy(sourceBuffer, sourceOffset, bufferBlock, index, sourceLength);
+
+        m_parent.SendClientResponse(ClientID, ServerResponse.BufferBlock, ServerCommand.Subscribe, bufferBlock);
+    }
+
     private void ProcessTSSCMeasurements(IEnumerable<IMeasurement> measurements)
     {
         SignalIndexCache? signalIndexCache;
@@ -840,11 +915,42 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
 
                 foreach (IMeasurement measurement in measurements)
                 {
+                    // BufferBlockMeasurement cannot flow through the TSSC encoder (which only
+                    // understands the 32-byte time-series measurement structure). Per IEEE Std
+                    // 2664-2024, buffer-block payloads under a compressed session use the
+                    // negotiated buffer-block compression algorithm - default GZip - rather than
+                    // the streaming compression. Flush any pending TSSC payload first to preserve
+                    // ordering, then emit the buffer block on its own response frame.
+                    if (measurement is BufferBlockMeasurement { Buffer: not null } bufferBlockMeasurement)
+                    {
+                        if (count > 0)
+                        {
+                            SendTSSCPayload(count, currentCacheIndex);
+                            count = 0;
+                            m_tsscEncoder.SetBuffer(m_tsscWorkingBuffer, 0, m_tsscWorkingBuffer.Length);
+                        }
+
+                        m_bufferBlockRetransmissionTimer.Stop();
+                        SendBufferBlockMeasurement(bufferBlockMeasurement, signalIndexCache, currentCacheIndex, compressPayload: true, out byte[] bufferBlock);
+
+                        // Cache + retransmit only when the application asked for it; otherwise the
+                        // block is fire-and-forget (no cache, timer stays stopped).
+                        if (bufferBlockMeasurement.RequireConfirmation)
+                        {
+                            lock (m_bufferBlockCacheLock)
+                                m_bufferBlockCache.Add(bufferBlock);
+
+                            m_bufferBlockRetransmissionTimer.Start();
+                        }
+
+                        continue;
+                    }
+
                     int index = signalIndexCache.GetSignalIndex(measurement.Key);
 
-                    if (index == int.MaxValue) 
+                    if (index == int.MaxValue)
                         continue; // Ignore unmapped signal
-                    
+
                     if (!m_tsscEncoder.TryAddMeasurement(index, measurement.Timestamp.Value, (uint)measurement.StateFlags, (float)measurement.AdjustedValue))
                     {
                         SendTSSCPayload(count, currentCacheIndex);
