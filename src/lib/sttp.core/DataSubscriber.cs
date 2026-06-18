@@ -3156,7 +3156,7 @@ public class DataSubscriber : InputAdapterBase
 
             Measurement measurement = new()
             {
-                Metadata = key!.Metadata,
+                Metadata = key.Metadata,
                 Timestamp = time,
                 StateFlags = (MeasurementStateFlags)quality,
                 Value = value
