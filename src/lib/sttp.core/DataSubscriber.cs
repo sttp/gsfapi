@@ -2580,7 +2580,7 @@ public class DataSubscriber : InputAdapterBase
                         if (TotalBytesReceived == 0)
                         {
                             // At the point when data is being received, data monitor should be enabled
-                            if (m_dataStreamMonitor is not null && m_dataStreamMonitor.Enabled)
+                            if (m_dataStreamMonitor is not null && !m_dataStreamMonitor.Enabled)
                                 m_dataStreamMonitor.Enabled = true;
 
                             // Establish run-time log for subscriber
@@ -2609,7 +2609,7 @@ public class DataSubscriber : InputAdapterBase
 
                         // Track total data packet bytes received from any channel
                         TotalBytesReceived += m_lastBytesReceived;
-                        m_monitoredBytesReceived += m_lastBytesReceived;
+                        Interlocked.Add(ref m_monitoredBytesReceived, m_lastBytesReceived);
 
                         // Get data packet flags
                         DataPacketFlags flags = (DataPacketFlags)buffer[responseIndex];
@@ -4214,6 +4214,9 @@ public class DataSubscriber : InputAdapterBase
     // Disconnect client, restarting if disconnect was not intentional
     private void DisconnectClient()
     {
+        if (m_dataStreamMonitor is not null)
+            m_dataStreamMonitor.Enabled = false;
+
         // Mark end of any data transmission in run-time log
         if (m_runTimeLog is not null && m_runTimeLog.Enabled)
         {
@@ -4245,12 +4248,14 @@ public class DataSubscriber : InputAdapterBase
         }
         else
         {
-            if (m_activeClientID != Guid.Empty)
-                m_serverCommandChannel.DisconnectOne(m_activeClientID);
+            Guid activeClientID = m_activeClientID;
+            m_activeClientID = Guid.Empty;
+
+            if (activeClientID != Guid.Empty)
+                m_serverCommandChannel.DisconnectOne(activeClientID);
 
             // When subscriber is in server mode, the server does not need to be restarted, but we
             // will reset client statistics - this is a server of "one" client, the publisher
-            m_activeClientID = Guid.Empty;
             m_subscribedDevicesTimer?.Stop();
             m_metadataRefreshPending = false;
             m_expectedBufferBlockSequenceNumber = 0u;
@@ -4736,12 +4741,12 @@ public class DataSubscriber : InputAdapterBase
 
     private void DataStreamMonitor_Elapsed(object? sender, EventArgs<DateTime> e)
     {
-        bool dataReceived = m_monitoredBytesReceived > 0;
+        bool dataReceived = Interlocked.Exchange(ref m_monitoredBytesReceived, 0L) > 0;
 
         if (m_dataChannel is null && m_metadataRefreshPending)
         {
             if (m_lastReceivedAt > DateTime.MinValue)
-                dataReceived = (DateTime.UtcNow - m_lastReceivedAt).Seconds < DataLossInterval;
+                dataReceived = (DateTime.UtcNow - m_lastReceivedAt).TotalSeconds < DataLossInterval;
         }
 
         if (!dataReceived)
@@ -4758,9 +4763,6 @@ public class DataSubscriber : InputAdapterBase
                     DisconnectClient();
             });
         }
-
-        // Reset bytes received bytes being monitored
-        m_monitoredBytesReceived = 0L;
     }
 
     private void RunTimeLog_ProcessException(object? sender, EventArgs<Exception> e)
