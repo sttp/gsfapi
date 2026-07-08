@@ -23,11 +23,7 @@
 //
 //******************************************************************************************************
 
-#if NET
-#define MONO
-#endif
-
-#if !MONO
+#if !NET
 using Microsoft.Win32;
 #endif
 
@@ -40,7 +36,7 @@ public static class Common
 {
     static Common()
     {
-    #if MONO
+    #if NET || MONO
         UseManagedEncryption = true;
     #else
         const string FipsKeyOld = @"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Lsa";

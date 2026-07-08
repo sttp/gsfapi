@@ -1671,7 +1671,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                     PayloadAware = true,
                     PayloadMarker = null,
                     PayloadEndianOrder = EndianOrder.BigEndian,
-                    MaxConnectionAttempts = 1,
+                    MaxConnectionAttempts = -1,
                     CertificateFile = FilePath.GetAbsolutePath(localCertificate!),
                     CheckCertificateRevocation = checkCertificateRevocation,
                     CertificateChecker = m_certificateChecker,
