@@ -26,7 +26,10 @@ using GSF.TimeSeries;
 using sttp;
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.IO;
+using System.Threading;
+using System.Xml;
 
 namespace InteropTest;
 
@@ -36,6 +39,12 @@ class Program
     private static StreamWriter s_export;
     private static ulong s_processCount;
     private static bool s_ready;
+
+    // Metadata interop-mode state
+    private static readonly ManualResetEventSlim s_metadataComplete = new(false);
+    private static volatile bool s_metadataRequested;
+    private static volatile bool s_metadataHandled;
+    private static int s_metadataExitCode = 2; // default: timeout / no metadata received
 
     private static void StatusMessage(string message)
     {
@@ -68,6 +77,15 @@ class Program
         if (!ushort.TryParse(args[1], out ushort port))
         {
             Console.Error.WriteLine($"Could not parse \"{args[1]}\" as a valid port.");
+            return;
+        }
+
+        // Metadata interop mode: request XML metadata, dump its datetime values, and exit with a
+        // status code (0 = metadata received and parsed, non-zero = deserialization error / timeout).
+        // This exercises the publisher's xs:dateTime serialization against the .NET DataSet parser.
+        if (args.Length > 2 && args[2].Equals("--metadata", StringComparison.OrdinalIgnoreCase))
+        {
+            RunMetadataMode(hostname, port);
             return;
         }
 
@@ -152,5 +170,119 @@ class Program
         StatusMessage("Connection terminated.");
         s_export?.Close();
         s_export = null;
+    }
+
+    // ----------------------------------------------------------------------------------------------
+    // Metadata interop mode
+    // ----------------------------------------------------------------------------------------------
+
+    private static void RunMetadataMode(string hostname, ushort port)
+    {
+        DataSubscriber subscriber = new();
+        subscriber.StatusMessage += (_, e) => StatusMessage(e.Argument);
+        subscriber.ProcessException += metadata_ProcessException;
+        subscriber.ConnectionEstablished += metadata_ConnectionEstablished;
+        subscriber.ConnectionTerminated += (_, _) => StatusMessage("Connection terminated.");
+        subscriber.MetaDataReceived += metadata_MetaDataReceived;
+        subscriber.ConnectionString = $"server={hostname}:{port}";
+
+        // The STTP Python publisher GZip-compresses metadata whenever the CompressMetadata
+        // operational mode is set (which is on by default). The C# subscriber only inflates
+        // metadata when the GZip compression mode is ALSO advertised, so request it explicitly
+        // to keep the two sides' metadata handshake consistent.
+        subscriber.CompressionModes |= CompressionModes.GZip;
+        subscriber.Initialize();
+        subscriber.Start();
+
+        // Wait for metadata, a deserialization error, or a timeout.
+        if (!s_metadataComplete.Wait(TimeSpan.FromSeconds(15)))
+        {
+            ErrorMessage("METADATA TIMEOUT: no metadata received within 15 seconds.");
+            s_metadataExitCode = 2;
+        }
+
+        try
+        {
+            subscriber.Stop();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage($"Error stopping subscriber: {ex.Message}");
+        }
+
+        Environment.Exit(s_metadataExitCode);
+    }
+
+    private static void metadata_ConnectionEstablished(object sender, EventArgs e)
+    {
+        StatusMessage("Connection established; requesting metadata...");
+        s_metadataRequested = true;
+        (sender as DataSubscriber)?.RefreshMetadata();
+    }
+
+    private static void metadata_ProcessException(object sender, EventArgs<Exception> e)
+    {
+        // A malformed xs:dateTime lexical value in the metadata surfaces here: DataSet.ReadXml
+        // (via DeserializeMetadata) throws and is re-raised as a "Failed to process publisher
+        // response packet" exception. Any exception after the metadata request is treated as a
+        // failure of the exchange.
+        ErrorMessage($"PROCESS EXCEPTION: {e.Argument.Message}");
+
+        if (!s_metadataRequested || s_metadataHandled)
+            return;
+
+        s_metadataHandled = true;
+        s_metadataExitCode = 1;
+        s_metadataComplete.Set();
+    }
+
+    private static void metadata_MetaDataReceived(object sender, EventArgs<DataSet> e)
+    {
+        if (s_metadataHandled)
+            return;
+
+        s_metadataHandled = true;
+
+        try
+        {
+            DataSet metadata = e.Argument;
+            StatusMessage($"METADATA RECEIVED: {metadata.Tables.Count} table(s).");
+
+            // Persist the received metadata for inspection.
+            metadata.WriteXml("metadata-received.xml", XmlWriteMode.WriteSchema);
+            StatusMessage("Wrote metadata-received.xml");
+
+            // Dump every DateTime value so the orchestrator can verify the round-trip. Uppercase
+            // 'F' omits trailing fractional zeros, matching the bare canonical form.
+            foreach (DataTable table in metadata.Tables)
+            {
+                foreach (DataColumn column in table.Columns)
+                {
+                    if (column.DataType != typeof(DateTime))
+                        continue;
+
+                    foreach (DataRow row in table.Rows)
+                    {
+                        if (row[column] == DBNull.Value)
+                            continue;
+
+                        DateTime value = (DateTime)row[column];
+                        StatusMessage($"DATETIME {table.TableName}.{column.ColumnName} = {value:yyyy-MM-ddTHH:mm:ss.FFFFFFF}");
+                    }
+                }
+            }
+
+            StatusMessage("METADATA OK");
+            s_metadataExitCode = 0;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage($"METADATA FAILURE while inspecting received data: {ex.Message}");
+            s_metadataExitCode = 1;
+        }
+        finally
+        {
+            s_metadataComplete.Set();
+        }
     }
 }
