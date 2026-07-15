@@ -67,7 +67,7 @@ class Program
         if (args.Length < 2)
         {
             Console.WriteLine("Usage:");
-            Console.WriteLine("    InteropTest HOSTNAME PORT");
+            Console.WriteLine("    InteropTest HOSTNAME PORT [--metadata [--gzip]]");
             return;
         }
 
@@ -83,9 +83,12 @@ class Program
         // Metadata interop mode: request XML metadata, dump its datetime values, and exit with a
         // status code (0 = metadata received and parsed, non-zero = deserialization error / timeout).
         // This exercises the publisher's xs:dateTime serialization against the .NET DataSet parser.
+        // Add --gzip to advertise the GZip compression mode (compressed-metadata path); without it
+        // the .NET-default modes are used (CompressMetadata without GZip -> uncompressed path).
         if (args.Length > 2 && args[2].Equals("--metadata", StringComparison.OrdinalIgnoreCase))
         {
-            RunMetadataMode(hostname, port);
+            bool useGZip = Array.Exists(args, a => a.Equals("--gzip", StringComparison.OrdinalIgnoreCase));
+            RunMetadataMode(hostname, port, useGZip);
             return;
         }
 
@@ -176,7 +179,7 @@ class Program
     // Metadata interop mode
     // ----------------------------------------------------------------------------------------------
 
-    private static void RunMetadataMode(string hostname, ushort port)
+    private static void RunMetadataMode(string hostname, ushort port, bool useGZip)
     {
         DataSubscriber subscriber = new();
         subscriber.StatusMessage += (_, e) => StatusMessage(e.Argument);
@@ -186,11 +189,14 @@ class Program
         subscriber.MetaDataReceived += metadata_MetaDataReceived;
         subscriber.ConnectionString = $"server={hostname}:{port}";
 
-        // The STTP Python publisher GZip-compresses metadata whenever the CompressMetadata
-        // operational mode is set (which is on by default). The C# subscriber only inflates
-        // metadata when the GZip compression mode is ALSO advertised, so request it explicitly
-        // to keep the two sides' metadata handshake consistent.
-        subscriber.CompressionModes |= CompressionModes.GZip;
+        // A correct STTP publisher GZip-compresses metadata only when the subscriber negotiates
+        // BOTH CompressMetadata (on by default) and the GZip compression mode. With --gzip we
+        // advertise GZip to exercise the compressed path; without it we use the .NET-default
+        // operational modes (CompressMetadata without GZip), exercising the uncompressed path.
+        if (useGZip)
+            subscriber.CompressionModes |= CompressionModes.GZip;
+
+        StatusMessage($"Metadata mode: {(useGZip ? "GZip (compressed)" : "default (uncompressed)")} negotiation.");
         subscriber.Initialize();
         subscriber.Start();
 
