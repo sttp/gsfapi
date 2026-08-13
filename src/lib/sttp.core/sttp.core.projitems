@@ -15,6 +15,11 @@
     <Compile Include="$(MSBuildThisFileDirectory)DataPublisher.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)DataSubscriber.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)LockExtensions.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Metadata\DeviceMetadataSync.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Metadata\MeasurementMetadataSync.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Metadata\MetadataSyncContext.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Metadata\MetadataSynchronizer.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Metadata\PhasorMetadataSync.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)SignalIndexCache.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)SubscriberAdapter.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)SubscriberConnection.cs" />
