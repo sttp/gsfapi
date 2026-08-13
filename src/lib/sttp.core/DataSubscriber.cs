@@ -444,6 +444,7 @@ public class DataSubscriber : InputAdapterBase
     private long m_syncProgressTotalActions;
     private long m_syncProgressActionsCount;
     private long m_syncProgressLastMessage;
+    private long m_syncStatementCount;
 
     private bool m_disposed;
 
@@ -3271,9 +3272,14 @@ public class DataSubscriber : InputAdapterBase
                 dataMonitoringEnabled = true;
             }
 
-            // Track total meta-data synchronization process time
+            // Track total meta-data synchronization process time, as well as time spent in each
+            // table synchronization phase, so slow phases can be identified from the status message
             Ticks startTime = DateTime.UtcNow.Ticks;
+            Ticks phaseStartTime = startTime;
+            Ticks deviceSyncTime = 0L, measurementSyncTime = 0L, phasorSyncTime = 0L;
             DateTime latestUpdateTime = DateTime.MinValue;
+
+            m_syncStatementCount = 0L;
 
             // Open the configuration database using settings found in the config file
         #if NET
@@ -3329,6 +3335,8 @@ public class DataSubscriber : InputAdapterBase
                     DateTime updateTime;
                     string deviceAcronym;
 
+                    phaseStartTime = DateTime.UtcNow.Ticks;
+
                     // Check to see if data for the "DeviceDetail" table was included in the meta-data
                     if (metadata.Tables.Contains("DeviceDetail"))
                     {
@@ -3379,6 +3387,11 @@ public class DataSubscriber : InputAdapterBase
 
                         // Define SQL statement to remove device records that no longer exist in the meta-data
                         string deleteDeviceSql = database.ParameterizedQueryString("DELETE FROM Device WHERE UniqueID = {0}", "uniqueID");
+
+                    #if !NET
+                        // Define SQL statement to look up a protocol record ID by name - only used when synchronizing independent devices
+                        string queryProtocolIDSql = database.ParameterizedQueryString("SELECT ID FROM Protocol WHERE Name = {0}", "protocolName");
+                    #endif
 
                         // Determine which device rows should be synchronized based on operational mode flags
                         if (ReceiveInternalMetadata && ReceiveExternalMetadata || MutualSubscription)
@@ -3517,7 +3530,6 @@ public class DataSubscriber : InputAdapterBase
                                     settings["phasorProtocol"] = protocolName;
                                     connectionString = settings.JoinKeyValuePairs();
                                 #else
-                                    string queryProtocolIDSql = database.ParameterizedQueryString("SELECT ID FROM Protocol WHERE Name = {0}", "protocolName");
                                     object? protocolIDValue = ExecuteScalar(command, queryProtocolIDSql, protocolName);
 
                                     if (protocolIDValue is not null && protocolIDValue is not DBNull)
@@ -3562,7 +3574,10 @@ public class DataSubscriber : InputAdapterBase
                                     }
                                     else if (recordNeedsUpdating)
                                     {
-                                        // Perform safety check to preserve device records which are not safe to overwrite (e.g., device already exists locally as part of another connection)
+                                        // Perform safety check to preserve device records which are not safe to overwrite (e.g., device already exists locally as part of another connection).
+                                        // Note that this 'continue' intentionally skips the rest of the loop body, which means the device is never added to the 'deviceIDs' lookup
+                                        // below - and since measurement and phasor synchronization both require an entry in 'deviceIDs', all child records of a device that is not
+                                        // safe to overwrite are skipped as well. This is the desired behavior: the local records belong to another connection.
                                         if (Convert.ToInt32(ExecuteScalar(command, deviceIsUpdateableSql, database.Guid(uniqueID), parentIDValue)) > 0)
                                             continue;
 
@@ -3594,6 +3609,9 @@ public class DataSubscriber : InputAdapterBase
                             UpdateSyncProgress();
                         }
                     }
+
+                    deviceSyncTime = DateTime.UtcNow.Ticks - phaseStartTime;
+                    phaseStartTime = DateTime.UtcNow.Ticks;
 
                     // Check to see if data for the "MeasurementDetail" table was included in the meta-data
                     if (metadata.Tables.Contains("MeasurementDetail"))
@@ -3652,8 +3670,9 @@ public class DataSubscriber : InputAdapterBase
 
                         if (MutualSubscription && !Internal)
                         {
-                            // For mutual subscriptions where this subscription is renter (i.e., internal is false), do not delete measurements that are locally owned
-                            deleteCondition = " AND Internal == 0";
+                            // For mutual subscriptions where this subscription is renter (i.e., internal is false), do not delete measurements that are locally owned.
+                            // Note that "=" is used here, not "==": the latter is only accepted by SQLite and is a syntax error on all other supported database types.
+                            deleteCondition = " AND Internal = 0";
                         }
                         else
                         {
@@ -3830,6 +3849,9 @@ public class DataSubscriber : InputAdapterBase
                         }
                     }
 
+                    measurementSyncTime = DateTime.UtcNow.Ticks - phaseStartTime;
+                    phaseStartTime = DateTime.UtcNow.Ticks;
+
                     // Check to see if data for the "PhasorDetail" table was included in the meta-data
                     if (metadata.Tables.Contains("PhasorDetail"))
                     {
@@ -3985,6 +4007,8 @@ public class DataSubscriber : InputAdapterBase
                         }
                     }
 
+                    phasorSyncTime = DateTime.UtcNow.Ticks - phaseStartTime;
+
                     transaction?.Commit();
 
                     // Update local in-memory synchronized meta-data cache
@@ -4042,7 +4066,8 @@ public class DataSubscriber : InputAdapterBase
 
             m_lastMetaDataRefreshTime = latestUpdateTime > DateTime.MinValue ? latestUpdateTime : DateTime.UtcNow;
 
-            OnStatusMessage(MessageLevel.Info, $"Meta-data synchronization completed successfully in {(DateTime.UtcNow.Ticks - startTime).ToElapsedTimeString(2)}");
+            OnStatusMessage(MessageLevel.Info, $"Meta-data synchronization completed successfully in {(DateTime.UtcNow.Ticks - startTime).ToElapsedTimeString(2)} using {m_syncStatementCount:N0} database statements " +
+                                               $"[devices: {deviceSyncTime.ToElapsedTimeString(2)}, measurements: {measurementSyncTime.ToElapsedTimeString(2)}, phasors: {phasorSyncTime.ToElapsedTimeString(2)}]");
 
             // Send notification that system configuration has changed
             OnConfigurationChanged();
@@ -4064,31 +4089,37 @@ public class DataSubscriber : InputAdapterBase
 #if NET
     private DataTable RetrieveData(AdoDataConnection _, DbCommand command, string sql, params object?[] parameters)
     {
+        m_syncStatementCount++;
         return command.RetrieveData(MetadataSynchronizationTimeout, sql, parameters);
     }
 
     private void ExecuteNonQuery(DbCommand command, string sql, params object?[] parameters)
     {
+        m_syncStatementCount++;
         command.ExecuteNonQuery(MetadataSynchronizationTimeout, sql, parameters);
     }
 
     private object? ExecuteScalar(DbCommand command, string sql, params object?[] parameters)
     {
+        m_syncStatementCount++;
         return command.ExecuteScalar(MetadataSynchronizationTimeout, sql, parameters);
     }
 #else
     private DataTable RetrieveData(AdoDataConnection database, IDbCommand command, string sql, params object?[] parameters)
     {
+        m_syncStatementCount++;
         return command.RetrieveData(database.AdapterType, sql, MetadataSynchronizationTimeout, parameters);
     }
 
     private void ExecuteNonQuery(IDbCommand command, string sql, params object?[] parameters)
     {
+        m_syncStatementCount++;
         command.ExecuteNonQuery(sql, MetadataSynchronizationTimeout, parameters);
     }
 
     private object? ExecuteScalar(IDbCommand command, string sql, params object?[] parameters)
     {
+        m_syncStatementCount++;
         return command.ExecuteScalar(sql, MetadataSynchronizationTimeout, parameters);
     }
 #endif
