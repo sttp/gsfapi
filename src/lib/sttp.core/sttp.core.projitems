@@ -16,6 +16,8 @@
     <Compile Include="$(MSBuildThisFileDirectory)DataSubscriber.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)LockExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Metadata\DeviceMetadataSync.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Metadata\MetadataSyncBatch.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Metadata\MetadataSyncDialect.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Metadata\MeasurementMetadataSync.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Metadata\MetadataSyncContext.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Metadata\MetadataSynchronizer.cs" />

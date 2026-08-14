@@ -923,6 +923,17 @@ public class DataSubscriber : InputAdapterBase
     public bool UseTransactionForMetadata { get; set; }
 
     /// <summary>
+    /// Gets or sets the number of records combined into each database command during meta-data synchronization.
+    /// </summary>
+    /// <remarks>
+    /// A value of zero, the default, selects a batch size appropriate for the configured database type. A value
+    /// of one disables batching so that each record is written with its own statement, which is useful when
+    /// isolating a suspected batching issue. Values are further constrained by database limits on parameters
+    /// per command and rows per statement.
+    /// </remarks>
+    public int MetadataSyncBatchSize { get; set; }
+
+    /// <summary>
     /// Gets or sets flag that determines whether to use the local clock when calculating statistics.
     /// </summary>
     public bool UseLocalClockAsRealTime { get; set; }
@@ -1412,6 +1423,10 @@ public class DataSubscriber : InputAdapterBase
         // Check if user has defined a flag for using a transaction during meta-data synchronization
         if (settings.TryGetValue(nameof(UseTransactionForMetadata), out setting))
             UseTransactionForMetadata = setting.ParseBoolean();
+
+        // Check if user has defined a batch size for meta-data synchronization
+        if (settings.TryGetValue(nameof(MetadataSyncBatchSize), out setting) && int.TryParse(setting, out int metadataSyncBatchSize))
+            MetadataSyncBatchSize = metadataSyncBatchSize;
 
         // Check if user has defined a flag for using identity inserts during meta-data synchronization
         if (settings.TryGetValue(nameof(UseIdentityInsertsForMetadata), out setting))
@@ -3312,7 +3327,8 @@ public class DataSubscriber : InputAdapterBase
                         AutoDeleteAlarmMeasurements = AutoDeleteAlarmMeasurements,
                         ReceiveInternalMetadata = ReceiveInternalMetadata,
                         ReceiveExternalMetadata = ReceiveExternalMetadata,
-                        LastMetadataRefreshTime = m_lastMetaDataRefreshTime
+                        LastMetadataRefreshTime = m_lastMetaDataRefreshTime,
+                        BatchSize = MetadataSyncBatchSize
                     };
 
                 #if !NET

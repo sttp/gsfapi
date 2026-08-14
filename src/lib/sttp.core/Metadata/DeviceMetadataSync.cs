@@ -104,27 +104,29 @@ internal static class DeviceMetadataSync
             context.UpdateProgress();
         }
 
-        // Define SQL statements used while applying device changes
+        // Define the batched statements used while applying device changes
+        string enabledLiteral = context.AutoEnableSyncedDevices ? "1" : "0";
+
     #if NET
-        string insertDeviceSql = database.ParameterizedQueryString("INSERT INTO Device(UniqueID, ParentID, HistorianID, Acronym, Name, OriginalSource, AccessID, Longitude, Latitude, ContactList, ConnectionString, IsConcentrator, Internal, Enabled) " +
-                                                                   "VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, 0, {11}, " + (context.AutoEnableSyncedDevices ? "1" : "0") + ")",
-            "uniqueID", "parentID", "historianID", "acronym", "name", "originalSource", "accessID", "longitude", "latitude", "contactList", "connectionString", "internal");
+        InsertBatch insertDevices = new(context,
+            "INSERT INTO Device(UniqueID, ParentID, HistorianID, Acronym, Name, OriginalSource, AccessID, Longitude, Latitude, ContactList, ConnectionString, IsConcentrator, Internal, Enabled)",
+            $"?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, {enabledLiteral}");
 
-        string updateDeviceSql = database.ParameterizedQueryString("UPDATE Device SET Acronym = {0}, Name = {1}, OriginalSource = {2}, HistorianID = {3}, AccessID = {4}, Longitude = {5}, Latitude = {6}, ContactList = {7}, Internal = {8} WHERE UniqueID = {9}",
-            "acronym", "name", "originalSource", "historianID", "accessID", "longitude", "latitude", "contactList", "internal", "uniqueID");
+        StatementBatch updateDevices = new(context,
+            "UPDATE Device SET Acronym = ?, Name = ?, OriginalSource = ?, HistorianID = ?, AccessID = ?, Longitude = ?, Latitude = ?, ContactList = ?, Internal = ? WHERE UniqueID = ?");
 
-        string updateDeviceWithConnectionStringSql = database.ParameterizedQueryString("UPDATE Device SET Acronym = {0}, Name = {1}, OriginalSource = {2}, HistorianID = {3}, AccessID = {4}, Longitude = {5}, Latitude = {6}, ContactList = {7}, ConnectionString = {8}, Internal = {9} WHERE UniqueID = {10}",
-            "acronym", "name", "originalSource", "historianID", "accessID", "longitude", "latitude", "contactList", "connectionString", "internal", "uniqueID");
+        StatementBatch updateDevicesWithConnectionString = new(context,
+            "UPDATE Device SET Acronym = ?, Name = ?, OriginalSource = ?, HistorianID = ?, AccessID = ?, Longitude = ?, Latitude = ?, ContactList = ?, ConnectionString = ?, Internal = ? WHERE UniqueID = ?");
     #else
-        string insertDeviceSql = database.ParameterizedQueryString("INSERT INTO Device(NodeID, UniqueID, ParentID, HistorianID, Acronym, Name, ProtocolID, FramesPerSecond, OriginalSource, AccessID, Longitude, Latitude, ContactList, ConnectionString, IsConcentrator, Enabled) " +
-                                                                   "VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11}, {12}, {13}, 0, " + (context.AutoEnableSyncedDevices ? "1" : "0") + ")",
-            "nodeID", "uniqueID", "parentID", "historianID", "acronym", "name", "protocolID", "framesPerSecond", "originalSource", "accessID", "longitude", "latitude", "contactList", "connectionString");
+        InsertBatch insertDevices = new(context,
+            "INSERT INTO Device(NodeID, UniqueID, ParentID, HistorianID, Acronym, Name, ProtocolID, FramesPerSecond, OriginalSource, AccessID, Longitude, Latitude, ContactList, ConnectionString, IsConcentrator, Enabled)",
+            $"?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, {enabledLiteral}");
 
-        string updateDeviceSql = database.ParameterizedQueryString("UPDATE Device SET Acronym = {0}, Name = {1}, OriginalSource = {2}, ProtocolID = {3}, FramesPerSecond = {4}, HistorianID = {5}, AccessID = {6}, Longitude = {7}, Latitude = {8}, ContactList = {9} WHERE UniqueID = {10}",
-            "acronym", "name", "originalSource", "protocolID", "framesPerSecond", "historianID", "accessID", "longitude", "latitude", "contactList", "uniqueID");
+        StatementBatch updateDevices = new(context,
+            "UPDATE Device SET Acronym = ?, Name = ?, OriginalSource = ?, ProtocolID = ?, FramesPerSecond = ?, HistorianID = ?, AccessID = ?, Longitude = ?, Latitude = ?, ContactList = ? WHERE UniqueID = ?");
 
-        string updateDeviceWithConnectionStringSql = database.ParameterizedQueryString("UPDATE Device SET Acronym = {0}, Name = {1}, OriginalSource = {2}, ProtocolID = {3}, FramesPerSecond = {4}, HistorianID = {5}, AccessID = {6}, Longitude = {7}, Latitude = {8}, ContactList = {9}, ConnectionString = {10} WHERE UniqueID = {11}",
-            "acronym", "name", "originalSource", "protocolID", "framesPerSecond", "historianID", "accessID", "longitude", "latitude", "contactList", "connectionString", "uniqueID");
+        StatementBatch updateDevicesWithConnectionString = new(context,
+            "UPDATE Device SET Acronym = ?, Name = ?, OriginalSource = ?, ProtocolID = ?, FramesPerSecond = ?, HistorianID = ?, AccessID = ?, Longitude = ?, Latitude = ?, ContactList = ?, ConnectionString = ? WHERE UniqueID = ?");
 
         // Define SQL statement to look up a protocol record ID by name - only used when synchronizing independent devices
         string queryProtocolIDSql = database.ParameterizedQueryString("SELECT ID FROM Protocol WHERE Name = {0}", "protocolName");
@@ -235,11 +237,11 @@ internal static class DeviceMetadataSync
                         // extra write per device and could not seek an index, since the unique acronym index is keyed on
                         // node and acronym together rather than on acronym alone.
                     #if NET
-                        context.ExecuteNonQuery(insertDeviceSql, database.Guid(uniqueID), context.SyncIndependentDevices ? DBNull.Value : context.ParentID,
+                        insertDevices.Add(database.Guid(uniqueID), context.SyncIndependentDevices ? DBNull.Value : context.ParentID,
                             context.HistorianID, context.SourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"), originalSource,
                             accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString, database.Bool(context.Internal));
                     #else
-                        context.ExecuteNonQuery(insertDeviceSql, database.Guid(context.NodeID), database.Guid(uniqueID), context.SyncIndependentDevices ? DBNull.Value : context.ParentID,
+                        insertDevices.Add(database.Guid(context.NodeID), database.Guid(uniqueID), context.SyncIndependentDevices ? DBNull.Value : context.ParentID,
                             context.HistorianID, context.SourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"), protocolID,
                             framesPerSecondFieldExists ? row.ConvertField<int>("FramesPerSecond") : 30, originalSource, accessID,
                             longitude, latitude, contactList.JoinKeyValuePairs(), connectionString);
@@ -260,18 +262,18 @@ internal static class DeviceMetadataSync
                     #if NET
                         // Update existing device record
                         if (connectionStringFieldExists)
-                            context.ExecuteNonQuery(updateDeviceWithConnectionStringSql, context.SourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
+                            updateDevicesWithConnectionString.Add(context.SourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
                                 originalSource, context.HistorianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString, database.Bool(context.Internal), database.Guid(uniqueID));
                         else
-                            context.ExecuteNonQuery(updateDeviceSql, context.SourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
+                            updateDevices.Add(context.SourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
                                 originalSource, context.HistorianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Bool(context.Internal), database.Guid(uniqueID));
                     #else
                         // Update existing device record
                         if (connectionStringFieldExists)
-                            context.ExecuteNonQuery(updateDeviceWithConnectionStringSql, context.SourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
+                            updateDevicesWithConnectionString.Add(context.SourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
                                 originalSource, protocolID, framesPerSecondFieldExists ? row.ConvertField<int>("FramesPerSecond") : 30, context.HistorianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString, database.Guid(uniqueID));
                         else
-                            context.ExecuteNonQuery(updateDeviceSql, context.SourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
+                            updateDevices.Add(context.SourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
                                 originalSource, protocolID, framesPerSecondFieldExists ? row.ConvertField<int>("FramesPerSecond") : 30, context.HistorianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Guid(uniqueID));
                     #endif
                     }
@@ -281,6 +283,11 @@ internal static class DeviceMetadataSync
             // Periodically notify user about synchronization progress
             context.UpdateProgress();
         }
+
+        // Pending rows must reach the database before record IDs are read back below
+        insertDevices.Flush();
+        updateDevices.Flush();
+        updateDevicesWithConnectionString.Flush();
 
         // Capture local device ID auto-inc values for measurement and phasor association. Records inserted above
         // do not appear in the snapshot, so record IDs are resolved in bulk here rather than one query per device.

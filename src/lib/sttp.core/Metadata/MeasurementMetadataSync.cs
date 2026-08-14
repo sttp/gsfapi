@@ -62,23 +62,23 @@ internal static class MeasurementMetadataSync
         bool updatedOnFieldExists = columns.Contains("UpdatedOn");
         bool alternateTagFieldExists = columns.Contains("AlternateTag");
 
-        // Define SQL statements used while applying measurement changes. Note that the guid-based signal ID is
-        // supplied directly on insert. The previous implementation inserted a temporary value into the alternate
+        // Define the batched statements used while applying measurement changes. Note that the guid-based signal ID
+        // is supplied directly on insert. The previous implementation inserted a temporary value into the alternate
         // tag field and then issued a corrective 'UPDATE ... WHERE AlternateTag = <temp guid>' - that column is
         // large-object typed and cannot be indexed, so every new measurement cost a full table scan.
-        string insertMeasurementSql = database.ParameterizedQueryString("INSERT INTO Measurement(SignalID, DeviceID, HistorianID, PointTag, AlternateTag, SignalTypeID, PhasorSourceIndex, SignalReference, Description, Internal, Subscribed, Enabled) " +
-                                                                        "VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, 0, 1)",
-            "signalID", "deviceID", "historianID", "pointTag", "alternateTag", "signalTypeID", "phasorSourceIndex", "signalReference", "description", "internal");
+        InsertBatch insertMeasurements = new(context,
+            "INSERT INTO Measurement(SignalID, DeviceID, HistorianID, PointTag, AlternateTag, SignalTypeID, PhasorSourceIndex, SignalReference, Description, Internal, Subscribed, Enabled)",
+            "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1");
 
-        string identityInsertMeasurementSql = database.ParameterizedQueryString("INSERT INTO Measurement(PointID, SignalID, DeviceID, HistorianID, PointTag, AlternateTag, SignalTypeID, PhasorSourceIndex, SignalReference, Description, Internal, Subscribed, Enabled) " +
-                                                                                "VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, 0, 1)",
-            "pointID", "signalID", "deviceID", "historianID", "pointTag", "alternateTag", "signalTypeID", "phasorSourceIndex", "signalReference", "description", "internal");
+        InsertBatch identityInsertMeasurements = new(context,
+            "INSERT INTO Measurement(PointID, SignalID, DeviceID, HistorianID, PointTag, AlternateTag, SignalTypeID, PhasorSourceIndex, SignalReference, Description, Internal, Subscribed, Enabled)",
+            "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1");
 
-        string updateMeasurementSql = database.ParameterizedQueryString("UPDATE Measurement SET HistorianID = {0}, PointTag = {1}, AlternateTag = {2}, SignalTypeID = {3}, PhasorSourceIndex = {4}, SignalReference = {5}, Description = {6}, Internal = {7} WHERE SignalID = {8}",
-            "historianID", "pointTag", "alternateTag", "signalTypeID", "phasorSourceIndex", "signalReference", "description", "internal", "signalID");
+        StatementBatch updateMeasurements = new(context,
+            "UPDATE Measurement SET HistorianID = ?, PointTag = ?, AlternateTag = ?, SignalTypeID = ?, PhasorSourceIndex = ?, SignalReference = ?, Description = ?, Internal = ? WHERE SignalID = ?");
 
-        string identityUpdateMeasurementSql = database.ParameterizedQueryString("UPDATE Measurement SET DeviceID = {0}, HistorianID = {1}, PointTag = {2}, AlternateTag = {3}, SignalTypeID = {4}, PhasorSourceIndex = {5}, SignalReference = {6}, Description = {7}, Internal = {8}, Subscribed = 0, Enabled = 1, SignalID = {9} WHERE PointID = {10}",
-            "deviceID", "historianID", "pointTag", "alternateTag", "signalTypeID", "phasorSourceIndex", "signalReference", "description", "internal", "signalID", "pointID");
+        StatementBatch identityUpdateMeasurements = new(context,
+            "UPDATE Measurement SET DeviceID = ?, HistorianID = ?, PointTag = ?, AlternateTag = ?, SignalTypeID = ?, PhasorSourceIndex = ?, SignalReference = ?, Description = ?, Internal = ?, Subscribed = 0, Enabled = 1, SignalID = ? WHERE PointID = ?");
 
         // Collect the signal IDs, and optionally point IDs, that this synchronization pass will touch
         List<Guid> metadataSignalIDs = [];
@@ -158,25 +158,32 @@ internal static class MeasurementMetadataSync
                             long pointID = (long)measurementKey.ID;
 
                             if (!existingPointIDs.Contains(pointID))
-                                context.ExecuteNonQuery(identityInsertMeasurementSql, pointID, database.Guid(signalID), deviceID, context.HistorianID, pointTag, alternateTag, signalTypeID, phasorSourceIndex, signalReference, description, database.Bool(context.Internal));
+                                identityInsertMeasurements.Add(pointID, database.Guid(signalID), deviceID, context.HistorianID, pointTag, alternateTag, signalTypeID, phasorSourceIndex, signalReference, description, database.Bool(context.Internal));
                             else
-                                context.ExecuteNonQuery(identityUpdateMeasurementSql, deviceID, context.HistorianID, pointTag, alternateTag, signalTypeID, phasorSourceIndex, signalReference, description, database.Bool(context.Internal), database.Guid(signalID), pointID);
+                                identityUpdateMeasurements.Add(deviceID, context.HistorianID, pointTag, alternateTag, signalTypeID, phasorSourceIndex, signalReference, description, database.Bool(context.Internal), database.Guid(signalID), pointID);
                         }
                         else
                         {
-                            context.ExecuteNonQuery(insertMeasurementSql, database.Guid(signalID), deviceID, context.HistorianID, pointTag, alternateTag, signalTypeID, phasorSourceIndex, signalReference, description, database.Bool(context.Internal));
+                            insertMeasurements.Add(database.Guid(signalID), deviceID, context.HistorianID, pointTag, alternateTag, signalTypeID, phasorSourceIndex, signalReference, description, database.Bool(context.Internal));
                         }
                     }
                     else if (recordNeedsUpdating)
                     {
                         // Update existing measurement record. Note that this update assumes that measurements will remain associated with a static source device.
-                        context.ExecuteNonQuery(updateMeasurementSql, context.HistorianID, pointTag, alternateTag, signalTypeID, phasorSourceIndex, signalReference, description, database.Bool(context.Internal), database.Guid(signalID));
+                        updateMeasurements.Add(context.HistorianID, pointTag, alternateTag, signalTypeID, phasorSourceIndex, signalReference, description, database.Bool(context.Internal), database.Guid(signalID));
                     }
                 }
 
                 // Periodically notify user about synchronization progress
                 context.UpdateProgress();
             }
+
+            // Pending rows must reach the database before identity inserts are disabled below, and before the
+            // retirement pass reads back the current measurement set
+            insertMeasurements.Flush();
+            identityInsertMeasurements.Flush();
+            updateMeasurements.Flush();
+            identityUpdateMeasurements.Flush();
         }
         finally
         {

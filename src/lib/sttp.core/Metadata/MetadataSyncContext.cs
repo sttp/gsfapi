@@ -72,6 +72,12 @@ internal sealed class MetadataSyncContext
     /// <summary>Timeout, in seconds, applied to each meta-data synchronization query.</summary>
     public readonly int Timeout;
 
+    /// <summary>Statement batching capabilities and limits for the active database type.</summary>
+    public readonly MetadataSyncDialect Dialect;
+
+    /// <summary>User configured batch size, where zero selects the per-database default and one disables batching.</summary>
+    public int BatchSize;
+
     /// <summary>Record ID of the local device record that represents this subscriber connection.</summary>
     public int ParentID;
 
@@ -154,6 +160,7 @@ internal sealed class MetadataSyncContext
         Database = database;
         Command = command;
         Timeout = timeout;
+        Dialect = MetadataSyncDialect.Create(database);
         m_initProgress = initProgress;
         m_updateProgress = updateProgress;
     }
@@ -247,6 +254,84 @@ internal sealed class MetadataSyncContext
         {
             return true;
         }
+    }
+
+    /// <summary>
+    /// Executes a batched statement, binding parameters directly rather than through the framework helpers.
+    /// </summary>
+    /// <param name="sql">Statement text with generated <c>@pN</c> parameter references.</param>
+    /// <param name="parameters">Parameter values, in the order the references appear.</param>
+    /// <remarks>
+    /// <para>
+    /// Both frameworks normally infer parameters by re-parsing the statement text on every execution, which is
+    /// quadratic in the parameter count and therefore unsuitable for batches of several hundred values. The
+    /// .NET Framework tokenizer additionally recognizes only space, parenthesis, comma and equals as
+    /// delimiters, so a parameter adjacent to a semicolon would be dropped and the call would fail. Building
+    /// the parameter collection here avoids both problems.
+    /// </para>
+    /// <para>
+    /// Values are expected to have already passed through <see cref="AdoDataConnection.Guid(Guid)"/> or
+    /// <see cref="AdoDataConnection.Bool"/> where the database requires a substitute representation.
+    /// </para>
+    /// </remarks>
+    public void ExecuteBatch(string sql, IReadOnlyList<object?> parameters)
+    {
+        StatementCount++;
+
+        Command.CommandText = sql;
+        Command.CommandTimeout = Timeout;
+        Command.Parameters.Clear();
+
+        for (int i = 0; i < parameters.Count; i++)
+        {
+        #if NET
+            DbParameter parameter = Command.CreateParameter();
+        #else
+            IDbDataParameter parameter = Command.CreateParameter();
+        #endif
+            object? value = parameters[i];
+
+            parameter.ParameterName = ParameterName(i);
+            parameter.Value = value ?? DBNull.Value;
+
+        #if !NET
+            // Match the string handling applied by the framework helpers, which default to ANSI strings so that
+            // comparisons against non-Unicode columns do not incur an implicit conversion
+            if (value is string && Database.DefaultStringType.HasValue)
+                parameter.DbType = Database.DefaultStringType.Value;
+        #endif
+
+            Command.Parameters.Add(parameter);
+        }
+
+        Command.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Appends a row or statement template to <paramref name="sql"/>, replacing each <c>?</c> placeholder with
+    /// a generated parameter reference.
+    /// </summary>
+    public static void AppendRowTemplate(StringBuilder sql, string template, ref int parameterIndex)
+    {
+        foreach (char character in template)
+        {
+            if (character == '?')
+                sql.Append(ParameterName(parameterIndex++));
+            else
+                sql.Append(character);
+        }
+    }
+
+    /// <summary>
+    /// Gets the generated name for the parameter at the given ordinal.
+    /// </summary>
+    /// <remarks>
+    /// The <c>@</c> prefix is accepted by SQL Server, PostgreSQL, MySQL and SQLite. Oracle requires a colon
+    /// prefix, but its dialect reports no batching support so this path is never reached for Oracle.
+    /// </remarks>
+    private static string ParameterName(int ordinal)
+    {
+        return $"@p{ordinal}";
     }
 
     /// <summary>

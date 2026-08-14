@@ -59,32 +59,26 @@ internal static class PhasorMetadataSync
         // insert and update statements rather than being issued as a separate follow-up statement: every phasor update
         // fires a trigger that joins the eleven table ActiveMeasurement view, so halving the number of write statements
         // against this table halves that cost.
-        string insertPhasorSql;
-        string updatePhasorSql;
-
     #if NET
-        if (baseKVFieldExists)
-        {
-            insertPhasorSql = database.ParameterizedQueryString("INSERT INTO Phasor(DeviceID, Label, Type, Phase, SourceIndex, Internal, BaseKV) VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6})", "deviceID", "label", "type", "phase", "sourceIndex", "internal", "baseKV");
-            updatePhasorSql = database.ParameterizedQueryString("UPDATE Phasor SET Label = {0}, Type = {1}, Phase = {2}, Internal = {3}, BaseKV = {4} WHERE DeviceID = {5} AND SourceIndex = {6}", "label", "type", "phase", "internal", "baseKV", "deviceID", "sourceIndex");
-        }
-        else
-        {
-            insertPhasorSql = database.ParameterizedQueryString("INSERT INTO Phasor(DeviceID, Label, Type, Phase, SourceIndex, Internal) VALUES ({0}, {1}, {2}, {3}, {4}, {5})", "deviceID", "label", "type", "phase", "sourceIndex", "internal");
-            updatePhasorSql = database.ParameterizedQueryString("UPDATE Phasor SET Label = {0}, Type = {1}, Phase = {2}, Internal = {3} WHERE DeviceID = {4} AND SourceIndex = {5}", "label", "type", "phase", "internal", "deviceID", "sourceIndex");
-        }
+        const string InternalColumn = ", Internal";
+        const string InternalValue = ", ?";
+        const string InternalAssignment = ", Internal = ?";
     #else
-        if (baseKVFieldExists)
-        {
-            insertPhasorSql = database.ParameterizedQueryString("INSERT INTO Phasor(DeviceID, Label, Type, Phase, SourceIndex, BaseKV) VALUES ({0}, {1}, {2}, {3}, {4}, {5})", "deviceID", "label", "type", "phase", "sourceIndex", "baseKV");
-            updatePhasorSql = database.ParameterizedQueryString("UPDATE Phasor SET Label = {0}, Type = {1}, Phase = {2}, BaseKV = {3} WHERE DeviceID = {4} AND SourceIndex = {5}", "label", "type", "phase", "baseKV", "deviceID", "sourceIndex");
-        }
-        else
-        {
-            insertPhasorSql = database.ParameterizedQueryString("INSERT INTO Phasor(DeviceID, Label, Type, Phase, SourceIndex) VALUES ({0}, {1}, {2}, {3}, {4})", "deviceID", "label", "type", "phase", "sourceIndex");
-            updatePhasorSql = database.ParameterizedQueryString("UPDATE Phasor SET Label = {0}, Type = {1}, Phase = {2} WHERE DeviceID = {3} AND SourceIndex = {4}", "label", "type", "phase", "deviceID", "sourceIndex");
-        }
+        const string InternalColumn = "";
+        const string InternalValue = "";
+        const string InternalAssignment = "";
     #endif
+
+        string baseKVColumn = baseKVFieldExists ? ", BaseKV" : "";
+        string baseKVValue = baseKVFieldExists ? ", ?" : "";
+        string baseKVAssignment = baseKVFieldExists ? ", BaseKV = ?" : "";
+
+        InsertBatch insertPhasors = new(context,
+            $"INSERT INTO Phasor(DeviceID, Label, Type, Phase, SourceIndex{InternalColumn}{baseKVColumn})",
+            $"?, ?, ?, ?, ?{InternalValue}{baseKVValue}");
+
+        StatementBatch updatePhasors = new(context,
+            $"UPDATE Phasor SET Label = ?, Type = ?, Phase = ?{InternalAssignment}{baseKVAssignment} WHERE DeviceID = ? AND SourceIndex = ?");
 
         // Define SQL statement to update destination phasor ID field of existing phasor record
         string updatePrimaryVoltageIDSql = database.ParameterizedQueryString($"UPDATE Phasor SET {PrimaryVoltageID} = {{0}} WHERE ID = {{1}}", "primaryVoltageID", "id");
@@ -115,32 +109,33 @@ internal static class PhasorMetadataSync
                 if (!snapshot.ContainsKey((deviceID, sourceIndex)))
                 {
                     // Insert new phasor record
+                    List<object?> values = [deviceID, label, type, phase, sourceIndex];
+
                 #if NET
-                    if (baseKVFieldExists)
-                        context.ExecuteNonQuery(insertPhasorSql, deviceID, label, type, phase, sourceIndex, database.Bool(context.Internal), row.ConvertField<int>("BaseKV"));
-                    else
-                        context.ExecuteNonQuery(insertPhasorSql, deviceID, label, type, phase, sourceIndex, database.Bool(context.Internal));
-                #else
-                    if (baseKVFieldExists)
-                        context.ExecuteNonQuery(insertPhasorSql, deviceID, label, type, phase, sourceIndex, row.ConvertField<int>("BaseKV"));
-                    else
-                        context.ExecuteNonQuery(insertPhasorSql, deviceID, label, type, phase, sourceIndex);
+                    values.Add(database.Bool(context.Internal));
                 #endif
+
+                    if (baseKVFieldExists)
+                        values.Add(row.ConvertField<int>("BaseKV"));
+
+                    insertPhasors.Add(values.ToArray());
                 }
                 else if (recordNeedsUpdating)
                 {
                     // Update existing phasor record
+                    List<object?> values = [label, type, phase];
+
                 #if NET
-                    if (baseKVFieldExists)
-                        context.ExecuteNonQuery(updatePhasorSql, label, type, phase, database.Bool(context.Internal), row.ConvertField<int>("BaseKV"), deviceID, sourceIndex);
-                    else
-                        context.ExecuteNonQuery(updatePhasorSql, label, type, phase, database.Bool(context.Internal), deviceID, sourceIndex);
-                #else
-                    if (baseKVFieldExists)
-                        context.ExecuteNonQuery(updatePhasorSql, label, type, phase, row.ConvertField<int>("BaseKV"), deviceID, sourceIndex);
-                    else
-                        context.ExecuteNonQuery(updatePhasorSql, label, type, phase, deviceID, sourceIndex);
+                    values.Add(database.Bool(context.Internal));
                 #endif
+
+                    if (baseKVFieldExists)
+                        values.Add(row.ConvertField<int>("BaseKV"));
+
+                    values.Add(deviceID);
+                    values.Add(sourceIndex);
+
+                    updatePhasors.Add(values.ToArray());
                 }
 
                 if (phasorIDFieldExists && primaryVoltageIDFieldExists)
@@ -167,6 +162,10 @@ internal static class PhasorMetadataSync
             // Periodically notify user about synchronization progress
             context.UpdateProgress();
         }
+
+        // Pending rows must reach the database before record IDs are read back below
+        insertPhasors.Flush();
+        updatePhasors.Flush();
 
         // Once all phasor records have been processed, handle updating of destination phasor IDs
         if (phasorIDLookups.Count > 0)
