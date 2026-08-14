@@ -78,6 +78,15 @@ internal sealed class MetadataSyncContext
     /// <summary>User configured batch size, where zero selects the per-database default and one disables batching.</summary>
     public int BatchSize;
 
+    /// <summary>Determines if the SQL Server bulk insert path was requested.</summary>
+    public bool UseBulkLoad;
+
+    /// <summary>Determines if the SQL Server bulk insert path is available and permitted.</summary>
+    public bool BulkLoadEnabled;
+
+    /// <summary>Explains why the requested bulk insert path was declined, when applicable.</summary>
+    public string? BulkLoadStatus;
+
     /// <summary>Record ID of the local device record that represents this subscriber connection.</summary>
     public int ParentID;
 

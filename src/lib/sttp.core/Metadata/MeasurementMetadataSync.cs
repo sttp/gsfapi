@@ -102,6 +102,26 @@ internal static class MeasurementMetadataSync
         HashSet<Guid> existingSignalIDs = LoadExistingSignalIDs(context, metadataSignalIDs);
         HashSet<long> existingPointIDs = context.UseIdentityInserts ? LoadExistingPointIDs(context, metadataPointIDs) : [];
 
+        // On SQL Server, new measurement records are written with SqlBulkCopy rather than batched statements. This
+        // matters more than raw throughput on the .NET schema, where an insert trigger issues an unscoped
+        // 'UPDATE Measurement SET SignalID = NEWID() WHERE SignalID IS NULL' - a full table scan for every insert
+        // statement. One bulk copy fires that trigger once instead of once per batch, and because signal IDs are
+        // supplied by this code the trigger has nothing left to assign.
+        SqlServerBulkInsert? bulkInsert = null;
+        SqlServerBulkInsert? bulkIdentityInsert = null;
+
+        if (context.BulkLoadEnabled)
+        {
+            bulkInsert = new SqlServerBulkInsert(context, "Measurement",
+                ["SignalID", "DeviceID", "HistorianID", "PointTag", "AlternateTag", "SignalTypeID", "PhasorSourceIndex", "SignalReference", "Description", "Internal", "Subscribed", "Enabled"], false);
+
+            if (context.UseIdentityInserts)
+            {
+                bulkIdentityInsert = new SqlServerBulkInsert(context, "Measurement",
+                    ["PointID", "SignalID", "DeviceID", "HistorianID", "PointTag", "AlternateTag", "SignalTypeID", "PhasorSourceIndex", "SignalReference", "Description", "Internal", "Subscribed", "Enabled"], true);
+            }
+        }
+
         object phasorSourceIndex = DBNull.Value;
         object alternateTag = DBNull.Value;
         List<Guid> signalIDs = [];
@@ -158,9 +178,20 @@ internal static class MeasurementMetadataSync
                             long pointID = (long)measurementKey.ID;
 
                             if (!existingPointIDs.Contains(pointID))
-                                identityInsertMeasurements.Add(pointID, database.Guid(signalID), deviceID, context.HistorianID, pointTag, alternateTag, signalTypeID, phasorSourceIndex, signalReference, description, database.Bool(context.Internal));
+                            {
+                                if (bulkIdentityInsert is not null)
+                                    bulkIdentityInsert.Add(pointID, signalID, deviceID, context.HistorianID, pointTag, alternateTag, signalTypeID, phasorSourceIndex, signalReference, description, context.Internal, false, true);
+                                else
+                                    identityInsertMeasurements.Add(pointID, database.Guid(signalID), deviceID, context.HistorianID, pointTag, alternateTag, signalTypeID, phasorSourceIndex, signalReference, description, database.Bool(context.Internal));
+                            }
                             else
+                            {
                                 identityUpdateMeasurements.Add(deviceID, context.HistorianID, pointTag, alternateTag, signalTypeID, phasorSourceIndex, signalReference, description, database.Bool(context.Internal), database.Guid(signalID), pointID);
+                            }
+                        }
+                        else if (bulkInsert is not null)
+                        {
+                            bulkInsert.Add(signalID, deviceID, context.HistorianID, pointTag, alternateTag, signalTypeID, phasorSourceIndex, signalReference, description, context.Internal, false, true);
                         }
                         else
                         {
@@ -180,6 +211,8 @@ internal static class MeasurementMetadataSync
 
             // Pending rows must reach the database before identity inserts are disabled below, and before the
             // retirement pass reads back the current measurement set
+            bulkInsert?.Flush();
+            bulkIdentityInsert?.Flush();
             insertMeasurements.Flush();
             identityInsertMeasurements.Flush();
             updateMeasurements.Flush();
@@ -187,6 +220,9 @@ internal static class MeasurementMetadataSync
         }
         finally
         {
+            bulkInsert?.Dispose();
+            bulkIdentityInsert?.Dispose();
+
             if (context.UseIdentityInserts && database.IsSQLServer)
                 context.ExecuteNonQuery("SET IDENTITY_INSERT Measurement OFF");
         }

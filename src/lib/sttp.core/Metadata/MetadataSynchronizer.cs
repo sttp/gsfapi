@@ -46,6 +46,17 @@ internal static class MetadataSynchronizer
         if (!LoadSubscriberDeviceInfo(context, runtimeID))
             return false;
 
+        // Determine whether the SQL Server bulk insert path may be used. Databases other than SQL Server simply
+        // do not qualify and that is not worth reporting, but a SQL Server connection that declines the path has
+        // a specific reason the operator should see.
+        if (context.UseBulkLoad && context.Database.IsSQLServer)
+        {
+            context.BulkLoadEnabled = SqlServerBulkInsert.IsSupported(context, out string? declineReason);
+
+            if (!context.BulkLoadEnabled)
+                context.BulkLoadStatus = $"Bulk meta-data loading was requested but is not being used: {declineReason}.";
+        }
+
         // Ascertain total number of actions required for all meta-data synchronization so some level feed back can be provided on progress
         context.InitProgress(metadata.Tables.Cast<DataTable>().Select(dataTable => (long)dataTable.Rows.Count).Sum() + 3);
 

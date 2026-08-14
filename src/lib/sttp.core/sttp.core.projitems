@@ -22,6 +22,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Metadata\MetadataSyncContext.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Metadata\MetadataSynchronizer.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Metadata\PhasorMetadataSync.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Metadata\SqlServerBulkInsert.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)SignalIndexCache.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)SubscriberAdapter.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)SubscriberConnection.cs" />

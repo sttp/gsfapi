@@ -934,6 +934,16 @@ public class DataSubscriber : InputAdapterBase
     public int MetadataSyncBatchSize { get; set; }
 
     /// <summary>
+    /// Gets or sets flag that determines if bulk copy should be used to insert measurement records during
+    /// meta-data synchronization when connected to SQL Server.
+    /// </summary>
+    /// <remarks>
+    /// Enabled by default. The bulk path is declined automatically, with a status message, when the optional
+    /// audit log schema is installed - those triggers only record correct history for single row writes.
+    /// </remarks>
+    public bool UseBulkMetadataSync { get; set; } = true;
+
+    /// <summary>
     /// Gets or sets flag that determines whether to use the local clock when calculating statistics.
     /// </summary>
     public bool UseLocalClockAsRealTime { get; set; }
@@ -1427,6 +1437,10 @@ public class DataSubscriber : InputAdapterBase
         // Check if user has defined a batch size for meta-data synchronization
         if (settings.TryGetValue(nameof(MetadataSyncBatchSize), out setting) && int.TryParse(setting, out int metadataSyncBatchSize))
             MetadataSyncBatchSize = metadataSyncBatchSize;
+
+        // Check if user has defined a flag for using bulk copy during meta-data synchronization
+        if (settings.TryGetValue(nameof(UseBulkMetadataSync), out setting))
+            UseBulkMetadataSync = setting.ParseBoolean();
 
         // Check if user has defined a flag for using identity inserts during meta-data synchronization
         if (settings.TryGetValue(nameof(UseIdentityInsertsForMetadata), out setting))
@@ -3328,7 +3342,8 @@ public class DataSubscriber : InputAdapterBase
                         ReceiveInternalMetadata = ReceiveInternalMetadata,
                         ReceiveExternalMetadata = ReceiveExternalMetadata,
                         LastMetadataRefreshTime = m_lastMetaDataRefreshTime,
-                        BatchSize = MetadataSyncBatchSize
+                        BatchSize = MetadataSyncBatchSize,
+                        UseBulkLoad = UseBulkMetadataSync
                     };
 
                 #if !NET
@@ -3339,6 +3354,9 @@ public class DataSubscriber : InputAdapterBase
 
                     if (!MetadataSynchronizer.Synchronize(context, metadata, (int)ID))
                         return;
+
+                    if (context.BulkLoadStatus is not null)
+                        OnStatusMessage(MessageLevel.Warning, context.BulkLoadStatus);
 
                 #if !NET
                     m_nodeID = context.NodeID;
