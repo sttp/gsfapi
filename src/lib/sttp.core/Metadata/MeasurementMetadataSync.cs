@@ -109,9 +109,16 @@ internal static class MeasurementMetadataSync
         // supplied by this code the trigger has nothing left to assign.
         SqlServerBulkInsert? bulkInsert = null;
         SqlServerBulkInsert? bulkIdentityInsert = null;
+        SqlServerBulkUpdate? bulkUpdate = null;
 
         if (context.BulkLoadEnabled)
         {
+            // Updates are staged and applied set based for the same reason. Combining update statements into one
+            // command reduces round trips but not trigger cost, since each statement in the batch still fires the
+            // change tracking trigger separately; joining to a staging table collapses a whole batch into one.
+            bulkUpdate = new SqlServerBulkUpdate(context, "Measurement", "SignalID",
+                ["HistorianID", "PointTag", "AlternateTag", "SignalTypeID", "PhasorSourceIndex", "SignalReference", "Description", "Internal"]);
+
             bulkInsert = new SqlServerBulkInsert(context, "Measurement",
                 ["SignalID", "DeviceID", "HistorianID", "PointTag", "AlternateTag", "SignalTypeID", "PhasorSourceIndex", "SignalReference", "Description", "Internal", "Subscribed", "Enabled"], false);
 
@@ -201,7 +208,10 @@ internal static class MeasurementMetadataSync
                     else if (recordNeedsUpdating)
                     {
                         // Update existing measurement record. Note that this update assumes that measurements will remain associated with a static source device.
-                        updateMeasurements.Add(context.HistorianID, pointTag, alternateTag, signalTypeID, phasorSourceIndex, signalReference, description, database.Bool(context.Internal), database.Guid(signalID));
+                        if (bulkUpdate is not null)
+                            bulkUpdate.Add(signalID, context.HistorianID, pointTag, alternateTag, signalTypeID, phasorSourceIndex, signalReference, description, context.Internal);
+                        else
+                            updateMeasurements.Add(context.HistorianID, pointTag, alternateTag, signalTypeID, phasorSourceIndex, signalReference, description, database.Bool(context.Internal), database.Guid(signalID));
                     }
                 }
 
@@ -213,6 +223,7 @@ internal static class MeasurementMetadataSync
             // retirement pass reads back the current measurement set
             bulkInsert?.Flush();
             bulkIdentityInsert?.Flush();
+            bulkUpdate?.Flush();
             insertMeasurements.Flush();
             identityInsertMeasurements.Flush();
             updateMeasurements.Flush();
@@ -222,6 +233,7 @@ internal static class MeasurementMetadataSync
         {
             bulkInsert?.Dispose();
             bulkIdentityInsert?.Dispose();
+            bulkUpdate?.Dispose();
 
             if (context.UseIdentityInserts && database.IsSQLServer)
                 context.ExecuteNonQuery("SET IDENTITY_INSERT Measurement OFF");

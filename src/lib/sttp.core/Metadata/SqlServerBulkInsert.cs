@@ -141,7 +141,7 @@ internal sealed class SqlServerBulkInsert : IDisposable
     /// <summary>
     /// Converts a value supplied by the caller to the type expected by the destination column.
     /// </summary>
-    private static object Coerce(object? value, Type columnType)
+    internal static object Coerce(object? value, Type columnType)
     {
         if (value is null || value == DBNull.Value)
             return DBNull.Value;
