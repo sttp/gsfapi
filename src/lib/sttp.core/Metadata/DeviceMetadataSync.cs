@@ -247,11 +247,16 @@ internal static class DeviceMetadataSync
                             longitude, latitude, contactList.JoinKeyValuePairs(), connectionString);
                     #endif
                     }
-                    else if (recordNeedsUpdating)
+                    else
                     {
                         // Perform safety check to preserve device records which are not safe to overwrite (e.g., device already exists locally as part of another connection).
                         // Skipping the record here also keeps it out of the 'DeviceIDs' lookup, which in turn causes all of its measurements and phasors to be skipped as well.
                         // This is the desired behavior: those local records belong to another connection.
+                        //
+                        // Note that this check is evaluated for every existing record, not only for records that have changed since the last synchronization. It was
+                        // previously nested inside the change check, which meant the protection only held while the source kept updating the device record: once a
+                        // device stopped changing, the check was skipped, the device entered the 'DeviceIDs' lookup, and its measurements and phasors became subject
+                        // to this connection's inserts, updates and - most importantly - the retirement passes, which delete records this connection did not report.
                         if (!IsOwnedByThisConnection(context, existing))
                         {
                             preservedAcronyms.Add(row.Field<string>("Acronym")!);
@@ -259,23 +264,26 @@ internal static class DeviceMetadataSync
                             continue;
                         }
 
-                    #if NET
-                        // Update existing device record
-                        if (connectionStringFieldExists)
-                            updateDevicesWithConnectionString.Add(context.SourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
-                                originalSource, context.HistorianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString, database.Bool(context.Internal), database.Guid(uniqueID));
-                        else
-                            updateDevices.Add(context.SourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
-                                originalSource, context.HistorianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Bool(context.Internal), database.Guid(uniqueID));
-                    #else
-                        // Update existing device record
-                        if (connectionStringFieldExists)
-                            updateDevicesWithConnectionString.Add(context.SourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
-                                originalSource, protocolID, framesPerSecondFieldExists ? row.ConvertField<int>("FramesPerSecond") : 30, context.HistorianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString, database.Guid(uniqueID));
-                        else
-                            updateDevices.Add(context.SourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
-                                originalSource, protocolID, framesPerSecondFieldExists ? row.ConvertField<int>("FramesPerSecond") : 30, context.HistorianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Guid(uniqueID));
-                    #endif
+                        if (recordNeedsUpdating)
+                        {
+                        #if NET
+                            // Update existing device record
+                            if (connectionStringFieldExists)
+                                updateDevicesWithConnectionString.Add(context.SourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
+                                    originalSource, context.HistorianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString, database.Bool(context.Internal), database.Guid(uniqueID));
+                            else
+                                updateDevices.Add(context.SourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
+                                    originalSource, context.HistorianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Bool(context.Internal), database.Guid(uniqueID));
+                        #else
+                            // Update existing device record
+                            if (connectionStringFieldExists)
+                                updateDevicesWithConnectionString.Add(context.SourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
+                                    originalSource, protocolID, framesPerSecondFieldExists ? row.ConvertField<int>("FramesPerSecond") : 30, context.HistorianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), connectionString, database.Guid(uniqueID));
+                            else
+                                updateDevices.Add(context.SourcePrefix + row.Field<string>("Acronym"), row.Field<string>("Name"),
+                                    originalSource, protocolID, framesPerSecondFieldExists ? row.ConvertField<int>("FramesPerSecond") : 30, context.HistorianID, accessID, longitude, latitude, contactList.JoinKeyValuePairs(), database.Guid(uniqueID));
+                        #endif
+                        }
                     }
                 }
             }
