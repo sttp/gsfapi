@@ -126,8 +126,12 @@ internal sealed class MetadataSyncContext
     public bool ReceiveInternalMetadata;
     public bool ReceiveExternalMetadata;
 
-    /// <summary>Time of the last successful meta-data refresh, used to skip unchanged records.</summary>
-    public DateTime LastMetadataRefreshTime;
+    /// <summary>Meta-data as it existed at the last successful synchronization, used to skip unchanged records.</summary>
+    /// <remarks>
+    /// This is <c>null</c> on the first synchronization after start-up, in which case every record is
+    /// treated as changed.
+    /// </remarks>
+    public DataSet? PreviousMetadata;
 
     /// <summary>Latest <c>UpdatedOn</c> value encountered across all synchronized records.</summary>
     public DateTime LatestUpdateTime = DateTime.MinValue;
@@ -239,16 +243,19 @@ internal sealed class MetadataSyncContext
     /// </summary>
     /// <param name="row">Source meta-data row.</param>
     /// <param name="updatedOnFieldExists">Flag that determines if the optional <c>UpdatedOn</c> field is defined.</param>
-    /// <returns><c>true</c> if the record should be updated; otherwise, <c>false</c>.</returns>
     /// <remarks>
-    /// When the <c>UpdatedOn</c> field is missing or cannot be parsed, records are always considered
-    /// changed - this matches long-standing behavior and errs toward synchronizing too much rather than
-    /// too little.
+    /// The latest update time is retained for bookkeeping and status only. It is deliberately no longer
+    /// used to decide whether a record has changed: that decision compared each row's <c>UpdatedOn</c>
+    /// against a single high-water mark taken across every row of every table at the previous
+    /// synchronization, so any row whose timestamp domain ran ahead of the rest of the system - a
+    /// future-dated record, or values written in local time into an otherwise UTC-stamped database -
+    /// silently suppressed updates for every other record until its timestamp was overtaken. Change
+    /// detection is now value-based; see <see cref="CreateChangeDetector"/>.
     /// </remarks>
-    public bool RecordNeedsUpdating(DataRow row, bool updatedOnFieldExists)
+    public void TrackUpdatedOn(DataRow row, bool updatedOnFieldExists)
     {
         if (!updatedOnFieldExists)
-            return true;
+            return;
 
         try
         {
@@ -256,13 +263,21 @@ internal sealed class MetadataSyncContext
 
             if (updateTime > LatestUpdateTime)
                 LatestUpdateTime = updateTime;
-
-            return updateTime > LastMetadataRefreshTime;
         }
         catch
         {
-            return true;
+            // Unparseable update times are ignored for bookkeeping purposes
         }
+    }
+
+    /// <summary>
+    /// Creates a change detector for one meta-data table, keyed by the supplied selector.
+    /// </summary>
+    /// <param name="tableName">Name of the meta-data table within <see cref="PreviousMetadata"/>.</param>
+    /// <param name="keySelector">Function producing a stable identifying key for a row of the table.</param>
+    public TableChangeDetector CreateChangeDetector(string tableName, Func<DataRow, string> keySelector)
+    {
+        return new TableChangeDetector(PreviousMetadata, tableName, keySelector);
     }
 
     /// <summary>
@@ -392,4 +407,94 @@ internal sealed class MetadataSyncContext
     }
 
     #endregion
+}
+
+/// <summary>
+/// Determines whether a meta-data row has changed since the last successful synchronization by comparing
+/// its values against the corresponding row of the previously synchronized meta-data.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Change detection was previously timestamp-based: a row needed updating when its <c>UpdatedOn</c>
+/// exceeded the largest <c>UpdatedOn</c> observed across every row of every table at the previous
+/// synchronization. That single high-water mark made the decision hostage to cross-row timestamp
+/// ordering - one future-dated record, or a record stamped in local time within an otherwise UTC-stamped
+/// database, pushed the mark ahead of every subsequent legitimate edit, and those edits then never
+/// synchronized. In the field this presented as phasor changes that only propagated after deleting the
+/// device, since inserts are not gated.
+/// </para>
+/// <para>
+/// Comparing values against the previously synchronized meta-data removes the timestamp dependence
+/// entirely. A row is considered changed when no previous meta-data is available (first synchronization
+/// after start-up), when the row is new, or when any column present in both the current and previous
+/// table differs - including <c>UpdatedOn</c> itself, which preserves the operator lever of touching a
+/// record's timestamp to force it to resynchronize.
+/// </para>
+/// </remarks>
+internal sealed class TableChangeDetector
+{
+    private readonly Dictionary<string, DataRow>? m_previousRows;
+    private readonly DataColumnCollection? m_previousColumns;
+
+    /// <summary>
+    /// Creates a new <see cref="TableChangeDetector"/> for the named table of the previously
+    /// synchronized meta-data.
+    /// </summary>
+    public TableChangeDetector(DataSet? previousMetadata, string tableName, Func<DataRow, string> keySelector)
+    {
+        if (previousMetadata is null || !previousMetadata.Tables.Contains(tableName))
+            return;
+
+        DataTable previousTable = previousMetadata.Tables[tableName]!;
+
+        m_previousColumns = previousTable.Columns;
+        m_previousRows = new Dictionary<string, DataRow>(previousTable.Rows.Count, StringComparer.OrdinalIgnoreCase);
+
+        foreach (DataRow row in previousTable.Rows)
+        {
+            try
+            {
+                m_previousRows[keySelector(row)] = row;
+            }
+            catch
+            {
+                // A previous row whose key cannot be produced simply goes unindexed, which causes the
+                // corresponding current row to be treated as changed - erring toward synchronizing
+            }
+        }
+    }
+
+    /// <summary>
+    /// Determines whether the supplied row differs from the previously synchronized row with the same key.
+    /// </summary>
+    /// <param name="key">Identifying key for the row, produced consistently with the constructor's selector.</param>
+    /// <param name="currentRow">Current meta-data row.</param>
+    /// <returns><c>true</c> if the record should be updated; otherwise, <c>false</c>.</returns>
+    public bool RecordChanged(string key, DataRow currentRow)
+    {
+        if (m_previousRows is null || m_previousColumns is null)
+            return true;
+
+        if (!m_previousRows.TryGetValue(key, out DataRow? previousRow))
+            return true;
+
+        // Only columns present in both schemas participate, so a publisher that adds or removes optional
+        // meta-data columns between refreshes does not mark every record changed on name mismatches alone
+        foreach (DataColumn column in currentRow.Table.Columns)
+        {
+            if (!m_previousColumns.Contains(column.ColumnName))
+                continue;
+
+            object currentValue = currentRow[column];
+            object previousValue = previousRow[column.ColumnName];
+
+            if (currentValue == DBNull.Value && previousValue == DBNull.Value)
+                continue;
+
+            if (!currentValue.Equals(previousValue))
+                return true;
+        }
+
+        return false;
+    }
 }

@@ -137,10 +137,16 @@ internal static class DeviceMetadataSync
         HashSet<string> preservedAcronyms = new(StringComparer.OrdinalIgnoreCase);
         int accessID = 0;
 
+        // Records are considered changed when they differ from the previously synchronized meta-data,
+        // keyed by the device's unique ID
+        TableChangeDetector changeDetector = context.CreateChangeDetector("DeviceDetail", detectorRow => detectorRow.ConvertGuidField("UniqueID").ToString());
+
         foreach (DataRow row in deviceRows)
         {
             Guid uniqueID = row.ConvertGuidField("UniqueID");
-            bool recordNeedsUpdating = context.RecordNeedsUpdating(row, updatedOnFieldExists);
+            bool recordNeedsUpdating = changeDetector.RecordChanged(uniqueID.ToString(), row);
+
+            context.TrackUpdatedOn(row, updatedOnFieldExists);
 
             // We will synchronize meta-data only if the source owns this device, and it's not defined as a concentrator (these should normally be filtered by publisher - but we check just in case).
             if (!row["IsConcentrator"].ToNonNullString("0").ParseBoolean())
