@@ -34,19 +34,21 @@ namespace sttp;
 /// </remarks>
 internal static class PhasorMetadataSync
 {
+    // Local column written by destination phasor cross-references, and the alternate name under which the
+    // value may arrive in meta-data published by the other framework generation
+#if NET
+    private const string PrimaryVoltageID = "PrimaryVoltageID";
+    private const string DestinationPhasorID = "DestinationPhasorID";
+#else
+    private const string PrimaryVoltageID = "DestinationPhasorID";
+    private const string DestinationPhasorID = "PrimaryVoltageID";
+#endif
+
     /// <summary>
     /// Synchronizes phasor records for all devices captured in <see cref="MetadataSyncContext.DeviceIDs"/>.
     /// </summary>
     public static void Synchronize(MetadataSyncContext context, DataTable phasorDetail)
     {
-    #if NET
-        const string PrimaryVoltageID = "PrimaryVoltageID";
-        const string DestinationPhasorID = "DestinationPhasorID";
-    #else
-        const string PrimaryVoltageID = "DestinationPhasorID";
-        const string DestinationPhasorID = "PrimaryVoltageID";
-    #endif
-
         AdoDataConnection database = context.Database;
 
         // Check existence of optional meta-data fields
@@ -84,11 +86,16 @@ internal static class PhasorMetadataSync
         string updatePrimaryVoltageIDSql = database.ParameterizedQueryString($"UPDATE Phasor SET {PrimaryVoltageID} = {{0}} WHERE ID = {{1}}", "primaryVoltageID", "id");
 
         // Load a snapshot of existing phasor records, replacing the per-row existence and record ID lookups
-        Dictionary<(int DeviceID, int SourceIndex), int> snapshot = LoadSnapshot(context);
+        Dictionary<(int DeviceID, int SourceIndex), (int ID, int? DestinationID)> snapshot = LoadSnapshot(context);
 
         Dictionary<int, List<int>> definedSourceIndices = new();
         Dictionary<int, int> sourceToDestinationIDMap = new();
         List<(int SourcePhasorID, int DeviceID, int SourceIndex)> phasorIDLookups = [];
+
+        // Records are considered changed when they differ from the previously synchronized meta-data,
+        // keyed by device acronym and source index - the same natural key the local table enforces
+        TableChangeDetector changeDetector = context.CreateChangeDetector("PhasorDetail",
+            detectorRow => $"{detectorRow.Field<string>("DeviceAcronym")}|{detectorRow.ConvertField<int>("SourceIndex")}");
 
         foreach (DataRow row in phasorDetail.Rows)
         {
@@ -98,9 +105,10 @@ internal static class PhasorMetadataSync
             // Make sure we have an associated device already defined for the phasor record
             if (!string.IsNullOrWhiteSpace(deviceAcronym) && context.DeviceIDs.TryGetValue(deviceAcronym, out int deviceID))
             {
-                bool recordNeedsUpdating = context.RecordNeedsUpdating(row, true);
-
                 int sourceIndex = row.ConvertField<int>("SourceIndex");
+                bool recordNeedsUpdating = changeDetector.RecordChanged($"{deviceAcronym}|{sourceIndex}", row);
+
+                context.TrackUpdatedOn(row, true);
                 string label = row.Field<string>("Label") ?? "undefined";
                 string type = (row.Field<string>("Type") ?? "V").TruncateLeft(1);
                 string phase = (row.Field<string>("Phase") ?? "+").TruncateLeft(1);
@@ -172,16 +180,40 @@ internal static class PhasorMetadataSync
         {
             // Reload the snapshot so that records inserted above are included, then resolve every metadata phasor
             // ID to its local record ID in one pass rather than one query per phasor
-            Dictionary<(int DeviceID, int SourceIndex), int> resolved = LoadSnapshot(context);
+            Dictionary<(int DeviceID, int SourceIndex), (int ID, int? DestinationID)> resolved = LoadSnapshot(context);
             Dictionary<int, int> metadataToDatabaseIDMap = new();
 
             foreach ((int sourcePhasorID, int deviceID, int sourceIndex) in phasorIDLookups)
-                metadataToDatabaseIDMap[sourcePhasorID] = resolved.TryGetValue((deviceID, sourceIndex), out int phasorID) ? phasorID : 0;
+                metadataToDatabaseIDMap[sourcePhasorID] = resolved.TryGetValue((deviceID, sourceIndex), out (int ID, int? DestinationID) record) ? record.ID : 0;
 
-            foreach (KeyValuePair<int, int> item in sourceToDestinationIDMap)
+            foreach ((int sourcePhasorID, int deviceID, int sourceIndex) in phasorIDLookups)
             {
-                if (metadataToDatabaseIDMap.TryGetValue(item.Key, out int sourcePhasorID) && metadataToDatabaseIDMap.TryGetValue(item.Value, out int destinationPhasorID))
-                    context.ExecuteNonQuery(updatePrimaryVoltageIDSql, destinationPhasorID, sourcePhasorID);
+                if (!resolved.TryGetValue((deviceID, sourceIndex), out (int ID, int? DestinationID) local) || local.ID == 0)
+                    continue;
+
+                int? desiredDestinationID;
+
+                if (sourceToDestinationIDMap.TryGetValue(sourcePhasorID, out int metadataDestinationID))
+                {
+                    // A destination the local database cannot resolve - for example one whose device is filtered
+                    // out of this subscription - preserves whatever the local record already carries
+                    if (!metadataToDatabaseIDMap.TryGetValue(metadataDestinationID, out int localDestinationID) || localDestinationID == 0)
+                        continue;
+
+                    desiredDestinationID = localDestinationID;
+                }
+                else
+                {
+                    // The meta-data reports no destination for this phasor. A cleared destination must propagate
+                    // like any other change - previously a destination could be set or repointed but never
+                    // removed, since only non-null values were ever considered.
+                    desiredDestinationID = null;
+                }
+
+                // Writing only actual differences also stops rewriting every unchanged destination on every
+                // synchronization pass, each of which fired the phasor update tracking trigger
+                if (local.DestinationID != desiredDestinationID)
+                    context.ExecuteNonQuery(updatePrimaryVoltageIDSql, desiredDestinationID.HasValue ? (object)desiredDestinationID.Value : DBNull.Value, local.ID);
             }
         }
 
@@ -195,17 +227,17 @@ internal static class PhasorMetadataSync
     /// <summary>
     /// Loads existing phasor records for all synchronized devices, keyed by device and source index.
     /// </summary>
-    private static Dictionary<(int DeviceID, int SourceIndex), int> LoadSnapshot(MetadataSyncContext context)
+    private static Dictionary<(int DeviceID, int SourceIndex), (int ID, int? DestinationID)> LoadSnapshot(MetadataSyncContext context)
     {
-        Dictionary<(int, int), int> snapshot = new();
+        Dictionary<(int, int), (int, int?)> snapshot = new();
         List<int> deviceIDs = context.DeviceIDs.Values.Where(deviceID => deviceID > 0).Distinct().ToList();
 
         foreach (int[] chunk in MetadataSyncContext.Chunk(deviceIDs))
         {
-            string querySql = context.BuildInListQuery("SELECT ID, DeviceID, SourceIndex FROM Phasor WHERE DeviceID IN (", chunk.Length, ")", "deviceID");
+            string querySql = context.BuildInListQuery($"SELECT ID, DeviceID, SourceIndex, {PrimaryVoltageID} FROM Phasor WHERE DeviceID IN (", chunk.Length, ")", "deviceID");
 
             foreach (DataRow row in context.RetrieveData(querySql, chunk.Select(deviceID => (object)deviceID).ToArray()).Rows)
-                snapshot[(row.ConvertField<int>("DeviceID"), row.ConvertField<int>("SourceIndex"))] = row.ConvertField<int>("ID");
+                snapshot[(row.ConvertField<int>("DeviceID"), row.ConvertField<int>("SourceIndex"))] = (row.ConvertField<int>("ID"), row.ConvertNullableField<int>(PrimaryVoltageID));
         }
 
         return snapshot;

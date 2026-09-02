@@ -136,11 +136,16 @@ internal static class MeasurementMetadataSync
         if (context.UseIdentityInserts && database.IsSQLServer)
             context.ExecuteNonQuery("SET IDENTITY_INSERT Measurement ON");
 
+        // Records are considered changed when they differ from the previously synchronized meta-data,
+        // keyed by the measurement's signal ID. The comparison is evaluated lazily, only for records that
+        // already exist locally, since new records take the insert path unconditionally.
+        TableChangeDetector changeDetector = context.CreateChangeDetector("MeasurementDetail", detectorRow => detectorRow.ConvertGuidField("SignalID").ToString());
+
         try
         {
             foreach (DataRow row in measurementRows)
             {
-                bool recordNeedsUpdating = context.RecordNeedsUpdating(row, updatedOnFieldExists);
+                context.TrackUpdatedOn(row, updatedOnFieldExists);
 
                 // Get device and signal type acronyms
                 string deviceAcronym = row.Field<string>("DeviceAcronym") ?? string.Empty;
@@ -205,7 +210,7 @@ internal static class MeasurementMetadataSync
                             insertMeasurements.Add(database.Guid(signalID), deviceID, context.HistorianID, pointTag, alternateTag, signalTypeID, phasorSourceIndex, signalReference, description, database.Bool(context.Internal));
                         }
                     }
-                    else if (recordNeedsUpdating)
+                    else if (changeDetector.RecordChanged(signalID.ToString(), row))
                     {
                         // Update existing measurement record. Note that this update assumes that measurements will remain associated with a static source device.
                         if (bulkUpdate is not null)

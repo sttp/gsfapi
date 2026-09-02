@@ -3341,7 +3341,7 @@ public class DataSubscriber : InputAdapterBase
                         AutoDeleteAlarmMeasurements = AutoDeleteAlarmMeasurements,
                         ReceiveInternalMetadata = ReceiveInternalMetadata,
                         ReceiveExternalMetadata = ReceiveExternalMetadata,
-                        LastMetadataRefreshTime = m_lastMetaDataRefreshTime,
+                        PreviousMetadata = m_synchronizedMetadata,
                         BatchSize = MetadataSyncBatchSize,
                         UseBulkLoad = UseBulkMetadataSync
                     };
