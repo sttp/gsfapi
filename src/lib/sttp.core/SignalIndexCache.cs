@@ -106,16 +106,30 @@ public class SignalIndexCache : ISupportBinaryImage
             DataTable activeMeasurements = dataSource.Tables["ActiveMeasurements"]!;
             ConcurrentDictionary<int, MeasurementKey> reference = new();
 
+            // Index measurement IDs by signal ID up front: a DataTable.Select per referenced signal parses a new
+            // filter expression and rescans the entire table, making cache translation O(referenced * measurements).
+            // For a large subscription against a large configuration that is the difference between a moment and minutes.
+            Dictionary<Guid, string> measurementIDs = new(activeMeasurements.Rows.Count);
+
+            foreach (DataRow measurementRow in activeMeasurements.Rows)
+            {
+                // Rows without a parsable signal ID could never have matched the original filter expression
+                if (!Guid.TryParse(measurementRow["SignalID"].ToNonNullString(), out Guid rowSignalID))
+                    continue;
+
+                // First row wins, matching the prior behavior of taking the first filtered row
+                if (!measurementIDs.ContainsKey(rowSignalID))
+                    measurementIDs.Add(rowSignalID, measurementRow["ID"].ToNonNullString(MeasurementKey.Undefined.ToString()));
+            }
+
             foreach (KeyValuePair<int, MeasurementKey> signalIndex in remoteCache.Reference)
             {
                 Guid signalID = signalIndex.Value.SignalID;
-                DataRow[] filteredRows = activeMeasurements.Select($"SignalID = '{signalID}'");
 
-                if (filteredRows.Length == 0)
+                if (!measurementIDs.TryGetValue(signalID, out string? measurementID))
                     continue;
 
-                DataRow row = filteredRows[0];
-                MeasurementKey key = MeasurementKey.LookUpOrCreate(signalID, row["ID"].ToNonNullString(MeasurementKey.Undefined.ToString()));
+                MeasurementKey key = MeasurementKey.LookUpOrCreate(signalID, measurementID);
                 reference.TryAdd(signalIndex.Key, key);
             }
 

@@ -3794,6 +3794,22 @@ public class DataSubscriber : InputAdapterBase
             if (!measurementTable.Columns.Contains("FramesPerSecond"))
                 return;
 
+            // Index measurement rows by signal ID up front: a DataTable.Select per authorized signal parses a new
+            // filter expression and rescans the entire table, making this O(authorized * measurements). This runs
+            // right after a subscription is established, so for large subscriptions it directly delays startup.
+            Dictionary<Guid, DataRow> measurementRows = new(measurementTable.Rows.Count);
+
+            foreach (DataRow measurementRow in measurementTable.Rows)
+            {
+                // Rows without a parsable signal ID could never have matched the original filter expression
+                if (!Guid.TryParse(measurementRow["SignalID"].ToNonNullString(), out Guid rowSignalID))
+                    continue;
+
+                // First row wins, matching the prior behavior of taking the first filtered row
+                if (!measurementRows.ContainsKey(rowSignalID))
+                    measurementRows.Add(rowSignalID, measurementRow);
+            }
+
             // Get expected measurement counts
             IEnumerable<IGrouping<DeviceStatisticsHelper<SubscribedDevice>, Guid>> groups = signalIndexCache.AuthorizedSignalIDs
                 .Where(signalID => subscribedDevicesLookup.TryGetValue(signalID, out _))
@@ -3804,7 +3820,7 @@ public class DataSubscriber : InputAdapterBase
             foreach (IGrouping<DeviceStatisticsHelper<SubscribedDevice>, Guid> group in groups)
             {
                 int[] frameRates = group
-                    .Select(signalID => GetFramesPerSecond(measurementTable, signalID))
+                    .Select(signalID => GetFramesPerSecond(measurementRows, signalID))
                     .Where(frameRate => frameRate != 0)
                     .ToArray();
 
@@ -3818,11 +3834,9 @@ public class DataSubscriber : InputAdapterBase
         }
     }
 
-    private static int GetFramesPerSecond(DataTable measurementTable, Guid signalID)
+    private static int GetFramesPerSecond(Dictionary<Guid, DataRow> measurementRows, Guid signalID)
     {
-        DataRow? row = measurementTable.Select($"SignalID = '{signalID}'").FirstOrDefault();
-
-        if (row is null)
+        if (!measurementRows.TryGetValue(signalID, out DataRow? row))
             return 0;
 
         return row.Field<string>("SignalType")?.ToUpperInvariant() switch
