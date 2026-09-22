@@ -243,10 +243,15 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
                     value.Length > 0 && !new HashSet<MeasurementKey>(base.InputMeasurementKeys ?? []).SetEquals(value))
                 {
                     // Safe: no lock required for signal index cache here
-                    Guid[] authorizedSignalIDs = m_parent.UpdateSignalIndexCache(ClientID, m_connection.SignalIndexCache, value);
+                    MeasurementKey[] authorizedKeys = m_parent.UpdateSignalIndexCache(ClientID, m_connection.SignalIndexCache, value);
 
+                    // The authorized keys are the very instances just passed in, so they can be assigned directly. This
+                    // previously joined the authorized signal IDs into a delimited string and re-parsed it, which for a
+                    // large subscription built a multi-megabyte string and re-resolved every signal ID only to arrive
+                    // back at these same keys - MeasurementKey interns each instance by signal ID and updates it in
+                    // place rather than replacing it, so re-resolving can never yield anything different.
                     if (DataSource is not null && m_connection.SignalIndexCache is not null)
-                        value = ParseInputMeasurementKeys(DataSource, false, string.Join("; ", authorizedSignalIDs));
+                        value = authorizedKeys;
                 }
 
                 base.InputMeasurementKeys = value;
@@ -637,7 +642,7 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
         {
             try
             {
-                Guid[] authorizedSignalIDs;
+                MeasurementKey[] authorizedKeys;
 
                 lock (m_connection.PendingCacheUpdateLock)
                 {
@@ -648,11 +653,13 @@ internal class SubscriberAdapter : FacileActionAdapterBase, IClientSubscription
                     m_connection.PendingSignalIndexCache = null;
 
                     OnStatusMessage(MessageLevel.Info, $"Applying pending signal cache update for subscriber {clientID} with {nextSignalIndexCache.Reference.Count:N0} records...", nameof(ConfirmSignalIndexCache));
-                    authorizedSignalIDs = m_parent.UpdateSignalIndexCache(ClientID, nextSignalIndexCache, InputMeasurementKeys);
+                    authorizedKeys = m_parent.UpdateSignalIndexCache(ClientID, nextSignalIndexCache, InputMeasurementKeys);
                 }
 
+                // See the InputMeasurementKeys setter: the authorized keys are the instances just passed in, so they
+                // are assigned directly rather than re-parsed from a joined string of their signal IDs
                 if (DataSource is not null)
-                    base.InputMeasurementKeys = ParseInputMeasurementKeys(DataSource, false, string.Join("; ", authorizedSignalIDs));
+                    base.InputMeasurementKeys = authorizedKeys;
             }
             catch (Exception ex)
             {

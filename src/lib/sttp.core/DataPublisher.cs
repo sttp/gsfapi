@@ -2154,9 +2154,14 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <param name="clientID">Client ID of connection over which to update signal index cache.</param>
     /// <param name="signalIndexCache">New signal index cache.</param>
     /// <param name="inputMeasurementKeys">Subscribed measurement keys.</param>
-    public Guid[] UpdateSignalIndexCache(Guid clientID, SignalIndexCache? signalIndexCache, MeasurementKey[]? inputMeasurementKeys)
+    /// <returns>
+    /// The subset of <paramref name="inputMeasurementKeys"/> the subscriber is authorized to receive, in the order
+    /// provided. These are the same key instances that were passed in, so callers can assign the result directly.
+    /// </returns>
+    public MeasurementKey[] UpdateSignalIndexCache(Guid clientID, SignalIndexCache? signalIndexCache, MeasurementKey[]? inputMeasurementKeys)
     {
         ConcurrentDictionary<int, MeasurementKey> reference = new();
+        List<MeasurementKey> authorizedKeys = [];
         List<Guid> unauthorizedKeys = [];
         int index = 0;
 
@@ -2175,9 +2180,17 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
 
                 // Validate that subscriber has rights to this signal
                 if (signalID != Guid.Empty && hasRightsFunc(signalID))
+                {
                     reference.TryAdd(index++, key);
+
+                    // Track authorized keys in subscription order - the reference collection is unordered,
+                    // and callers need the authorized subset to assign back as their input measurement keys
+                    authorizedKeys.Add(key);
+                }
                 else
+                {
                     unauthorizedKeys.Add(key.SignalID);
+                }
             }
         }
 
@@ -2246,7 +2259,7 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             }
         }
 
-        return reference.Select(kvp => kvp.Value.SignalID).ToArray();
+        return authorizedKeys.ToArray();
     }
 
     /// <summary>
@@ -3255,9 +3268,18 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
                     // If client has subscribed to any cached measurements, queue them up for the client
                     if (TryGetAdapterByName(nameof(LatestMeasurementCache), out IActionAdapter? cacheAdapter))
                     {
-                        if (cacheAdapter is LatestMeasurementCache cache && subscription.InputMeasurementKeys is not null)
+                        if (cacheAdapter is LatestMeasurementCache cache && subscription.InputMeasurementKeys is { } subscribedKeys)
                         {
-                            IEnumerable<IMeasurement> cachedMeasurements = cache.LatestMeasurements.Where(measurement => subscription.InputMeasurementKeys.Any(key => key.SignalID == measurement.ID));
+                            // Hash the subscribed signal IDs so cache filtering is O(cached) instead of O(cached * subscribed).
+                            // A large subscription (100K+ signals) against a populated cache otherwise spent minutes here, and
+                            // since this runs on the client's command processing thread, it also delayed the subsequent
+                            // ConfirmSignalIndexCache command -- which gates the subscriber's time to first usable measurement.
+                            HashSet<Guid> subscribedSignalIDs = [..subscribedKeys.Select(key => key.SignalID)];
+
+                            // Materialize the filter: QueueMeasurementsForProcessing enumerates its parameter several times,
+                            // and each pass over LatestMeasurements copies the entire cache before filtering it
+                            IMeasurement[] cachedMeasurements = cache.LatestMeasurements.Where(measurement => subscribedSignalIDs.Contains(measurement.ID)).ToArray();
+
                             subscription.QueueMeasurementsForProcessing(cachedMeasurements);
                         }
                     }
@@ -3480,35 +3502,78 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         List<DataRow> rowsToRemove = [];
         string deviceAcronym;
 
+        // Each association check below was a DataTable.Compute call with a freshly interpolated filter expression,
+        // i.e., an expression parse plus a full table scan per row, making this analysis O(rows * rows). With 100K+
+        // measurement records that dominated metadata refresh time. The join keys are indexed once instead.
+        // Note: DataTable filter expressions compare strings case-insensitively by default, so the sets match on
+        // acronym without regard to case as well.
+        DataTable measurementDetail = metadata.Tables["MeasurementDetail"]!;
+        DataTable deviceDetail = metadata.Tables["DeviceDetail"]!;
+
+        HashSet<string> measurementDeviceAcronyms = new(StringComparer.OrdinalIgnoreCase);
+
+        foreach (DataRow row in measurementDetail.Rows)
+            measurementDeviceAcronyms.Add(row["DeviceAcronym"].ToNonNullString());
+
         // Remove device records where no associated measurement records exist
-        foreach (DataRow row in metadata.Tables["DeviceDetail"]!.Rows)
+        foreach (DataRow row in deviceDetail.Rows)
         {
             deviceAcronym = row["Acronym"].ToNonNullString();
 
-            if (!string.IsNullOrEmpty(deviceAcronym) && (int)metadata.Tables["MeasurementDetail"]!.Compute("Count(DeviceAcronym)", $"DeviceAcronym = '{deviceAcronym}'") == 0)
+            if (!string.IsNullOrEmpty(deviceAcronym) && !measurementDeviceAcronyms.Contains(deviceAcronym))
                 rowsToRemove.Add(row);
         }
 
         if (metadata.Tables.Contains("PhasorDetail") && metadata.Tables["PhasorDetail"]!.Columns.Contains("DeviceAcronym"))
         {
+            DataTable phasorDetail = metadata.Tables["PhasorDetail"]!;
+
+            HashSet<string> definedDeviceAcronyms = new(StringComparer.OrdinalIgnoreCase);
+
+            foreach (DataRow row in deviceDetail.Rows)
+                definedDeviceAcronyms.Add(row["Acronym"].ToNonNullString());
+
             // Remove phasor records where no associated device records exist
-            foreach (DataRow row in metadata.Tables["PhasorDetail"]!.Rows)
+            foreach (DataRow row in phasorDetail.Rows)
             {
                 deviceAcronym = row["DeviceAcronym"].ToNonNullString();
 
-                if (!string.IsNullOrEmpty(deviceAcronym) && (int)metadata.Tables["DeviceDetail"]!.Compute("Count(Acronym)", $"Acronym = '{deviceAcronym}'") == 0)
+                if (!string.IsNullOrEmpty(deviceAcronym) && !definedDeviceAcronyms.Contains(deviceAcronym))
                     rowsToRemove.Add(row);
             }
 
-            if (metadata.Tables["PhasorDetail"]!.Columns.Contains("SourceIndex") && metadata.Tables["MeasurementDetail"]!.Columns.Contains("PhasorSourceIndex"))
+            if (phasorDetail.Columns.Contains("SourceIndex") && measurementDetail.Columns.Contains("PhasorSourceIndex"))
             {
+                // Index the defined phasor source indexes per device acronym
+                Dictionary<string, HashSet<int>> phasorSourceIndexes = new(StringComparer.OrdinalIgnoreCase);
+
+                foreach (DataRow row in phasorDetail.Rows)
+                {
+                    deviceAcronym = row["DeviceAcronym"].ToNonNullString();
+                    int? sourceIndex = row.ConvertField<int?>("SourceIndex");
+
+                    if (string.IsNullOrEmpty(deviceAcronym) || sourceIndex is null)
+                        continue;
+
+                    if (!phasorSourceIndexes.TryGetValue(deviceAcronym, out HashSet<int>? sourceIndexes))
+                    {
+                        sourceIndexes = [];
+                        phasorSourceIndexes.Add(deviceAcronym, sourceIndexes);
+                    }
+
+                    sourceIndexes.Add(sourceIndex.Value);
+                }
+
                 // Remove measurement records where no associated phasor records exist
-                foreach (DataRow row in metadata.Tables["MeasurementDetail"]!.Rows)
+                foreach (DataRow row in measurementDetail.Rows)
                 {
                     deviceAcronym = row["DeviceAcronym"].ToNonNullString();
                     int? phasorSourceIndex = row.ConvertField<int?>("PhasorSourceIndex");
 
-                    if (!string.IsNullOrEmpty(deviceAcronym) && phasorSourceIndex is not null && (int)metadata.Tables["PhasorDetail"]!.Compute("Count(DeviceAcronym)", $"DeviceAcronym = '{deviceAcronym}' AND SourceIndex = {phasorSourceIndex}") == 0)
+                    if (string.IsNullOrEmpty(deviceAcronym) || phasorSourceIndex is null)
+                        continue;
+
+                    if (!phasorSourceIndexes.TryGetValue(deviceAcronym, out HashSet<int>? sourceIndexes) || !sourceIndexes.Contains(phasorSourceIndex.Value))
                         rowsToRemove.Add(row);
                 }
             }
