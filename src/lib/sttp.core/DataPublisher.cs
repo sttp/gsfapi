@@ -1170,11 +1170,25 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     /// <summary>
     /// Gets or sets flag that determines whether client subscriber IP address is validated. Defaults to true when measurement rights are validated.
     /// </summary>
+    /// <remarks>
+    /// When enabled, connections whose source IP address is not found in the subscriber's list of valid IP addresses are rejected.
+    /// </remarks>
     [ConnectionStringParameter]
-    [Description("Define the flag that determines whether client subscriber IP address is validated. Defaults to true when measurement rights are validated.")]
+    [Description("Define the flag that determines whether client subscriber IP address is validated. Defaults to true when measurement rights are validated. When enabled, connections whose source IP address is not found in the subscriber's list of valid IP addresses are rejected.")]
     [DefaultValue(DefaultValidateClientIPAddress)]
     [Label("Validate Client IP Address")]
     public bool ValidateClientIPAddress { get; set; }
+
+    /// <summary>
+    /// Gets flag that determines if subscriber connections must be authenticated before any commands, other than
+    /// operational mode negotiation, are processed.
+    /// </summary>
+    /// <remarks>
+    /// Authentication is required when either <see cref="ValidateClientIPAddress"/> or <see cref="ValidateMeasurementRights"/>
+    /// is enabled. When <see cref="ValidateClientIPAddress"/> is enabled, connections whose source IP address is not found
+    /// in the subscriber's list of valid IP addresses will not be authenticated.
+    /// </remarks>
+    protected bool RequireAuthentication => ValidateClientIPAddress || ValidateMeasurementRights;
 
 #if !NET
     /// <summary>
@@ -2582,7 +2596,10 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         connection.SubscriberID = Guid.Parse(subscriber["ID"].ToNonNullString(Guid.Empty.ToString()).Trim());
         connection.SubscriberAcronym = subscriber["Acronym"].ToNonNullString().Trim();
         connection.SubscriberName = subscriber["Name"].ToNonNullString().Trim();
-        connection.ValidIPAddresses = ParseAddressList(subscriber["ValidIPAddresses"].ToNonNullString());
+        connection.ValidIPAddresses = ParseAddressList(subscriber["ValidIPAddresses"].ToNonNullString(), out List<string> invalidAddresses);
+
+        if (ValidateClientIPAddress && invalidAddresses.Count > 0)
+            OnStatusMessage(MessageLevel.Warning, $"Ignored {invalidAddresses.Count:N0} invalid entr{(invalidAddresses.Count == 1 ? "y" : "ies")} in valid IP address list of subscriber \"{connection.SubscriberName}\": {string.Join(", ", invalidAddresses)} - only IP addresses are supported, host names are not resolved.", flags: MessageFlags.SecurityMessage);
     }
 
     // Update certificate validation routine.
@@ -3988,6 +4005,15 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
             }
             else if (validServerCommand)
             {
+                // Deny all commands, other than operational mode negotiation, from clients that failed authentication, e.g.,
+                // source IP address was not found in the valid IP address list for the subscriber or subscriber was disabled
+                if (command != ServerCommand.DefineOperationalModes && RequireAuthentication && !connection.Authenticated)
+                {
+                    SendClientResponse(clientID, ServerResponse.Failed, command, $"Subscriber not authenticated - {command} request denied.");
+                    OnStatusMessage(MessageLevel.Warning, $"Client {connection.ConnectionID} {command} command request denied - subscriber not authenticated.", flags: MessageFlags.SecurityMessage);
+                    return;
+                }
+
                 switch (command)
                 {
                     case ServerCommand.Subscribe:
@@ -4105,11 +4131,37 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
         }
         else if (ValidateClientIPAddress)
         {
-            string errorMessage = "Unable to authenticate client. Client connected using" +
-                                  $" certificate of subscriber \"{connection.SubscriberName}\", however the IP address used ({connection.IPAddress}) was" +
-                                  " not found among the list of valid IP addresses.";
+            bool serverBasedConnection = m_serverCommandChannel is not null && clientID != m_proxyClientID;
 
-            OnProcessException(MessageLevel.Warning, new InvalidOperationException(errorMessage));
+            string errorMessage = connection.SubscriberID == Guid.Empty ?
+                $"Unable to authenticate client connected from {connection.IPAddress}. No subscriber identity could be determined for" +
+                " the connection - IP address validation requires TLS with a trusted subscriber certificate." :
+                $"Unable to authenticate client. Client connected using certificate of subscriber \"{connection.SubscriberName}\"," +
+                $" however the IP address used ({connection.IPAddress}) was not found among the list of valid IP addresses.";
+
+            errorMessage += serverBasedConnection ?
+                " Client connection will be terminated." :
+                " All subscriber commands will be denied.";
+
+            OnProcessException(MessageLevel.Warning, new InvalidOperationException(errorMessage), flags: MessageFlags.SecurityMessage);
+
+            // Source IP address cannot change for the life of the connection, so terminate server-based client connections
+            // immediately. Client-based (i.e., reverse) connections are not terminated since this would only cause the publisher
+            // to reconnect again - for these connections, all subscriber commands will be denied as the client is not authenticated
+            if (serverBasedConnection)
+                ThreadPool.QueueUserWorkItem(_ => TerminateClientConnection(clientID));
+        }
+    }
+
+    private void TerminateClientConnection(Guid clientID)
+    {
+        try
+        {
+            m_serverCommandChannel?.DisconnectOne(clientID);
+        }
+        catch (Exception ex)
+        {
+            OnProcessException(MessageLevel.Warning, new InvalidOperationException($"Failed to terminate unauthenticated client connection: {ex.Message}", ex), flags: MessageFlags.SecurityMessage);
         }
     }
 
@@ -4274,16 +4326,24 @@ public class DataPublisher : ActionAdapterCollection, IOptimizedRoutingConsumer
     // Static Methods
 
     // Parses a list of IP addresses.
-    private static List<IPAddress> ParseAddressList(string addressList)
+    private static List<IPAddress> ParseAddressList(string addressList, out List<string> invalidAddresses)
     {
         string[] splitList = addressList.Split(';', ',');
         List<IPAddress> ipAddressList = [];
 
+        invalidAddresses = [];
+
         foreach (string address in splitList)
         {
+            if (string.IsNullOrWhiteSpace(address))
+                continue;
+
             // Attempt to parse the IP address
             if (!IPAddress.TryParse(address.Trim(), out IPAddress? ipAddress))
+            {
+                invalidAddresses.Add(address.Trim());
                 continue;
+            }
 
             // Add the parsed address to the list
             ipAddressList.Add(ipAddress);
